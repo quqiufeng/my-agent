@@ -10,33 +10,76 @@
         └──────────────── 失败重试 ←────────────────────────┘
 ```
 
-关键点：
-1. **标签原语**：我们定义一套操作标签（如 `#shell`、`#code`、`#file`）
-2. **执行逻辑**：本地实现标签的解析和执行
-3. **约定格式**：远程 API 只需返回标签包裹的内容，无需知道具体实现
-4. **自我更新**：Python 自省能力 + 标签执行 = 脚本可以修改自己
+**标签是本地与远程 AI 的通讯协议**
+
+标签帮助远程 AI 掌握现场的最新情况，像在本地一样开发：
+- **眼睛**：通过 `#read`、`#inspect`、`#debug` 获取现场信息
+- **手**：通过 `#file`、`#shell`、`#code` 执行操作
+
+远程 AI 获取执行结果后，继续决策，形成闭环。
 
 ---
 
-## 标签原语定义
+## 标签原语定义（共 11 种）
 
 ```markdown
 #shell
-执行 shell 命令
+pip install requests
 #end
 
-#code 文件路径
-写入代码文件
+#code
+print("hello")
 #end
 
-#file 文件路径
-读取文件内容
+#debug
+import sys; print(sys.version)
 #end
 
-#test
-运行测试验证
+#inspect requests.get
+#end
+
+#read src/main.py
+#end
+
+#file src/main.py
+def main():
+    pass
+#end
+
+#dir src/utils
 #end
 ```
+
+---
+
+## 标签详解
+
+| 标签 | 功能 | 参数 | 示例 |
+|:---|:---|:---|:---|
+| **#shell** | 执行 Shell 命令 | 命令 | `#shell pip install requests #end` |
+| **#code** | 执行 Python 代码（实现功能） | 代码 | `#code print("hello") #end` |
+| **#debug** | 执行 Python 代码（返回结果给 AI） | 代码 | `#debug import sys; print(sys.version) #end` |
+| **#inspect** | 自省模块/函数签名 | 模块名（逗号分隔） | `#inspect requests,os #end`<br>`#inspect requests.get #end` |
+| **#read** | 读取文件内容 | 文件路径 [行号:行号] | `#read src/main.py #end`<br>`#read src/main.py 10:20 #end` |
+| **#file** | 写入文件（整体替换） | 文件路径 内容 | `#file src/main.py 代码 #end` |
+| **#dir** | 创建目录 | 目录路径 | `#dir src/utils #end` |
+| **#log** | 添加日志语句 | 文件路径 [行号] 内容 | `#log src/main.py logger.info("ok") #end` |
+| **#edit** | 修改指定行 | 文件路径 行号 内容 | `#edit src/main.py 10 新代码 #end` |
+| **#comment** | 注释指定行 | 文件路径 行号 | `#comment src/main.py 10 #end`<br>`#comment src/main.py 10:20 #end` |
+| **#delete** | 删除指定行 | 文件路径 行号 | `#delete src/main.py 10 #end`<br>`#delete src/main.py 10:20 #end` |
+
+---
+
+## 返回信息给远程 AI 的标签
+
+以下标签的执行结果会返回给远程 AI，帮助它掌握现场情况：
+
+| 标签 | 返回内容 |
+|:---|:---|
+| **#debug** | 代码执行的成功/失败结果、stdout、stderr |
+| **#inspect** | 模块/函数的签名、参数、文档字符串 |
+| **#read** | 文件的指定行内容 |
+| **#shell** | 命令执行的标准输出/错误 |
 
 ---
 
@@ -45,9 +88,16 @@
 | 标签 | 本地执行 |
 |:---|:---|
 | `#shell` | subprocess.run() 执行命令 |
-| `#code` | 写入文件 + 语法检查 + .bak 备份 |
-| `#file` | 读取文件内容返回 |
-| `#test` | pytest / python -c 执行验证 |
+| `#code` | exec() 在当前进程执行 |
+| `#debug` | python -c 新进程执行 |
+| `#inspect` | inspect 模块自省 |
+| `#read` | 读取文件指定行 |
+| `#file` | 写入文件（整体替换） |
+| `#dir` | 创建目录 |
+| `#log` | 插入日志代码到文件 |
+| `#edit` | 替换指定行内容 |
+| `#comment` | 添加 # 注释符 |
+| `#delete` | 删除指定行 |
 
 ---
 

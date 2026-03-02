@@ -1,282 +1,332 @@
 #!/usr/bin/env python3
 """
-Logger模块 - 操作日志记录
-记录所有执行的操作，供远程大模型参考
+Logger 模块 - 统一的日志管理
+- 文件日志：丰富格式化，便于调试分析
+- 控制台日志：美观易读，带颜色
 """
 
 import os
-import json
+import sys
 import logging
+import traceback
 from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Optional
-from dataclasses import dataclass, asdict
+from typing import Optional
+from logging.handlers import RotatingFileHandler
+from dataclasses import dataclass
 
 
 @dataclass
-class LogEntry:
-    """日志条目"""
-    timestamp: str
-    type: str          # shell/code/file/dir/log
-    action: str        # 具体操作
-    target: str        # 目标路径/命令
-    success: bool
-    result: str        # 执行结果
-    error: str = ""    # 错误信息
+class LogConfig:
+    """日志配置"""
+
+    log_dir: str = ".logs"  # 日志目录
+    log_file: str = "app.log"  # 日志文件名
+    max_bytes: int = 10 * 1024 * 1024  # 单个日志文件最大 10MB
+    backup_count: int = 5  # 保留的备份文件数
+    console_level: int = logging.INFO  # 控制台日志级别
+    file_level: int = logging.DEBUG  # 文件日志级别
+    show_traceback: bool = True  # 是否显示完整堆栈
 
 
 class Logger:
-    """日志记录器"""
+    """统一日志管理器"""
 
-    def __init__(self, project_root: str = "."):
-        self.project_root = Path(project_root)
-        self.log_dir = self.project_root / ".opencode_logs"
-        self.log_dir.mkdir(exist_ok=True)
+    # 颜色定义（控制台输出）
+    COLORS = {
+        "RESET": "\033[0m",
+        "DEBUG": "\033[36m",  # 青色
+        "INFO": "\033[32m",  # 绿色
+        "WARNING": "\033[33m",  # 黄色
+        "ERROR": "\033[31m",  # 红色
+        "CRITICAL": "\033[35m",  # 紫色
+    }
 
-        # 日志文件
-        self.log_file = self.log_dir / "execution.log"
-        self.json_log_file = self.log_dir / "execution.json"
+    # 控制台格式（美观易读）
+    CONSOLE_FORMAT = "{color}[{level}]{reset} {message}"
+    CONSOLE_MSG_FORMAT = "{time} {color}{level}{reset} {msg}"
 
-        # Python logging
-        self._setup_python_logger()
+    # 文件格式（丰富详细，便于调试）
+    FILE_FORMAT = (
+        "%(asctime)s.%(msecs)03d | "
+        "%(levelname)-8s | "
+        "%(threadName)-10s | "
+        "%(name)s.%(funcName)s:%(lineno)d | "
+        "%(message)s"
+    )
 
-        # 内存日志
-        self.entries: List[LogEntry] = []
-
-    def _setup_python_logger(self):
-        """配置Python标准日志"""
-        self.logger = logging.getLogger("opencode")
-        self.logger.setLevel(logging.DEBUG)
-
-        # 文件处理器
-        fh = logging.FileHandler(self.log_file, encoding='utf-8')
-        fh.setLevel(logging.DEBUG)
-
-        # 控制台处理器
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.INFO)
-
-        # 格式
-        formatter = logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s'
-        )
-        fh.setFormatter(formatter)
-        ch.setFormatter(formatter)
-
-        self.logger.addHandler(fh)
-        self.logger.addHandler(ch)
-
-    def log(
+    def __init__(
         self,
-        action_type: str,
-        action: str,
-        target: str,
-        success: bool,
-        result: str,
-        error: str = ""
+        name: str = "app",
+        log_dir: str = ".logs",
+        log_file: str = "app.log",
+        level: int = logging.DEBUG,
+        show_traceback: bool = True,
     ):
         """
-        记录操作日志
+        初始化日志器
 
         Args:
-            action_type: 操作类型 (shell/code/file/dir/log)
-            action: 动作描述
-            target: 目标
-            success: 是否成功
-            result: 结果
-            error: 错误信息
+            name: 日志器名称
+            log_dir: 日志目录
+            log_file: 日志文件名
+            level: 日志级别
+            show_traceback: 是否在异常时显示完整堆栈
         """
-        entry = LogEntry(
-            timestamp=datetime.now().isoformat(),
-            type=action_type,
-            action=action,
-            target=target,
-            success=success,
-            result=result,
-            error=error
+        self.name = name
+        self.log_dir = Path(log_dir)
+        self.log_file = log_file
+        self.show_traceback = show_traceback
+
+        # 分离文件logger和控制台logger，避免颜色序列写入文件
+        self._file_logger = logging.getLogger(f"{name}.file")
+        self._file_logger.setLevel(level)
+        self._file_logger.handlers.clear()
+
+        self._console_logger = logging.getLogger(name)
+        self._console_logger.setLevel(level)
+        self._console_logger.handlers.clear()
+
+        # 创建日志目录
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+
+        # 添加文件处理器
+        self._add_file_handler(level)
+
+        # 添加控制台处理器
+        self._add_console_handler()
+
+    def _add_file_handler(self, level: int):
+        """添加文件处理器"""
+        log_path = self.log_dir / self.log_file
+
+        handler = RotatingFileHandler(
+            log_path,
+            maxBytes=10 * 1024 * 1024,  # 10MB
+            backupCount=5,
+            encoding="utf-8",
         )
 
-        self.entries.append(entry)
+        handler.setLevel(level)
 
-        # 写入Python日志
-        level = logging.INFO if success else logging.ERROR
-        msg = f"[{action_type}] {action} -> {target}: {result}"
-        if error:
-            msg += f" | Error: {error}"
-        self.logger.log(level, msg)
+        # 详细文件格式
+        formatter = logging.Formatter(self.FILE_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
+        handler.setFormatter(formatter)
 
-        # 保存到JSON
-        self._save_json()
+        self._file_logger.addHandler(handler)
 
-    def log_shell(self, command: str, success: bool, output: str, error: str = ""):
-        """记录Shell命令"""
-        self.log("shell", "执行命令", command, success, output, error)
+    def _add_console_handler(self):
+        """添加控制台处理器（带颜色）"""
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(logging.DEBUG)
 
-    def log_code(self, code: str, success: bool, output: str, error: str = ""):
-        """记录Python代码执行"""
-        self.log("code", "执行代码", code[:50], success, output, error)
+        # 控制台使用简单格式，依赖颜色
+        formatter = logging.Formatter("%(message)s")
+        handler.setFormatter(formatter)
 
-    def log_file(self, file_path: str, success: bool, result: str, error: str = ""):
-        """记录文件操作"""
-        self.log("file", "写入文件", file_path, success, result, error)
+        self._file_logger.addHandler(handler)
 
-    def log_dir_created(self, dir_path: str, success: bool, result: str, error: str = ""):
-        """记录目录创建"""
-        self.log("dir", "创建目录", dir_path, success, result, error)
+    def _format_console(self, level: int, message: str) -> str:
+        """格式化控制台输出（带颜色）"""
+        level_name = logging.getLevelName(level)
+        color = self.COLORS.get(level_name, self.COLORS["RESET"])
+        reset = self.COLORS["RESET"]
 
-    def log_log(self, file_path: str, success: bool, result: str, error: str = ""):
-        """记录日志添加"""
-        self.log("log", "添加日志", file_path, success, result, error)
+        # 获取当前时间
+        now = datetime.now().strftime("%H:%M:%S")
 
-    def _save_json(self):
-        """保存JSON格式日志"""
-        data = [asdict(e) for e in self.entries]
-        self.json_log_file.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False),
-            encoding='utf-8'
-        )
+        # 不同级别不同格式
+        if level >= logging.ERROR:
+            # 错误：显示简洁但醒目
+            return f"{now} {color}✗ {message}{reset}"
+        elif level >= logging.WARNING:
+            # 警告：显示简洁但醒目
+            return f"{now} {color}⚠ {message}{reset}"
+        elif level >= logging.INFO:
+            # 信息：简洁
+            return f"{now} {color}●{reset} {message}"
+        else:
+            # 调试：详细
+            return f"{now} {color}○{reset} {message}"
 
-    def get_recent_logs(self, count: int = 10) -> List[LogEntry]:
+    def debug(self, msg: str, **kwargs):
+        """调试日志"""
+        console_msg = self._format_console(logging.DEBUG, msg)
+        self._console_logger.debug(console_msg, **kwargs)
+        self._file_logger.debug(msg, **kwargs)
+
+    def info(self, msg: str, **kwargs):
+        """信息日志"""
+        console_msg = self._format_console(logging.INFO, msg)
+        self._console_logger.info(console_msg, **kwargs)
+        self._file_logger.info(msg, **kwargs)
+
+    def warning(self, msg: str, **kwargs):
+        """警告日志"""
+        console_msg = self._format_console(logging.WARNING, msg)
+        self._console_logger.warning(console_msg, **kwargs)
+        self._file_logger.warning(msg, **kwargs)
+
+    def error(
+        self,
+        msg: str,
+        exc_info: Optional[bool] = None,
+        context: Optional[dict] = None,
+        **kwargs,
+    ):
+        """错误日志"""
+        if exc_info is None:
+            exc_info = self.show_traceback
+
+        if context:
+            msg = f"{msg}\n  Context: {context}"
+
+        console_msg = self._format_console(logging.ERROR, msg)
+        self._console_logger.error(console_msg, exc_info=exc_info, **kwargs)
+        self._file_logger.error(msg, exc_info=exc_info, **kwargs)
+
+    def critical(self, msg: str, exc_info: bool = True, **kwargs):
+        """严重错误日志"""
+        console_msg = self._format_console(logging.CRITICAL, msg)
+        self._console_logger.critical(console_msg, exc_info=exc_info, **kwargs)
+        self._file_logger.critical(msg, exc_info=exc_info, **kwargs)
+
+    def exception(self, msg: str, **kwargs):
+        """异常日志（自动包含堆栈）"""
+        self.error(msg, exc_info=True, **kwargs)
+
+    def log(self, level: int, msg: str, **kwargs):
+        """通用日志方法"""
+        console_msg = self._format_console(level, msg)
+        self._console_logger.log(level, console_msg, **kwargs)
+        self._file_logger.log(level, msg, **kwargs)
+
+    def log_dict(self, data: dict, prefix: str = "", level: int = logging.DEBUG):
+        """记录字典数据（用于调试）"""
+        if prefix:
+            msg = prefix + "\n"
+        else:
+            msg = ""
+
+        for key, value in data.items():
+            msg += f"  {key}: {value}\n"
+
+        self.log(level, msg.rstrip())
+
+    def log_request(self, method: str, url: str, **kwargs):
+        """记录 HTTP 请求"""
+        self.info(f"→ {method} {url}")
+        if kwargs.get("headers"):
+            self.debug(f"  Headers: {kwargs['headers']}")
+        if kwargs.get("json"):
+            self.debug(f"  Body: {kwargs['json']}")
+
+    def log_response(
+        self, status: int, url: str, elapsed: Optional[float] = None, **kwargs
+    ):
+        """记录 HTTP 响应"""
+        if elapsed is not None:
+            self.info(f"← {status} {url} ({elapsed:.2f}s)")
+        else:
+            self.info(f"← {status} {url}")
+
+        if kwargs.get("data"):
+            self.debug(f"  Response: {kwargs['data'][:200]}...")
+
+    def log_error_with_context(
+        self, msg: str, context: Optional[dict] = None, exc_info: bool = True
+    ):
         """
-        获取最近的日志
+        记录带上下文的错误
 
         Args:
-            count: 获取数量
-
-        Returns:
-            日志列表
+            msg: 错误消息
+            context: 上下文数据字典
+            exc_info: 是否显示异常堆栈
         """
-        return self.entries[-count:]
+        full_msg = msg
+        if context:
+            full_msg += f"\n  Context: {context}"
 
-    def get_logs_by_type(self, log_type: str) -> List[LogEntry]:
-        """
-        按类型获取日志
-
-        Args:
-            log_type: 日志类型
-
-        Returns:
-            匹配的日志列表
-        """
-        return [e for e in self.entries if e.type == log_type]
-
-    def get_failed_logs(self) -> List[LogEntry]:
-        """
-        获取失败的日志
-
-        Returns:
-            失败的日志列表
-        """
-        return [e for e in self.entries if not e.success]
-
-    def generate_summary(self) -> str:
-        """
-        生成日志摘要
-
-        Returns:
-            格式化的摘要
-        """
-        if not self.entries:
-            return "=== 日志摘要 ===\n暂无日志"
-
-        lines = ["=== 执行日志摘要 ==="]
-
-        # 统计
-        total = len(self.entries)
-        success = len([e for e in self.entries if e.success])
-        failed = total - success
-
-        lines.append(f"\n总操作: {total}")
-        lines.append(f"成功: {success}")
-        lines.append(f"失败: {failed}")
-
-        # 按类型统计
-        types = {}
-        for e in self.entries:
-            types[e.type] = types.get(e.type, 0) + 1
-
-        lines.append("\n按类型统计:")
-        for t, c in types.items():
-            lines.append(f"  {t}: {c}")
-
-        # 最近操作
-        lines.append("\n最近操作:")
-        for entry in self.entries[-5:]:
-            status = "✓" if entry.success else "✗"
-            lines.append(f"  {status} #{entry.type} {entry.target}")
-
-        return "\n".join(lines)
-
-    def clear(self):
-        """清空日志"""
-        self.entries = []
-        if self.json_log_file.exists():
-            self.json_log_file.unlink()
-        if self.log_file.exists():
-            self.log_file.unlink()
+        self.error(full_msg, exc_info=exc_info)
 
 
-# ==================== 日志辅助函数 ====================
-
-def add_log_statements(file_path: str, logger_name: str = None) -> str:
-    """
-    为文件生成日志语句模板
-
-    Args:
-        file_path: 文件路径
-        logger_name: logger名称
-
-    Returns:
-        日志语句模板
-    """
-    logger = logger_name or Path(file_path).stem
-
-    template = f'''
-import logging
-
-# 配置日志
-logger = logging.getLogger("{logger}")
-logger.setLevel(logging.DEBUG)
-
-handler = logging.StreamHandler()
-handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-
-# 使用示例:
-# logger.debug("调试信息")
-# logger.info("一般信息")
-# logger.warning("警告信息")
-# logger.error("错误信息")
-# logger.critical("严重错误")
-'''
-    return template.strip()
-
-
-# ==================== 全局日志器 ====================
-
-# 创建全局日志器实例
+# 全局日志器
 _default_logger: Optional[Logger] = None
 
 
-def get_logger(project_root: str = ".") -> Logger:
-    """获取全局日志器"""
+def get_logger(
+    name: str = "app",
+    log_dir: str = ".logs",
+    log_file: str = "app.log",
+    level: int = logging.DEBUG,
+) -> Logger:
+    """
+    获取全局日志器（单例）
+
+    Args:
+        name: 日志器名称
+        log_dir: 日志目录
+        log_file: 日志文件名
+        level: 日志级别
+
+    Returns:
+        Logger 实例
+    """
     global _default_logger
     if _default_logger is None:
-        _default_logger = Logger(project_root)
+        _default_logger = Logger(
+            name=name,
+            log_dir=log_dir,
+            log_file=log_file,
+            level=level,
+        )
     return _default_logger
 
 
-if __name__ == '__main__':
+# 便捷函数
+def debug(msg: str, **kwargs):
+    get_logger().debug(msg, **kwargs)
+
+
+def info(msg: str, **kwargs):
+    get_logger().info(msg, **kwargs)
+
+
+def warning(msg: str, **kwargs):
+    get_logger().warning(msg, **kwargs)
+
+
+def error(msg: str, exc_info: Optional[bool] = None, **kwargs):
+    get_logger().error(msg, exc_info=exc_info, **kwargs)
+
+
+def critical(msg: str, **kwargs):
+    get_logger().critical(msg, **kwargs)
+
+
+def exception(msg: str, **kwargs):
+    get_logger().exception(msg, **kwargs)
+
+
+if __name__ == "__main__":
     # 测试
-    print("=== Logger 测试 ===")
+    print("=== Logger 测试 ===\n")
 
-    logger = Logger(".")
+    logger = Logger("test", log_dir=".logs", log_file="test.log")
 
-    # 模拟记录
-    logger.log_shell("pip install requests", True, "安装成功")
-    logger.log_file("test.py", True, "文件已创建")
-    logger.log_shell("ls", False, "", "命令不存在")
+    logger.debug("这是一条调试信息")
+    logger.info("这是一条普通信息")
+    logger.warning("这是一条警告信息")
 
-    print(logger.generate_summary())
+    try:
+        1 / 0
+    except Exception:
+        logger.exception("发生了一个错误")
+
+    logger.log_dict({"name": "张三", "age": 25, "city": "北京"}, "用户信息:")
+
+    logger.info("→ GET https://api.example.com/users")
+    logger.info("← 200 https://api.example.com/users (0.5s)")
+
+    logger.error("业务错误", context={"user_id": 12345, "action": "login"})

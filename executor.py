@@ -24,6 +24,7 @@ class Executor:
         # 执行历史
         self.execution_history: List[Dict] = []
 
+    # 返回信息给远程 AI
     def execute_shell(self, command: str, timeout: int = 60) -> Dict[str, Any]:
         """
         执行Shell命令
@@ -36,12 +37,12 @@ class Executor:
             执行结果字典
         """
         result = {
-            'type': 'shell',
-            'command': command,
-            'success': False,
-            'output': '',
-            'error': '',
-            'timestamp': datetime.now().isoformat()
+            "type": "shell",
+            "command": command,
+            "success": False,
+            "output": "",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
         }
 
         try:
@@ -52,22 +53,23 @@ class Executor:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=str(self.project_root)
+                cwd=str(self.project_root),
             )
 
-            result['success'] = process.returncode == 0
-            result['output'] = process.stdout
-            result['error'] = process.stderr
-            result['returncode'] = process.returncode
+            result["success"] = process.returncode == 0
+            result["output"] = process.stdout
+            result["error"] = process.stderr
+            result["returncode"] = process.returncode
 
         except subprocess.TimeoutExpired:
-            result['error'] = f"命令执行超时（{timeout}秒）"
+            result["error"] = f"命令执行超时（{timeout}秒）"
         except Exception as e:
-            result['error'] = str(e)
+            result["error"] = str(e)
 
         self.execution_history.append(result)
         return result
 
+    # 返回信息给远程 AI
     def execute_code(self, code: str) -> Dict[str, Any]:
         """
         执行Python代码
@@ -79,12 +81,12 @@ class Executor:
             执行结果字典
         """
         result = {
-            'type': 'code',
-            'code': code,
-            'success': False,
-            'output': '',
-            'error': '',
-            'timestamp': datetime.now().isoformat()
+            "type": "code",
+            "code": code,
+            "success": False,
+            "output": "",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
         }
 
         try:
@@ -93,6 +95,7 @@ class Executor:
             old_stderr = sys.stderr
 
             from io import StringIO
+
             stdout_capture = StringIO()
             stderr_capture = StringIO()
 
@@ -100,17 +103,101 @@ class Executor:
             sys.stderr = stderr_capture
 
             # 执行代码
-            exec(code, {'__name__': '__main__'})
+            exec(code, {"__name__": "__main__"})
 
             sys.stdout = old_stdout
             sys.stderr = old_stderr
 
-            result['success'] = True
-            result['output'] = stdout_capture.getvalue()
-            result['error'] = stderr_capture.getvalue()
+            result["success"] = True
+            result["output"] = stdout_capture.getvalue()
+            result["error"] = stderr_capture.getvalue()
 
         except Exception as e:
-            result['error'] = f"{type(e).__name__}: {e}"
+            result["error"] = f"{type(e).__name__}: {e}"
+
+        self.execution_history.append(result)
+        return result
+
+    # 返回信息给远程 AI
+    def execute_debug(self, code: str) -> Dict[str, Any]:
+        """
+        功能：调试 Python 代码
+        用途：通过 python -c 执行，返回执行结果给大模型，帮助掌握现场情况
+        """
+        result = {
+            "type": "debug",
+            "code": code,
+            "success": False,
+            "output": "",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        try:
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(self.project_root) + ":" + env.get("PYTHONPATH", "")
+
+            process = subprocess.run(
+                [sys.executable, "-c", code],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=str(self.project_root),
+                env=env,
+            )
+
+            result["success"] = process.returncode == 0
+            result["output"] = process.stdout
+            result["error"] = process.stderr
+            result["returncode"] = process.returncode
+
+        except subprocess.TimeoutExpired:
+            result["error"] = "执行超时（30秒）"
+        except Exception as e:
+            result["error"] = str(e)
+
+        self.execution_history.append(result)
+        return result
+
+    # 返回信息给远程 AI
+    def execute_read(
+        self, file_path: str, start_line: int = None, end_line: int = None
+    ) -> Dict[str, Any]:
+        """
+        功能：读取文件内容
+        用途：查看文件内容，帮助大模型了解现有代码
+        """
+        result = {
+            "type": "read",
+            "target": file_path,
+            "success": False,
+            "output": "",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        try:
+            target_path = self.project_root / file_path
+
+            if not target_path.exists():
+                result["error"] = f"文件不存在: {file_path}"
+                self.execution_history.append(result)
+                return result
+
+            lines = target_path.read_text(encoding="utf-8").split("\n")
+
+            if start_line and end_line:
+                content = "\n".join(lines[start_line - 1 : end_line])
+            elif start_line:
+                content = "\n".join(lines[start_line - 1 :])
+            else:
+                content = "\n".join(lines)
+
+            result["success"] = True
+            result["output"] = content
+
+        except Exception as e:
+            result["error"] = str(e)
 
         self.execution_history.append(result)
         return result
@@ -132,7 +219,7 @@ class Executor:
         backup_name = f"{file_path.name}.{timestamp}.bak"
         backup_path = self.backup_dir / backup_name
 
-        backup_path.write_text(file_path.read_text(encoding='utf-8'))
+        backup_path.write_text(file_path.read_text(encoding="utf-8"))
         return backup_path
 
     def execute_file(self, file_path: str, content: str) -> Dict[str, Any]:
@@ -147,12 +234,12 @@ class Executor:
             执行结果字典
         """
         result = {
-            'type': 'file',
-            'target': file_path,
-            'success': False,
-            'output': '',
-            'error': '',
-            'timestamp': datetime.now().isoformat()
+            "type": "file",
+            "target": file_path,
+            "success": False,
+            "output": "",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
         }
 
         try:
@@ -161,19 +248,19 @@ class Executor:
             # 备份已存在的文件
             if target_path.exists():
                 backup = self._backup_file(target_path)
-                result['backup'] = str(backup)
+                result["backup"] = str(backup)
 
             # 确保父目录存在
             target_path.parent.mkdir(parents=True, exist_ok=True)
 
             # 写入内容
-            target_path.write_text(content, encoding='utf-8')
+            target_path.write_text(content, encoding="utf-8")
 
-            result['success'] = True
-            result['output'] = f"文件已写入: {file_path}"
+            result["success"] = True
+            result["output"] = f"文件已写入: {file_path}"
 
         except Exception as e:
-            result['error'] = str(e)
+            result["error"] = str(e)
 
         self.execution_history.append(result)
         return result
@@ -189,12 +276,12 @@ class Executor:
             执行结果字典
         """
         result = {
-            'type': 'dir',
-            'target': dir_path,
-            'success': False,
-            'output': '',
-            'error': '',
-            'timestamp': datetime.now().isoformat()
+            "type": "dir",
+            "target": dir_path,
+            "success": False,
+            "output": "",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
         }
 
         try:
@@ -203,16 +290,18 @@ class Executor:
             # 创建目录
             target_path.mkdir(parents=True, exist_ok=True)
 
-            result['success'] = True
-            result['output'] = f"目录已创建: {dir_path}"
+            result["success"] = True
+            result["output"] = f"目录已创建: {dir_path}"
 
         except Exception as e:
-            result['error'] = str(e)
+            result["error"] = str(e)
 
         self.execution_history.append(result)
         return result
 
-    def execute_log(self, file_path: str, log_code: str, insert_line: int = None) -> Dict[str, Any]:
+    def execute_log(
+        self, file_path: str, log_code: str, insert_line: int = None
+    ) -> Dict[str, Any]:
         """
         添加日志语句到文件
 
@@ -225,66 +314,72 @@ class Executor:
             执行结果字典
         """
         result = {
-            'type': 'log',
-            'target': file_path,
-            'success': False,
-            'output': '',
-            'error': '',
-            'timestamp': datetime.now().isoformat()
+            "type": "log",
+            "target": file_path,
+            "success": False,
+            "output": "",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
         }
 
         try:
             target_path = self.project_root / file_path
 
             if not target_path.exists():
-                result['error'] = f"文件不存在: {file_path}"
+                result["error"] = f"文件不存在: {file_path}"
                 return result
 
             # 读取原文件
-            content = target_path.read_text(encoding='utf-8')
+            content = target_path.read_text(encoding="utf-8")
 
             # 备份
             backup = self._backup_file(target_path)
-            result['backup'] = str(backup)
+            result["backup"] = str(backup)
 
-            lines = content.split('\n')
+            lines = content.split("\n")
 
             # 确定插入位置
             if insert_line is not None:
                 # 指定了行号，插入到该行之后
                 if insert_line < 1 or insert_line > len(lines):
-                    result['error'] = f"插入行号 {insert_line} 超出文件范围 (1-{len(lines)})"
+                    result["error"] = (
+                        f"插入行号 {insert_line} 超出文件范围 (1-{len(lines)})"
+                    )
                     return result
                 insert_pos = insert_line
             else:
                 # 未指定行号，默认插入到import之后
                 insert_pos = 0
                 for i, line in enumerate(lines):
-                    if line.strip().startswith('import ') or line.strip().startswith('from '):
+                    if line.strip().startswith("import ") or line.strip().startswith(
+                        "from "
+                    ):
                         insert_pos = i + 1
 
             # 插入日志代码
-            log_lines = log_code.split('\n')
-            lines.insert(insert_pos, '')
-            lines.insert(insert_pos + 1, '# 日志语句（由OpenCode添加）')
+            log_lines = log_code.split("\n")
+            lines.insert(insert_pos, "")
+            lines.insert(insert_pos + 1, "# 日志语句（由OpenCode添加）")
             for log_line in log_lines:
                 lines.insert(insert_pos + 2, log_line)
 
             # 写回文件
-            target_path.write_text('\n'.join(lines), encoding='utf-8')
+            target_path.write_text("\n".join(lines), encoding="utf-8")
 
             if insert_line is not None:
-                result['output'] = f"日志语句已插入到 {file_path} 第 {insert_line} 行后"
+                result["output"] = f"日志语句已插入到 {file_path} 第 {insert_line} 行后"
             else:
-                result['output'] = f"日志语句已添加到 {file_path}"
+                result["output"] = f"日志语句已添加到 {file_path}"
 
         except Exception as e:
-            result['error'] = str(e)
+            result["error"] = str(e)
 
         self.execution_history.append(result)
         return result
 
-    def execute_edit(self, file_path: str, start_line: int, end_line: int, new_content: str) -> Dict[str, Any]:
+    def execute_edit(
+        self, file_path: str, start_line: int, end_line: int, new_content: str
+    ) -> Dict[str, Any]:
         """
         修改文件的特定行
 
@@ -298,64 +393,66 @@ class Executor:
             执行结果字典
         """
         result = {
-            'type': 'edit',
-            'target': file_path,
-            'success': False,
-            'output': '',
-            'error': '',
-            'timestamp': datetime.now().isoformat()
+            "type": "edit",
+            "target": file_path,
+            "success": False,
+            "output": "",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
         }
 
         try:
             target_path = self.project_root / file_path
 
             if not target_path.exists():
-                result['error'] = f"文件不存在: {file_path}"
+                result["error"] = f"文件不存在: {file_path}"
                 return result
 
             # 读取原文件
-            lines = target_path.read_text(encoding='utf-8').split('\n')
+            lines = target_path.read_text(encoding="utf-8").split("\n")
 
             # 验证行号范围
             if start_line < 1 or start_line > len(lines):
-                result['error'] = f"起始行号 {start_line} 超出文件范围 (1-{len(lines)})"
+                result["error"] = f"起始行号 {start_line} 超出文件范围 (1-{len(lines)})"
                 return result
 
             if end_line < start_line or end_line > len(lines):
-                result['error'] = f"结束行号 {end_line} 超出文件范围或小于起始行"
+                result["error"] = f"结束行号 {end_line} 超出文件范围或小于起始行"
                 return result
 
             # 备份
             backup = self._backup_file(target_path)
-            result['backup'] = str(backup)
+            result["backup"] = str(backup)
 
             # 转换为0-based索引
             start_idx = start_line - 1
             end_idx = end_line  # 不包括end_line这一行
 
             # 替换内容
-            new_lines = new_content.split('\n')
+            new_lines = new_content.split("\n")
 
             # 如果新内容末尾没有换行，需要特殊处理
-            if new_content.endswith('\n'):
+            if new_content.endswith("\n"):
                 new_lines = new_lines[:-1] if new_lines else []
 
             # 执行替换
             modified_lines = lines[:start_idx] + new_lines + lines[end_idx:]
 
             # 写回文件
-            target_path.write_text('\n'.join(modified_lines), encoding='utf-8')
+            target_path.write_text("\n".join(modified_lines), encoding="utf-8")
 
-            result['success'] = True
-            result['output'] = f"已修改 {file_path} 第 {start_line}-{end_line} 行"
+            result["success"] = True
+            result["output"] = f"已修改 {file_path} 第 {start_line}-{end_line} 行"
 
         except Exception as e:
-            result['error'] = str(e)
+            result["error"] = str(e)
 
         self.execution_history.append(result)
         return result
 
-    def execute_comment(self, file_path: str, start_line: int, end_line: int) -> Dict[str, Any]:
+    def execute_comment(
+        self, file_path: str, start_line: int, end_line: int
+    ) -> Dict[str, Any]:
         """
         注释文件的特定行
 
@@ -368,59 +465,59 @@ class Executor:
             执行结果字典
         """
         result = {
-            'type': 'comment',
-            'target': file_path,
-            'success': False,
-            'output': '',
-            'error': '',
-            'timestamp': datetime.now().isoformat()
+            "type": "comment",
+            "target": file_path,
+            "success": False,
+            "output": "",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
         }
 
         try:
             target_path = self.project_root / file_path
 
             if not target_path.exists():
-                result['error'] = f"文件不存在: {file_path}"
+                result["error"] = f"文件不存在: {file_path}"
                 return result
 
             # 读取原文件
-            lines = target_path.read_text(encoding='utf-8').split('\n')
+            lines = target_path.read_text(encoding="utf-8").split("\n")
 
             # 验证行号范围
             if start_line < 1 or start_line > len(lines):
-                result['error'] = f"起始行号 {start_line} 超出文件范围 (1-{len(lines)})"
+                result["error"] = f"起始行号 {start_line} 超出文件范围 (1-{len(lines)})"
                 return result
 
             if end_line < start_line or end_line > len(lines):
-                result['error'] = f"结束行号 {end_line} 超出文件范围或小于起始行"
+                result["error"] = f"结束行号 {end_line} 超出文件范围或小于起始行"
                 return result
 
             # 备份
             backup = self._backup_file(target_path)
-            result['backup'] = str(backup)
+            result["backup"] = str(backup)
 
             # 注释指定行（添加 # 前缀）
             for i in range(start_line - 1, end_line):
                 line = lines[i]
                 # 如果行以空格开头，插在第一个空格后；否则直接在行首添加 #
-                if line.strip() and not line.strip().startswith('#'):
-                    if line.startswith(' ') or line.startswith('\t'):
+                if line.strip() and not line.strip().startswith("#"):
+                    if line.startswith(" ") or line.startswith("\t"):
                         # 找到第一个非空白字符的位置
                         for j, char in enumerate(line):
-                            if char not in (' ', '\t'):
-                                lines[i] = line[:j] + '# ' + line[j:]
+                            if char not in (" ", "\t"):
+                                lines[i] = line[:j] + "# " + line[j:]
                                 break
                     else:
-                        lines[i] = '# ' + line
+                        lines[i] = "# " + line
 
             # 写回文件
-            target_path.write_text('\n'.join(lines), encoding='utf-8')
+            target_path.write_text("\n".join(lines), encoding="utf-8")
 
-            result['success'] = True
-            result['output'] = f"已注释 {file_path} 第 {start_line}-{end_line} 行"
+            result["success"] = True
+            result["output"] = f"已注释 {file_path} 第 {start_line}-{end_line} 行"
 
         except Exception as e:
-            result['error'] = str(e)
+            result["error"] = str(e)
 
         self.execution_history.append(result)
         return result
@@ -436,19 +533,114 @@ class Executor:
             行号集合
         """
         lines_to_delete = set()
-        parts = line_spec.split(',')
+        parts = line_spec.split(",")
 
         for part in parts:
             part = part.strip()
-            if ':' in part:
+            if ":" in part:
                 # 范围，如 "10:20"
-                start, end = part.split(':')
+                start, end = part.split(":")
                 lines_to_delete.update(range(int(start), int(end) + 1))
             else:
                 # 单行
                 lines_to_delete.add(int(part))
 
         return lines_to_delete
+
+    # 返回信息给远程 AI
+    def execute_inspect(self, target: str) -> Dict[str, Any]:
+        """
+        功能：自省模块/函数
+        用途：获取模块、类、函数的签名和参数，帮助大模型了解未知 API
+        支持多个模块用逗号分隔
+        """
+        result = {
+            "type": "inspect",
+            "target": target,
+            "success": False,
+            "output": "",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        try:
+            import inspect
+
+            output_lines = []
+            targets = [t.strip() for t in target.split(",")]
+
+            for target_item in targets:
+                parts = target_item.split(".")
+                module_name = parts[0]
+
+                if str(self.project_root) not in sys.path:
+                    sys.path.insert(0, str(self.project_root))
+
+                try:
+                    module = __import__(module_name)
+                except ImportError as e:
+                    output_lines.append(f"错误: 无法导入模块 {module_name}: {e}")
+                    continue
+
+                if len(parts) > 1:
+                    obj = module
+                    for part in parts[1:]:
+                        obj = getattr(obj, part)
+
+                    if callable(obj) and not inspect.isclass(obj):
+                        output_lines.append(f"=== 函数: {target_item} ===")
+                        try:
+                            sig = inspect.signature(obj)
+                            output_lines.append(f"签名: {sig}")
+                        except:
+                            output_lines.append("签名: (无法获取)")
+                        doc = inspect.getdoc(obj)
+                        if doc:
+                            output_lines.append(f"文档: {doc[:200]}")
+                        output_lines.append("")
+
+                    elif inspect.isclass(obj):
+                        output_lines.append(f"=== 类: {target_item} ===")
+                        doc = inspect.getdoc(obj)
+                        if doc:
+                            output_lines.append(f"文档: {doc[:200]}")
+                        methods = [
+                            m
+                            for m in dir(obj)
+                            if not m.startswith("_") and callable(getattr(obj, m, None))
+                        ]
+                        output_lines.append(f"方法: {', '.join(methods[:20])}")
+                        output_lines.append("")
+
+                else:
+                    output_lines.append(f"=== 模块: {module_name} ===")
+                    doc = inspect.getdoc(module)
+                    if doc:
+                        output_lines.append(f"文档: {doc[:200]}")
+
+                    funcs = []
+                    for name in dir(module):
+                        obj = getattr(module, name, None)
+                        if callable(obj) and not name.startswith("_"):
+                            try:
+                                sig = inspect.signature(obj)
+                                funcs.append(f"{name}{sig}")
+                            except:
+                                funcs.append(name)
+
+                    output_lines.append(f"函数/类 ({len(funcs)}个):")
+                    for f in funcs[:30]:
+                        output_lines.append(f"  {f}")
+                    output_lines.append("")
+
+            result["success"] = True
+            result["output"] = "\n".join(output_lines)
+
+        except Exception as e:
+            result["error"] = str(e)
+
+        self.execution_history.append(result)
+        return result
 
     def execute_delete(self, file_path: str, line_spec: str) -> Dict[str, Any]:
         """
@@ -462,23 +654,23 @@ class Executor:
             执行结果字典
         """
         result = {
-            'type': 'delete',
-            'target': file_path,
-            'success': False,
-            'output': '',
-            'error': '',
-            'timestamp': datetime.now().isoformat()
+            "type": "delete",
+            "target": file_path,
+            "success": False,
+            "output": "",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
         }
 
         try:
             target_path = self.project_root / file_path
 
             if not target_path.exists():
-                result['error'] = f"文件不存在: {file_path}"
+                result["error"] = f"文件不存在: {file_path}"
                 return result
 
             # 读取原文件
-            lines = target_path.read_text(encoding='utf-8').split('\n')
+            lines = target_path.read_text(encoding="utf-8").split("\n")
 
             # 解析要删除的行号
             lines_to_delete = self._parse_line_spec(line_spec)
@@ -487,24 +679,28 @@ class Executor:
             max_line = len(lines)
             invalid_lines = [l for l in lines_to_delete if l < 1 or l > max_line]
             if invalid_lines:
-                result['error'] = f"行号 {invalid_lines} 超出文件范围 (1-{max_line})"
+                result["error"] = f"行号 {invalid_lines} 超出文件范围 (1-{max_line})"
                 return result
 
             # 备份
             backup = self._backup_file(target_path)
-            result['backup'] = str(backup)
+            result["backup"] = str(backup)
 
             # 删除指定行（注意：行号从1开始，列表索引从0开始）
-            new_lines = [line for i, line in enumerate(lines, 1) if i not in lines_to_delete]
+            new_lines = [
+                line for i, line in enumerate(lines, 1) if i not in lines_to_delete
+            ]
 
             # 写回文件
-            target_path.write_text('\n'.join(new_lines), encoding='utf-8')
+            target_path.write_text("\n".join(new_lines), encoding="utf-8")
 
-            result['success'] = True
-            result['output'] = f"已删除 {file_path} 第 {line_spec} 行（共 {len(lines_to_delete)} 行）"
+            result["success"] = True
+            result["output"] = (
+                f"已删除 {file_path} 第 {line_spec} 行（共 {len(lines_to_delete)} 行）"
+            )
 
         except Exception as e:
-            result['error'] = str(e)
+            result["error"] = str(e)
 
         self.execution_history.append(result)
         return result
@@ -520,40 +716,45 @@ class Executor:
             执行结果
         """
         handler_map = {
-            'shell': lambda: self.execute_shell(instruction['content']),
-            'code': lambda: self.execute_code(instruction['content']),
-            'file': lambda: self.execute_file(instruction['target'], instruction['content']),
-            'dir': lambda: self.execute_dir(instruction['target']),
-            'log': lambda: self.execute_log(
-                instruction['target'],
-                instruction['content'],
-                instruction.get('start_line')
+            "shell": lambda: self.execute_shell(instruction["content"]),
+            "code": lambda: self.execute_code(instruction["content"]),
+            "debug": lambda: self.execute_debug(instruction["content"]),
+            "inspect": lambda: self.execute_inspect(instruction["target"]),
+            "read": lambda: self.execute_read(
+                instruction["target"],
+                instruction.get("start_line"),
+                instruction.get("end_line"),
             ),
-            'edit': lambda: self.execute_edit(
-                instruction['target'],
-                instruction.get('start_line', 0),
-                instruction.get('end_line', 0),
-                instruction['content']
+            "file": lambda: self.execute_file(
+                instruction["target"], instruction["content"]
             ),
-            'comment': lambda: self.execute_comment(
-                instruction['target'],
-                instruction.get('start_line', 0),
-                instruction.get('end_line', 0)
+            "dir": lambda: self.execute_dir(instruction["target"]),
+            "log": lambda: self.execute_log(
+                instruction["target"],
+                instruction["content"],
+                instruction.get("start_line"),
             ),
-            'delete': lambda: self.execute_delete(
-                instruction['target'],
-                instruction.get('line_spec', '')
+            "edit": lambda: self.execute_edit(
+                instruction["target"],
+                instruction.get("start_line", 0),
+                instruction.get("end_line", 0),
+                instruction["content"],
+            ),
+            "comment": lambda: self.execute_comment(
+                instruction["target"],
+                instruction.get("start_line", 0),
+                instruction.get("end_line", 0),
+            ),
+            "delete": lambda: self.execute_delete(
+                instruction["target"], instruction.get("line_spec", "")
             ),
         }
 
-        instruction_type = instruction.get('type')
+        instruction_type = instruction.get("type")
         if instruction_type in handler_map:
             return handler_map[instruction_type]()
 
-        return {
-            'success': False,
-            'error': f"未知指令类型: {instruction_type}"
-        }
+        return {"success": False, "error": f"未知指令类型: {instruction_type}"}
 
     def execute_batch(self, instructions: List[Dict]) -> List[Dict]:
         """
@@ -571,7 +772,7 @@ class Executor:
             results.append(result)
 
             # 如果失败，停止执行
-            if not result.get('success', False):
+            if not result.get("success", False):
                 print(f"执行失败: {result.get('error')}")
                 break
 
@@ -590,10 +791,10 @@ class Executor:
 
         last = self.execution_history[-1]
 
-        if last['type'] == 'file' and 'backup' in last:
+        if last["type"] == "file" and "backup" in last:
             # 恢复备份文件
-            target = self.project_root / last['target']
-            backup = Path(last['backup'])
+            target = self.project_root / last["target"]
+            backup = Path(last["backup"])
 
             if backup.exists():
                 target.write_text(backup.read_text())
@@ -604,7 +805,9 @@ class Executor:
         return False
 
 
-def execute_instructions(instructions: List[Dict], project_root: str = ".") -> List[Dict]:
+def execute_instructions(
+    instructions: List[Dict], project_root: str = "."
+) -> List[Dict]:
     """
     便捷函数：执行指令列表
 
@@ -619,7 +822,7 @@ def execute_instructions(instructions: List[Dict], project_root: str = ".") -> L
     return executor.execute_batch(instructions)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 测试
     print("=== Executor 测试 ===")
 
