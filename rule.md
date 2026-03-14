@@ -735,3 +735,95 @@ class RBNode:
         self.right = None
         self.parent = None
 ```
+
+---
+
+## UTEL v3.1 完整测试案例
+
+### 测试案例
+
+**压缩内容**：
+```
+自然语言：请帮我用Python Shi-Xian一个高效的Hong-Hei-Shu，Yao-Qiu Wan-Zheng的Cha-Ru、Shan-Chu、Cha-Zhao。
+
+代码：
+#code
+cs5 RedBlackTree:
+..df3 __init__(self):
+...self.root = self.NIL
+#end
+```
+
+**完整提示词**：
+```
+【重要警告】
+
+收到什么就还原什么，按规则来！
+
+【解码规则】
+Shu-Ju=数据, Jia-Gu=架构, Dai-Ma=代码
+Yao-Qiu=要求, Shi-Xian=实现, Cha-Ru=插入
+Shan-Chu=删除, Cha-Zhao=查找, Hong-Hei-Shu=红黑树
+
+代码规则：df3=def, if2=if, cs5=class, rn6=return, . = 缩进
+
+【压缩内容】
+自然语言：请帮我用Python Shi-Xian一个高效的Hong-Hei-Shu，Yao-Qiu Wan-Zheng的Cha-Ru、Shan-Chu、Cha-Zhao。
+
+代码：
+#code
+cs5 RedBlackTree:
+..df3 __init__(self):
+...self.root = self.NIL
+#end
+
+第一步：严格按规则1:1机械还原。
+第二步：忽略示例代码，根据需求用你的理解给出完整可运行代码。
+输出格式：
+1. 还原后的需求
+2. 完整代码实现
+```
+
+**还原结果**：
+
+1. 还原后的需求：请帮我用Python 实现一个高效的 红黑树，要求 完整 的 插入、删除、查找。
+
+2. 完整代码实现：
+```python
+class Node:
+    def __init__(self, data, color="red"):
+        self.data = data
+        self.left = None
+        self.right = None
+        self.parent = None
+        self.color = color
+
+class RedBlackTree:
+    def __init__(self):
+        self.NIL = Node(None, "black")
+        self.root = self.NIL
+    
+    def left_rotate(self, x):
+        ...
+    
+    def right_rotate(self, x):
+        ...
+    
+    def insert(self, data):
+        ...
+    
+    def delete(self, data):
+        ...
+    
+    def search(self, data):
+        ...
+    
+    def inorder_traversal(self):
+        ...
+```
+
+---
+
+**测试结果：✅ 成功**
+- 1:1 还原压缩内容
+- 根据需求返回完整可运行代码
