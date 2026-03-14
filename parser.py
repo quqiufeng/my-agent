@@ -35,6 +35,7 @@ class Parser:
         "delete": re.compile(
             r"#delete\s+(\S+)\s+([\d:,]+)\s*#end", re.DOTALL | re.IGNORECASE
         ),
+        "task": re.compile(r"#task\s+(.*?)\s*#end", re.DOTALL | re.IGNORECASE),
     }
 
     def parse(self, response: str) -> List[Dict]:
@@ -51,6 +52,7 @@ class Parser:
         instructions.extend(self.parse_edit(response))
         instructions.extend(self.parse_comment(response))
         instructions.extend(self.parse_delete(response))
+        instructions.extend(self.parse_task(response))
         return instructions
 
     # ========== 11 种标签解析函数 ==========
@@ -314,6 +316,22 @@ class Parser:
                     "target": file_path,
                     "start_line": start_line,
                     "end_line": end_line,
+                }
+            )
+        return results
+
+    def parse_task(self, text: str) -> List[Dict]:
+        """解析 #task 标签
+        用途：保存任务进度到远程 API（本地只转发）
+        格式: #task 任务信息 #end
+        """
+        results = []
+        matches = self.PATTERNS["task"].findall(text)
+        for match in matches:
+            results.append(
+                {
+                    "type": "task",
+                    "content": match.strip(),
                 }
             )
         return results
