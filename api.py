@@ -1,179 +1,285 @@
 #!/usr/bin/env python3
 """
-API 模块 - 调用大模型 API
-支持 SiliconFlow 和本地 LM Studio (OpenAI 兼容 API)
+API 模块 - 统一调用多种大模型 API
+==================================
+支持: SiliconFlow, LM Studio, llama.cpp, MiniMax
+
+使用方式:
+1. 专有调用:
+   - call_minimax("问题")
+   - call_silicon("问题", model="deepseek-ai/DeepSeek-V3")
+   - call_lmstudio("问题", model="qwen3-9b")
+   - call_llama_cpp("问题")
+
+2. 统一调用:
+   - chat("问题", source="minimax")
+   - chat("问题", source="silicon", model="deepseek-ai/DeepSeek-V3")
 """
 
 import os
 import requests
-from typing import List, Dict, Optional, Literal
+from typing import List, Dict, Optional, Literal, Union
+from dataclasses import dataclass
 
-# SiliconFlow API 配置
-SILICON_BASE_URL = "https://api.siliconflow.cn/v1"
+# ==================== 配置 ====================
 
-# LM Studio 本地 API 配置 (可配置 IP)
-DEFAULT_API_SOURCE = "lmstudio"  # Use local LM Studio or SiliconFlow
+# API 来源枚举
+ApiSource = Literal["silicon", "lmstudio", "llama", "ollama", "minimax"]
 
-LM_STUDIO_BASE_URL = (
-    "http://198.18.0.1:11434/v1"  # OpenAI 兼容 API，根据实际局域网地址修改
-)
+# 默认配置
+DEFAULT_SOURCE: ApiSource = "minimax"
 
-# 默认模型（LM Studio）
-DEFAULT_MODEL = "qwen3.5-9b"
+# 各 API 基础配置
+CONFIG = {
+    "silicon": {
+        "base_url": "https://api.siliconflow.cn/v1",
+        "key_env": "SILICON_API_KEY",
+        "default_model": "deepseek-ai/DeepSeek-V3",
+    },
+    "lmstudio": {
+        "base_url": "http://192.168.124.3:11434/v1",
+        "key_env": None,  # 本地无需 Key
+        "default_model": "qwen3-9b",
+    },
+    "llama": {
+        "base_url": "http://192.168.124.3:8080/v1",
+        "key_env": None,
+        "default_model": "llama-3.1-8b",
+    },
+    "ollama": {
+        "base_url": "http://localhost:11434/v1",
+        "key_env": None,
+        "default_model": "qwen2.5:7b",
+    },
+    "minimax": {
+        "base_url": "https://api.minimaxi.com/v1/chat/completions",
+        "key_env": "MINIMAX_API_KEY",
+        "default_model": "MiniMax-M2.5",
+    },
+}
 
-# 常用模型列表（可动态更新）
+# 常用模型映射表
 MODELS = {
-    # LM Studio 本地模型
-    "lmstudio-qwen3.5-9b": DEFAULT_MODEL,
+    # SiliconFlow 云端模型
     "deepseek-v3": "deepseek-ai/DeepSeek-V3",
     "deepseek-v3.2": "deepseek-ai/DeepSeek-V3.2",
     "deepseek-r1": "deepseek-ai/DeepSeek-R1",
-    "deepseek-r1-distill-qwen-32b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
-    "deepseek-r1-distill-qwen-14b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
-    "deepseek-r1-distill-qwen-7b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
-    # Qwen 系列
+    "deepseek-r1-32b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+    "deepseek-r1-14b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+    "deepseek-r1-7b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
     "qwen3-8b": "Qwen/Qwen3-8B",
     "qwen3-14b": "Qwen/Qwen3-14B",
     "qwen3-32b": "Qwen/Qwen3-32B",
-    "qwen3-vl-32b": "Qwen/Qwen3-VL-32B-Instruct",
     "qwen2.5-7b": "Qwen/Qwen2.5-7B-Instruct",
     "qwen2.5-14b": "Qwen/Qwen2.5-14B-Instruct",
     "qwen2.5-32b": "Qwen/Qwen2.5-32B-Instruct",
-    "qwen2.5-coder-7b": "Qwen/Qwen2.5-Coder-7B-Instruct",
-    "qwen2.5-coder-32b": "Qwen/Qwen2.5-Coder-32B-Instruct",
-    "qwen2-vl-72b": "Qwen/Qwen2-VL-72B-Instruct",
-    "qwen2.5-vl-7b": "Qwen/Qwen2.5-VL-7B-Instruct",
-    "qwq-32b": "Qwen/QwQ-32B",
-    # Kimi 系列
     "kimi-k2.5": "Pro/moonshotai/Kimi-K2.5",
-    "kimi-k2-thinking": "moonshotai/Kimi-K2-Thinking",
-    # GLM 系列
     "glm-4.7": "Pro/zai-org/GLM-4.7",
-    "glm-4.6": "zai-org/GLM-4.6",
-    "glm-4.6v": "zai-org/GLM-4.6V",
-    "glm-4.5v": "zai-org/GLM-4.5V",
-    "glm-5": "Pro/zai-org/GLM-5",
-    # Step 系列
-    "step-3.5-flash": "stepfun-ai/Step-3.5-Flash",
-    # 其他
     "llama-3.1-8b": "meta-llama/Llama-3.1-8B-Instruct",
-    "internlm2.5-7b": "internlm/internlm2_5-7b-chat",
+    # LM Studio 本地模型
+    "qwen3-9b": "qwen3-9b",
+    "qwen2.5-8b": "qwen2.5-8b",
+    "llama-3-8b": "llama-3-8b",
+    "mistral-7b": "mistral-7b",
+    # MiniMax
+    "minimax": "MiniMax-M2.5",
 }
 
-# 默认模型
-DEFAULT_MODEL = MODELS.get("lmstudio-qwen3.5-9b", MODELS["kimi-k2.5"])
+# 全局 API Key 缓存
+_API_KEYS: Dict[str, str] = {}
 
 
-def get_api_key(source: Literal["silicon", "lmstudio"] = DEFAULT_API_SOURCE) -> str:
-    """从环境变量或 .env 文件获取 API Key"""
-    if source == "silicon":
-        # 优先从环境变量读取
-        api_key = os.environ.get("SILICON_API_KEY")
-        if api_key:
-            return api_key
+# ==================== 内部函数 ====================
 
-        # 其次从 .env 文件读取
-        env_path = os.path.join(os.path.dirname(__file__), ".env")
-        if os.path.exists(env_path):
-            with open(env_path) as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("SILICON_API_KEY="):
-                        return line.split("=", 1)[1].strip()
 
-        raise ValueError("请设置 SILICON_API_KEY 环境变量或在 .env 文件中配置")
-    else:
-        # LM Studio 不需要 API Key，直接返回空字符串
+def _get_api_key(source: ApiSource) -> str:
+    """获取指定来源的 API Key"""
+    global _API_KEYS
+
+    if source in _API_KEYS:
+        return _API_KEYS[source]
+
+    key_env = CONFIG[source].get("key_env")
+    if not key_env:
+        _API_KEYS[source] = ""
         return ""
 
+    # 从环境变量获取
+    api_key = os.environ.get(key_env)
+    if api_key:
+        _API_KEYS[source] = api_key
+        return api_key
 
-def get_model_url(source=None):
-    """Get model URL based on source"""
-    if source is None:
-        source = DEFAULT_API_SOURCE
-    
-    return LM_STUDIO_BASE_URL if source == "lmstudio" else SILICON_BASE_URL
+    # 从 .env 文件获取
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith(f"{key_env}="):
+                    api_key = line.split("=", 1)[1].strip()
+                    _API_KEYS[source] = api_key
+                    return api_key
 
-
-def get_api_url(endpoint='chat/completions', source=None, api_base=''):
-    """
-    Get full API URL with endpoint.
-    
-    Args:
-        endpoint: API endpoint path (e.g., 'chat/completions')
-        source: API source ('lmstudio' or None)
-        api_base: Base URL for non-lmstudio APIs
-    
-    Returns:
-        Full API URL with endpoint
-    """
-    if source is None:
-        source = DEFAULT_API_SOURCE
-        
-    # lmstudio needs complete endpoint path, but LM_STUDIO_BASE_URL already ends with /v1
-    if source == 'lmstudio':
-        return LM_STUDIO_BASE_URL.rstrip('/') + '/' + endpoint
-    
-    # For siliconflow and others, use api_base + endpoint
-    if not api_base:
-        api_base = get_model_url(source)
-    return api_base.rstrip('/') + '/' + endpoint
+    raise ValueError(f"请设置 {key_env} 环境变量或在 .env 文件中配置")
 
 
-def get_models() -> Dict[str, str]:
-    """
-    从 API 获取模型列表
-
-    Returns:
-        模型名字典 {简称：模型 ID}
-    """
-    api_key = get_api_key(source=DEFAULT_API_SOURCE)
-    url = get_model_url()
-
-    headers = {"Authorization": f"Bearer {api_key}"}
-
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-
-    data = response.json()
-    new_models = {}
-
-    for model in data["data"]:
-        model_id = model["id"]
-        # 提取简称（取最后部分作为 key）
-        short_name = model_id.split("/")[-1].lower().replace("-", "_")
-        new_models[short_name] = model_id
-
-    return new_models
+def _get_base_url(source: ApiSource) -> str:
+    """获取指定来源的 API 基础 URL"""
+    return CONFIG[source]["base_url"]
 
 
-def update_models():
-    """从 API 获取模型列表并更新 MODELS"""
-    global MODELS
-    try:
-        api_models = get_models()
-        MODELS.update(api_models)
-        print(f"已更新模型列表，共 {len(MODELS)} 个模型")
-    except Exception as e:
-        print(f"获取模型列表失败: {e}")
+def _get_default_model(source: ApiSource) -> str:
+    """获取指定来源的默认模型"""
+    return CONFIG[source]["default_model"]
+
+
+def _normalize_model(model: str, source: ApiSource) -> str:
+    """标准化模型名称"""
+    if model in MODELS:
+        return MODELS[model]
+    return model
+
+
+# ==================== 专有调用函数 ====================
+
+
+def call_minimax(
+    prompt: str,
+    model: str = "MiniMax-M2.5",
+    temperature: float = 0.7,
+    max_tokens: int = 8192,
+) -> str:
+    """调用 MiniMax API"""
+    api_key = _get_api_key("minimax")
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+
+    response = requests.post(
+        _get_base_url("minimax"), headers=headers, json=payload, timeout=180
+    )
+    result = response.json()
+    return result["choices"][0]["message"]["content"]
+
+
+def call_silicon(
+    prompt: str,
+    model: str = "deepseek-ai/DeepSeek-V3",
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+) -> str:
+    """调用 SiliconFlow API"""
+    api_key = _get_api_key("silicon")
+    model = _normalize_model(model, "silicon")
+
+    return chat(
+        messages=[{"role": "user", "content": prompt}],
+        model=model,
+        source="silicon",
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+
+def call_lmstudio(
+    prompt: str,
+    model: str = "qwen3-9b",
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+) -> str:
+    """调用 LM Studio 本地 API"""
+    model = _normalize_model(model, "lmstudio")
+
+    return chat(
+        messages=[{"role": "user", "content": prompt}],
+        model=model,
+        source="lmstudio",
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+
+def call_llama_cpp(
+    prompt: str,
+    model: str = "llama-3.1-8b",
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+) -> str:
+    """调用 llama.cpp 兼容 API (llama.cpp server)"""
+    model = _normalize_model(model, "llama")
+
+    return chat(
+        messages=[{"role": "user", "content": prompt}],
+        model=model,
+        source="llama",
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+
+def call_ollama(
+    prompt: str,
+    model: str = "qwen2.5:7b",
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+) -> str:
+    """调用 Ollama 本地 API"""
+    return chat(
+        messages=[{"role": "user", "content": prompt}],
+        model=model,
+        source="ollama",
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+
+# ==================== 统一调用函数 ====================
 
 
 def chat(
     messages: List[Dict[str, str]],
-    model: str = DEFAULT_MODEL,
+    model: Optional[str] = None,
+    source: ApiSource = DEFAULT_SOURCE,
     temperature: float = 0.7,
     max_tokens: int = 4096,
     tools: Optional[List[Dict]] = None,
     **kwargs,
 ) -> str:
     """
-    调用大模型 API，返回文本内容
+    统一的大模型对话接口
+
+    Args:
+        messages: 对话消息列表
+        model: 模型名称 (支持简称或完整 ID)
+        source: API 来源 (silicon/lmstudio/llama/minimax)
+        temperature: 温度参数
+        max_tokens: 最大 token 数
+        tools: 工具列表
+
+    Returns:
+        模型回复文本
     """
-    api_key = get_api_key()
+    api_key = _get_api_key(source)
+    model = model or _get_default_model(source)
+    model = _normalize_model(model, source)
 
-    url = get_api_url()
+    url = _get_base_url(source)
+    if source != "minimax":
+        url = url.rstrip("/") + "/chat/completions"
 
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
     payload = {
         "model": model,
@@ -190,10 +296,8 @@ def chat(
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=120)
         response.raise_for_status()
-
         result = response.json()
         return result["choices"][0]["message"]["content"]
-
     except requests.exceptions.Timeout:
         raise TimeoutError("API 请求超时")
     except requests.exceptions.RequestException as e:
@@ -203,29 +307,34 @@ def chat(
 
 
 def chat_with_json(
-    messages: List[Dict[str, str]], model: str = DEFAULT_MODEL, endpoint='chat/completions', **kwargs
+    messages: List[Dict[str, str]],
+    model: Optional[str] = None,
+    source: ApiSource = DEFAULT_SOURCE,
+    **kwargs,
 ) -> Dict:
     """
-    调用大模型 API，返回完整 JSON 响应
-    
+    统一的大模型对话接口，返回完整 JSON 响应
+
     Args:
-        messages: Prompt messages (ChatML format)
-        model: Model name/ID
-        endpoint: API endpoint path (default 'chat/completions')
-        **kwargs: Additional parameters to pass to API
-    
+        messages: 对话消息列表
+        model: 模型名称
+        source: API 来源
+        **kwargs: 其他 API 参数
+
     Returns:
-        Full API response as dict
+        完整 API 响应 (dict)
     """
-    api_key = get_api_key()
-    
-    # lmstudio doesn't require API key, use full endpoint path
-    if DEFAULT_API_SOURCE == 'lmstudio':
-        url = LM_STUDIO_BASE_URL.rstrip('/') + '/' + endpoint.replace('/v1', '')
-        headers = {"Content-Type": "application/json"}
-    else:
-        url = get_api_url(endpoint)
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    api_key = _get_api_key(source)
+    model = model or _get_default_model(source)
+    model = _normalize_model(model, source)
+
+    url = _get_base_url(source)
+    if source != "minimax":
+        url = url.rstrip("/") + "/chat/completions"
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
     payload = {
         "model": model,
@@ -235,32 +344,86 @@ def chat_with_json(
 
     response = requests.post(url, headers=headers, json=payload, timeout=120)
     response.raise_for_status()
-
     return response.json()
 
 
-if __name__ == "__main__":
-    # 测试
-    print("SiliconFlow API 测试")
-    print(f"默认模型: {DEFAULT_MODEL}")
+def get_models(source: ApiSource = DEFAULT_SOURCE) -> List[str]:
+    """获取指定来源的可用模型列表"""
+    api_key = _get_api_key(source)
+    url = _get_base_url(source).rstrip("/") + "/models"
 
-    # 尝试更新模型列表
-    print("\n获取模型列表...")
-    update_models()
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
-    print("\n可用模型:")
-    for k, v in MODELS.items():
-        print(f"  {k}: {v}")
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
 
-    # 测试对话
-    print("\n测试对话...")
-    messages = [
-        {"role": "system", "content": "你是一个有用的助手"},
-        {"role": "user", "content": "你好，用一句话介绍自己"},
-    ]
+    data = response.json()
+    return [m["id"] for m in data.get("data", [])]
 
+
+# ==================== 便捷别名 ====================
+
+# 兼容旧代码
+DEFAULT_MODEL = _get_default_model(DEFAULT_SOURCE)
+SILICON_BASE_URL = CONFIG["silicon"]["base_url"]
+LM_STUDIO_BASE_URL = CONFIG["lmstudio"]["base_url"]
+MINIMAX_BASE_URL = CONFIG["minimax"]["base_url"]
+
+
+def get_api_key(source: ApiSource = DEFAULT_SOURCE) -> str:
+    """获取 API Key (兼容旧代码)"""
+    return _get_api_key(source)
+
+
+def get_model_url(source: ApiSource = DEFAULT_SOURCE) -> str:
+    """获取 API 基础 URL (兼容旧代码)"""
+    return _get_base_url(source)
+
+
+def get_api_url(
+    endpoint: str = "chat/completions", source: ApiSource = DEFAULT_SOURCE
+) -> str:
+    """获取完整 API URL (兼容旧代码)"""
+    base = _get_base_url(source)
+    return base.rstrip("/") + "/" + endpoint
+
+
+def update_models():
+    """从 API 获取模型列表 (兼容旧代码)"""
+    global MODELS
     try:
-        response = chat(messages)
-        print(f"\n响应: {response[:200]}")
+        models = get_models()
+        for m in models:
+            short = m.split("/")[-1].lower().replace("-", "_")
+            MODELS[short] = m
+        print(f"已更新模型列表，共 {len(MODELS)} 个模型")
     except Exception as e:
-        print(f"错误: {e}")
+        print(f"获取模型列表失败: {e}")
+
+
+# ==================== 测试 ====================
+
+if __name__ == "__main__":
+    print("=" * 50)
+    print("API 模块测试")
+    print("=" * 50)
+    print(f"默认来源: {DEFAULT_SOURCE}")
+    print(f"默认模型: {DEFAULT_MODEL}")
+    print()
+
+    # 测试各来源
+    test_sources = ["lmstudio", "silicon", "llama", "minimax"]
+
+    for source in test_sources:
+        print(f"测试 {source}...")
+        try:
+            result = chat(
+                [{"role": "user", "content": "你好"}],
+                source=source,
+                max_tokens=50,
+            )
+            print(f"  ✓ 成功: {result[:50]}...")
+        except Exception as e:
+            print(f"  ✗ 失败: {e}")
