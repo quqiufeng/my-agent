@@ -472,12 +472,6 @@ print(db.list_tables())
 
 ---
 
-## Prompt 压缩规则
-
-详见 [rule.md](../rule.md)
-
----
-
 ## 许可证
 
 MIT License - 可自由用于商业和非商业项目。
