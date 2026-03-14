@@ -705,20 +705,6 @@ class Executor:
         self.execution_history.append(result)
         return result
 
-    def execute_task(self, task_content: str) -> Dict[str, Any]:
-        """
-        执行 #task 指令
-        用途：保存任务进度（由远程 API 维护状态，本地只转发）
-        """
-        return {
-            "type": "task",
-            "content": task_content,
-            "success": True,
-            "output": f"任务进度已记录: {task_content[:50]}...",
-            "error": "",
-            "timestamp": datetime.now().isoformat(),
-        }
-
     def execute(self, instruction: Dict) -> Dict[str, Any]:
         """
         执行单条指令（统一入口）
@@ -746,8 +732,22 @@ class Executor:
             "log": lambda: self.execute_log(
                 instruction["target"],
                 instruction["content"],
+                instruction.get("start_line"),
             ),
-            "task": lambda: self.execute_task(instruction["content"]),
+            "edit": lambda: self.execute_edit(
+                instruction["target"],
+                instruction.get("start_line", 0),
+                instruction.get("end_line", 0),
+                instruction["content"],
+            ),
+            "comment": lambda: self.execute_comment(
+                instruction["target"],
+                instruction.get("start_line", 0),
+                instruction.get("end_line", 0),
+            ),
+            "delete": lambda: self.execute_delete(
+                instruction["target"], instruction.get("line_spec", "")
+            ),
         }
 
         instruction_type = instruction.get("type")
