@@ -3,7 +3,7 @@ import re
 
 class UTEL_Encoder:
     def __init__(self):
-        # 1. 自然语言映射表 (NL-Protocol) - 简体中文版
+        # 1. 自然语言映射表 (NL-Protocol)
         self.nl_dict = {
             "数据": "Shu-Ju",
             "架构": "Jia-Gu",
@@ -23,6 +23,14 @@ class UTEL_Encoder:
             "逻辑": "Luo-Ji",
             "复杂": "Fu-Za",
             "递归": "Di-Gui",
+            "现代": "Xian-Dai",
+            "语法": "Yu-Fa",
+            "异步": "Yi-Bu",
+            "并发": "Bing-Fa",
+            "框架": "Kuang-Jia",
+            "单文件": "Dan-Wen-Jian",
+            "类似": "Lei-Si",
+            "支持": "Zhi-Chi",
         }
 
         # 2. 代码关键字映射 (Code-Recovery)
@@ -39,6 +47,10 @@ class UTEL_Encoder:
             "break": "bk5",
             "continue": "ce8",
             "self": "sf4",
+            "async": "asy4",
+            "await": "awa4",
+            "try": "try2",
+            "except": "exc5",
         }
 
     def _nl_encode(self, text):
@@ -48,28 +60,26 @@ class UTEL_Encoder:
         return text
 
     def _code_encode(self, code):
-        """代码：1:1 脱水逻辑，确保缩进和符号绝对准确"""
+        """代码：1:1 脱水逻辑"""
         lines = code.split("\n")
         compressed_lines = []
 
         for line in lines:
-            # 即使是空行也要保留，以防 1:1 还原时丢失结构
             if not line.strip():
                 compressed_lines.append("")
                 continue
 
-            # A. 处理缩进：默认 4 空格 = 1 个点
+            # 缩进处理
             leading_spaces = len(line) - len(line.lstrip())
             indent = "." * (leading_spaces // 4)
 
             content = line.strip()
 
-            # B. 关键字替换 (正则 \b 确保单词边界安全)
+            # 关键字替换
             for k, v in self.code_keywords.items():
                 content = re.sub(rf"\b{k}\b", v, content)
 
-            # C. 符号空格处理 (1:1 核心：将空格转为下划线，防止大模型丢失空格)
-            # 先处理自然语言注释部分的拼音转化
+            # 空格处理
             if "#" in content:
                 parts = content.split("#", 1)
                 comment = self._nl_encode(parts[1])
@@ -82,23 +92,62 @@ class UTEL_Encoder:
 
         return "\n".join(compressed_lines)
 
-    def pack(self, nl_input, code_input):
-        """打包成最终 Prompt"""
-        return (
-            "【UTEL v3.2 压缩包】\n"
-            f"自然语言：{self._nl_encode(nl_input)}\n"
-            f"代码：\n#code\n{self._code_encode(code_input)}\n#end\n"
-            "指令：1. 1:1 机械还原。2. 根据需求理解给出完整实现。"
-        )
+    def pack(self, full_text):
+        """
+        自动提取并压缩 full_text 中的 #code...#end 块
+        只传一个 nl_input，自动匹配代码块
+        """
+        # 1. 提取所有 #code...#end 块
+        code_blocks = re.findall(r"#code\n(.*?)\n#end", full_text, re.DOTALL)
+
+        # 2. 压缩每个代码块
+        compressed_blocks = []
+        for code in code_blocks:
+            compressed_blocks.append(self._code_encode(code))
+
+        # 3. 替换原文中的代码块为压缩版本
+        result = full_text
+        for original, compressed in zip(code_blocks, compressed_blocks):
+            result = result.replace(
+                f"#code\n{original}\n#end", f"#code\n{compressed}\n#end"
+            )
+
+        # 4. 压缩自然语言部分
+        result = self._nl_encode(result)
+
+        return result
 
 
-# --- 实战测试 ---
+# --- 测试 ---
 if __name__ == "__main__":
     encoder = UTEL_Encoder()
 
-    test_nl = "请帮我实现一个高效的红黑树数据架构，包含插入逻辑。"
-    test_code = """class RedBlackTree:
-    def __init__(self):
-        self.root = None # 初始化逻辑"""
+    # 测试：一次性输入全部内容
+    test_input = """
+请帮我实现一个单文件的python web框架。
 
-    print(encoder.pack(test_nl, test_code))
+#code
+class Web:
+    def __init__(self):
+        self.routes = {}
+    
+    def route(self, path):
+        def decorator(func):
+            self.routes[path] = func
+            return func
+        return decorator
+    
+    async def handle(self, request):
+        handler = self.routes.get(request.path)
+        if handler:
+            return await handler(request)
+        return 404
+#end
+
+要求支持异步和并发。
+"""
+
+    print("=== 原始输入 ===")
+    print(test_input)
+    print("\n=== 压缩后 ===")
+    print(encoder.pack(test_input))
