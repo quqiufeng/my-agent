@@ -34,7 +34,7 @@ CONFIG = {
     "silicon": {
         "base_url": "https://api.siliconflow.cn/v1",
         "key_env": "SILICON_API_KEY",
-        "default_model": "deepseek-ai/DeepSeek-V3",
+        "default_model": "Pro/zai-org/GLM-5",
     },
     "lmstudio": {
         "base_url": "http://192.168.124.3:11434/v1",
@@ -42,9 +42,9 @@ CONFIG = {
         "default_model": "qwen3-9b",
     },
     "llama": {
-        "base_url": "http://192.168.124.3:8080/v1",
+        "base_url": "http://localhost:11434",
         "key_env": None,
-        "default_model": "llama-3.1-8b",
+        "default_model": "qwen3.5-9b",
     },
     "ollama": {
         "base_url": "http://localhost:11434/v1",
@@ -96,7 +96,7 @@ def _get_api_key(source: ApiSource) -> str:
     """获取指定来源的 API Key"""
     global _API_KEYS
 
-    if source in _API_KEYS:
+    if source in _API_KEYS and _API_KEYS[source]:
         return _API_KEYS[source]
 
     key_env = CONFIG[source].get("key_env")
@@ -121,7 +121,7 @@ def _get_api_key(source: ApiSource) -> str:
                     _API_KEYS[source] = api_key
                     return api_key
 
-    raise ValueError(f"请设置 {key_env} 环境变量或在 .env 文件中配置")
+    return ""
 
 
 def _get_base_url(source: ApiSource) -> str:
