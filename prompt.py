@@ -15,14 +15,11 @@ sys.path.insert(0, SCRIPT_DIR)
 class PromptBuilder:
     """提示词构建器"""
 
-    def __init__(self, user_task: str):
-        self.user_task = user_task
+    def __init__(self, user_prompt: str):
+        self.user_prompt = user_prompt
 
-    def build_system_prompt(self) -> str:
-        return build_user_prompt(self.user_task)
-
-    def build_user_prompt(self) -> str:
-        return self.build_system_prompt()
+    def build(self) -> str:
+        return build_user_prompt(self.user_prompt)
 
 
 def build_project_info(prompt: str, info: str = "") -> str:
