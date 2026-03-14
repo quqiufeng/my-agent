@@ -29,6 +29,7 @@ class ExecutionResult:
 @dataclass
 class PromptContext:
     """提示词上下文"""
+
     project_context: Optional[ProjectContext] = None
     execution_history: List[ExecutionResult] = field(default_factory=list)
     user_task: str = ""
@@ -43,40 +44,79 @@ class PromptBuilder:
 
     def build_system_prompt(self) -> str:
         """构建系统提示词"""
-        return SYSTEM_PROMPT
+        project_info = (
+            self.ctx.project_context.to_prompt_text()
+            if self.ctx.project_context
+            else ""
+        )
+        return build_user_prompt(self.ctx.user_task)
 
     def build_user_prompt(self) -> str:
-        """构建用户任务提示词"""
-        lines = ["# 本次任务"]
-
-        if self.ctx.user_task:
-            lines.append(self.ctx.user_task)
-
-        lines.append("")
-        lines.append("请分析现场情况，使用标签指令完成的任务。")
-        lines.append("完成所有操作后，直接返回结果，不要使用标签。")
-
-        return "\n".join(lines)
+        return self.build_system_prompt()
 
 
-SYSTEM_PROMPT = """你是一个本地 AI 编程助手。
+def build_project_info(prompt: str, info: str = "") -> str:
+    return prompt.replace("{project_info}", info or "未提供项目信息")
+
+
+def build_user_prompt_content(prompt: str, user_prompt: str = "") -> str:
+    return prompt.replace("{user_prompt}", user_prompt or "未提供用户请求")
+
+
+def build_task_info(prompt: str, info: str = "") -> str:
+    return prompt.replace("{task_info}", info or "暂无任务进度")
+
+
+def build_system_info(prompt: str, info: str = "") -> str:
+    import platform
+    import sys
+
+    system_info = (
+        info
+        or f"Python {sys.version.split()[0]}, {platform.system()} {platform.release()}"
+    )
+    return prompt.replace("{system_info}", system_info)
+
+
+def build_user_prompt(user_prompt: str) -> str:
+    system_prompt = """你是一个本地 AI 编程助手。
 
 ## 你的能力
-1. 读写文件、执行命令、分析代码
-2. 通过标签指令与本地环境交互
-3. 根据执行结果迭代修复问题
+1. 读写文件,新建文件,执行shell命令,删除文件,git 命令
+2. 通过标签指令与本地环境交互,包括给一段python代码让本地执行的能力
+3. python代码无法完成需求,或者用户指定要求，可以升级用c,c++代码实现。
+   本地有完整工具链实现c,c++代码实现底层功能python封装调用的能力。
+4. 根据执行结果迭代改进的能力
 
 ## 工作流程
-1. 先了解项目现状（使用 #read 读取关键文件）
+1. 先了解项目现状,如果信息不够详细，可以使用 #指令标签 继续获取关于项目的必要信息。
 2. 规划实现方案
-3. 使用标签指令执行操作
-4. 检查执行结果，根据需要调整
-5. 完成任务后直接返回结果
+3. 返回带#标签指令 #end 的内容，让本地解析并执行相应的操作
+4. 检查执行结果，根据需要进行下一步或者确认是否完成目标。
+5. 完成任务后直接返回结果 [success!]
+
+## 现有目录结构
+{project_info}
+
+## 用户请求
+{user_prompt}
+
+## 任务进度
+{task_info}
+
+## 系统环境
+{system_info}
 
 ## 重要约束
 - 所有操作必须使用标签格式
 - 每次只执行少量操作，等待结果后再继续
 - 如果执行失败，分析错误原因并修复"""
+
+    result = build_project_info(system_prompt, "")
+    result = build_user_prompt_content(result, user_prompt)
+    result = build_task_info(result, "")
+    result = build_system_info(result, "")
+    return result
 
 
 TAG_DEFINITIONS = """
@@ -139,6 +179,12 @@ TAG_DEFINITIONS = """
 格式：`#delete 文件路径 行号 #end`
 示例：`#delete src/main.py 10 #end`
 
+### 11. #task - 任务进度表
+用途：显示任务进度表，包括任务完成情况
+格式：`#task 任务名 完成状态 #end`
+示例：`#task 新建一个文件 完成 #end`
+
+
 ## 标签使用规则
 1. 标签必须成对出现：`#shell ... #end`
 2. 可以在同一次回复中使用多个标签
@@ -146,10 +192,8 @@ TAG_DEFINITIONS = """
 4. 完成后不要使用标签，直接返回结果"""
 
 
-
 if __name__ == "__main__":
     print("=== Prompt 测试 ===\n")
 
-    messages = build_prompt("给项目添加一个 hello world 脚本")
+    messages = build_user_prompt("给项目添加一个 hello world 脚本")
     print(messages)
-
