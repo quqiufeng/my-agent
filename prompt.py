@@ -29,7 +29,6 @@ class ExecutionResult:
 @dataclass
 class PromptContext:
     """提示词上下文"""
-
     project_context: Optional[ProjectContext] = None
     execution_history: List[ExecutionResult] = field(default_factory=list)
     user_task: str = ""
@@ -46,44 +45,6 @@ class PromptBuilder:
         """构建系统提示词"""
         return SYSTEM_PROMPT
 
-    def build_context_prompt(self) -> str:
-        """构建项目上下文提示词"""
-        if not self.ctx.project_context:
-            return "## 项目信息\n无项目上下文"
-
-        pc = self.ctx.project_context
-        lines = []
-
-        lines.append("# 项目现场快照")
-        lines.append("")
-        lines.append(pc.to_prompt_text())
-        lines.append("")
-
-        lines.append("## 可用工具标签")
-        lines.append(TAG_DEFINITIONS)
-
-        return "\n".join(lines)
-
-    def build_history_prompt(self) -> str:
-        """构建执行历史提示词"""
-        if not self.ctx.execution_history:
-            return ""
-
-        lines = ["## 执行历史"]
-        recent = self.ctx.execution_history[-self.ctx.max_history :]
-
-        for i, result in enumerate(recent, 1):
-            lines.append(f"### 步骤 {i}")
-            lines.append(f"- 类型: {result.type}")
-            lines.append(f"- 成功: {'是' if result.success else '否'}")
-            if result.output:
-                lines.append(f"- 输出:\n```\n{result.output[:500]}\n```")
-            if result.error:
-                lines.append(f"- 错误: {result.error}")
-            lines.append("")
-
-        return "\n".join(lines)
-
     def build_user_prompt(self) -> str:
         """构建用户任务提示词"""
         lines = ["# 本次任务"]
@@ -96,24 +57,6 @@ class PromptBuilder:
         lines.append("完成所有操作后，直接返回结果，不要使用标签。")
 
         return "\n".join(lines)
-
-    def build_full_prompt(self) -> List[Dict[str, str]]:
-        """构建完整的消息列表"""
-        messages = []
-
-        messages.append({"role": "system", "content": self.build_system_prompt()})
-
-        context_prompt = self.build_context_prompt()
-        if context_prompt:
-            messages.append({"role": "system", "content": context_prompt})
-
-        history_prompt = self.build_history_prompt()
-        if history_prompt:
-            messages.append({"role": "system", "content": history_prompt})
-
-        messages.append({"role": "user", "content": self.build_user_prompt()})
-
-        return messages
 
 
 SYSTEM_PROMPT = """你是一个本地 AI 编程助手。
@@ -203,50 +146,10 @@ TAG_DEFINITIONS = """
 4. 完成后不要使用标签，直接返回结果"""
 
 
-def build_prompt(
-    user_task: str,
-    project_root: str = ".",
-    execution_history: Optional[List[ExecutionResult]] = None,
-    max_history: int = 10,
-) -> List[Dict[str, str]]:
-    """
-    便捷函数：构建提示词
-
-    Args:
-        user_task: 用户任务描述
-        project_root: 项目根目录
-        execution_history: 执行历史
-        max_history: 最大历史记录数
-
-    Returns:
-        消息列表
-    """
-    from scanner import Scanner
-
-    scanner = Scanner(project_root)
-    project_context = scanner.scan()
-
-    ctx = PromptContext(
-        project_context=project_context,
-        execution_history=execution_history or [],
-        user_task=user_task,
-        max_history=max_history,
-    )
-
-    builder = PromptBuilder(ctx)
-    return builder.build_full_prompt()
-
 
 if __name__ == "__main__":
     print("=== Prompt 测试 ===\n")
 
     messages = build_prompt("给项目添加一个 hello world 脚本")
+    print(messages)
 
-    for msg in messages:
-        print(f"## {msg['role']}")
-        print(
-            msg["content"][:300] + "..."
-            if len(msg["content"]) > 300
-            else msg["content"]
-        )
-        print()
