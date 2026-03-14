@@ -827,3 +827,60 @@ class RedBlackTree:
 **测试结果：✅ 成功**
 - 1:1 还原压缩内容
 - 根据需求返回完整可运行代码
+
+---
+
+## UTEL 编码器测试代码
+
+### Python 测试代码
+
+```python
+cd ~/my-agent && python3 -c "
+from api import call_silicon
+from utel_encoder import UTEL_Encoder
+encoder = UTEL_Encoder()
+
+# 原始需求
+full_text = '''请帮我实现一个红黑树，需要支持完整的插入、删除、查找操作。
+
+#code
+class RedBlackTree:
+    def __init__(self):
+        self.root = None
+    def insert(self, key):
+        pass
+#end
+
+需要包含详细的注释。'''
+
+# 压缩
+compressed = encoder.pack(full_text)
+
+# 添加解码指令
+prompt = compressed + '''
+第一步：严格按规则1:1机械还原。
+第二步：根据需求给出完整代码实现。
+输出格式：
+1. 还原后的需求
+2. 完整代码实现'''
+
+result = call_silicon(prompt, max_tokens=2500)
+print(result)
+"
+```
+
+### 测试结果
+
+**还原后的需求**：
+请帮我实现一个红黑树，需要支持完整的插入、删除、查找操作。
+
+**返回的代码**：150+ 行完整红黑树实现，包含：
+- Node 内部类
+- insert (含修复逻辑)
+- delete (含修复逻辑)
+- search
+- 左旋/右旋
+- 中序遍历
+- 详细注释
+
+**状态：✅ 测试成功**
