@@ -1,0 +1,8 @@
+lancedb
+langchain
+langchain-community
+langchain-huggingface
+langchain-text-splitters
+sentence-transformers
+mcp
+fastmcp
