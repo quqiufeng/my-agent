@@ -6,50 +6,20 @@ Prompt 模块 - 提示词构建
 
 import os
 import sys
-from typing import List, Dict, Optional
-from dataclasses import dataclass, field
+from typing import List
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
-
-from scanner import ProjectContext
-
-
-@dataclass
-class ExecutionResult:
-    """单次执行结果"""
-
-    type: str
-    success: bool
-    output: str
-    error: str = ""
-    timestamp: str = ""
-
-
-@dataclass
-class PromptContext:
-    """提示词上下文"""
-
-    project_context: Optional[ProjectContext] = None
-    execution_history: List[ExecutionResult] = field(default_factory=list)
-    user_task: str = ""
-    max_history: int = 10
 
 
 class PromptBuilder:
     """提示词构建器"""
 
-    def __init__(self, context: PromptContext):
-        self.ctx = context
+    def __init__(self, user_task: str):
+        self.user_task = user_task
 
     def build_system_prompt(self) -> str:
-        """构建系统提示词"""
-        project_info = (
-            self.ctx.project_context.to_prompt_text()
-            if self.ctx.project_context
-            else ""
-        )
-        return build_user_prompt(self.ctx.user_task)
+        return build_user_prompt(self.user_task)
 
     def build_user_prompt(self) -> str:
         return self.build_system_prompt()
