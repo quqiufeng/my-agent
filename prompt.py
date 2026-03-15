@@ -2,6 +2,15 @@
 """
 Prompt 模块 - 提示词构建
 构建每次请求远程大模型时需要的提示词
+
+调试方法：
+```python
+import sys
+sys.path.insert(0, '.')
+from prompt import build_user_prompt
+result = build_user_prompt('生成一个python版本的红黑树')
+print(result)
+```
 """
 
 import ast
