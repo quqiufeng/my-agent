@@ -169,18 +169,8 @@ def main():
                     else:
                         exec_results = []
 
-                    # 提取 #task 和 #history 标签（需要原样返回给 API）
-                    extra_info = ""
-                    for tag in ["task", "history"]:
-                        import re
-
-                        pattern = r"(#\s*" + tag + r".*?#end)"
-                        matches = re.findall(pattern, result, re.DOTALL | re.IGNORECASE)
-                        if matches:
-                            extra_info += "\n\n" + "\n".join(matches)
-
                     # 构建发送给 API 的提示词（包含执行结果）
-                    prompt_with_result = f"{user_input}\n\n--- 上一次执行结果 ---\n{chr(10).join(exec_results)}{extra_info}"
+                    prompt_with_result = f"{user_input}\n\n--- 上一次执行结果 ---\n{chr(10).join(exec_results)}"
                     print("=== 发送给 API 的提示词 ===", flush=True)
                     print(prompt_with_result, flush=True)
                     print("=== 提示词结束 ===\n", flush=True)
