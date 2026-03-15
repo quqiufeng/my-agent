@@ -104,7 +104,6 @@ def build_tag_info(prompt: str) -> str:
 4. 标签内的内容 不得危害本地环境，包括操作系统和不得下载与项目无关的文件。
 5. 完成后不要使用标签，直接返回结果"""
 
-
     return prompt.replace("{tag_info}", system_prompt or "未提供项目信息")
 
 
@@ -153,9 +152,58 @@ def build_project_info(prompt: str, info: str = "") -> str:
     ]
 
     project_info = []
+
+    # 添加目录树
+    def generate_tree(
+        path: str, prefix: str = "", max_depth: int = 2, current_depth: int = 0
+    ) -> list[str]:
+        if current_depth >= max_depth:
+            return []
+        lines = []
+        try:
+            entries = sorted(
+                os.listdir(path),
+                key=lambda x: (not os.path.isdir(os.path.join(path, x)), x),
+            )
+            for i, entry in enumerate(entries):
+                if entry.startswith(".") or entry == "__pycache__":
+                    continue
+                full_path = os.path.join(path, entry)
+                is_last = i == len(entries) - 1
+                connector = "└── " if is_last else "├── "
+                lines.append(prefix + connector + entry)
+                if os.path.isdir(full_path):
+                    extension = "    " if is_last else "│   "
+                    lines.extend(
+                        generate_tree(
+                            full_path, prefix + extension, max_depth, current_depth + 1
+                        )
+                    )
+        except Exception:
+            pass
+        return lines
+
+    try:
+        result = subprocess.run(
+            ["tree", "-L", "2", "-I", "__pycache__|*.pyc|.git"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=SCRIPT_DIR,
+        )
+        if result.returncode == 0:
+            project_info.append("## 项目目录结构")
+            project_info.append(result.stdout)
+        else:
+            raise Exception("tree command failed")
+    except Exception:
+        project_info.append("## 项目目录结构")
+        project_info.extend(generate_tree(SCRIPT_DIR))
+
+    # 添加脚本函数信息（每个文件最多5个）
     for py_file in py_files:
         file_path = os.path.join(SCRIPT_DIR, py_file)
-        items = get_functions_and_classes(file_path)
+        items = get_functions_and_classes(file_path)[:5]
         if items:
             project_info.append(f"## ./{py_file}")
             project_info.extend(items)
@@ -217,6 +265,14 @@ def build_user_prompt(user_prompt: str) -> str:
 4. 根据执行结果迭代改进的能力
 ##
 
+## 重要约束（权重最高）
+所有返回的内容中不得包含会对客户端操作系统有危害的行为，包括但不限于：
+- 不得执行任何会破坏、修改或删除用户文件的命令
+- 不得执行任何会窃取用户数据或敏感信息的命令
+- 不得下载或安装任何与项目无关的软件或代码
+- 不得执行任何未经用户授权的系统操作
+##
+
 ## 工作流程
 1. 先了解项目现状,如果信息不够详细，可以使用 #指令标签 继续获取关于项目的必要信息。
 2. 规划实现方案,把实现过程拆分成任务进度清单，并自己维护任务清单的工作状态,
@@ -251,13 +307,13 @@ def build_user_prompt(user_prompt: str) -> str:
 {history_info}
 ##
 
-## 重要约束
+## 工作流程（续）
 - 所有操作必须使用标签格式
 - 每次只执行少量操作，等待结果后再继续
-- !!!!非常重要 本条规则在所有提示词中权重最高:所有返回的内容中不得包含会对客户端操作系统有危害的行为。
 - 如果执行失败，分析错误原因并修复"""
 
-    result = build_project_info(system_prompt, "")
+    result = build_tag_info(system_prompt)
+    result = build_project_info(result, "")
     result = build_user_prompt_content(result, user_prompt)
     result = build_task_info(result, "")
     result = build_history_info(result, "")
