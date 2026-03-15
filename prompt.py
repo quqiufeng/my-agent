@@ -3,12 +3,17 @@
 Prompt 模块 - 提示词构建
 构建每次请求远程大模型时需要的提示词
 """
+
+import ast
 import os
+import platform
+import subprocess
 import sys
 from typing import List
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
+
 
 class PromptBuilder:
     """提示词构建器"""
@@ -18,6 +23,7 @@ class PromptBuilder:
 
     def build(self) -> str:
         return build_user_prompt(self.user_prompt)
+
 
 def build_tag_info(prompt: str) -> str:
     system_prompt = """
@@ -95,7 +101,59 @@ def build_tag_info(prompt: str) -> str:
 
 
 def build_project_info(prompt: str, info: str = "") -> str:
-    return prompt.replace("{project_info}", info or "未提供项目信息")
+    def get_functions_and_classes(file_path: str) -> list[str]:
+        results = []
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                source = f.read()
+                tree = ast.parse(source, filename=file_path)
+
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef):
+                    docstring = ast.get_docstring(node)
+                    methods = [
+                        n.name
+                        for n in node.body
+                        if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")
+                    ]
+                    if methods:
+                        results.append(f"class {node.name}: {', '.join(methods)}")
+                        if docstring:
+                            results.append(f"  # {docstring}")
+                    else:
+                        results.append(f"class {node.name}")
+                        if docstring:
+                            results.append(f"  # {docstring}")
+                elif isinstance(node, ast.FunctionDef) and not node.name.startswith(
+                    "_"
+                ):
+                    args = [arg.arg for arg in node.args.args]
+                    docstring = ast.get_docstring(node)
+                    line = f"{node.name}({', '.join(args)})"
+                    if docstring:
+                        first_line = docstring.split("\n")[0].strip()
+                        line += f"  # {first_line}"
+                    results.append(line)
+        except Exception:
+            pass
+        return results
+
+    py_files = [
+        f
+        for f in os.listdir(SCRIPT_DIR)
+        if f.endswith(".py") and not f.startswith("__")
+    ]
+
+    project_info = []
+    for py_file in py_files:
+        file_path = os.path.join(SCRIPT_DIR, py_file)
+        items = get_functions_and_classes(file_path)
+        if items:
+            project_info.append(f"## ./{py_file}")
+            project_info.extend(items)
+
+    info = "\n".join(project_info) if project_info else "未提供项目信息"
+    return prompt.replace("{project_info}", info)
 
 
 def build_user_prompt_content(prompt: str, user_prompt: str = "") -> str:
@@ -107,13 +165,32 @@ def build_task_info(prompt: str, info: str = "") -> str:
 
 
 def build_system_info(prompt: str, info: str = "") -> str:
-    import platform
-    import sys
+    def get_path(cmd: str) -> str:
+        try:
+            result = subprocess.run(
+                ["which", cmd],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+        return "未安装"
 
-    system_info = (
-        info
-        or f"Python {sys.version.split()[0]}, {platform.system()} {platform.release()}"
-    )
+    paths = [
+        f"Python: {sys.executable}",
+        f"系统: {platform.system()} {platform.release()}",
+        f"gcc: {get_path('gcc')}",
+        f"g++: {get_path('g++')}",
+        f"cmake: {get_path('cmake')}",
+        f"make: {get_path('make')}",
+        f"nvcc: {get_path('nvcc')}",
+        f"node: {get_path('node')}",
+        f"npm: {get_path('npm')}",
+    ]
+    system_info = info or "\n".join(paths)
     return prompt.replace("{system_info}", system_info)
 
 
@@ -162,6 +239,7 @@ def build_user_prompt(user_prompt: str) -> str:
     result = build_task_info(result, "")
     result = build_system_info(result, "")
     return result
+
 
 if __name__ == "__main__":
     print("=== Prompt 测试 ===\n")
