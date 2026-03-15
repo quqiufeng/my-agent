@@ -164,7 +164,9 @@ def main():
                     exec_results = []
                     for instr in instructions:
                         r = executor.execute(instr)
-                        exec_results.append(r["output"])
+                        exec_results.append(
+                            r.get("info", "") + "\n" + r.get("output", "")
+                        )
 
                     prompt_with_result = f"{user_input}\n\n--- 上一次执行结果 ---\n{chr(10).join(exec_results)}"
                     print("=== 发送给 API 的提示词 ===", flush=True)
