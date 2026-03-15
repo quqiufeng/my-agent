@@ -37,6 +37,8 @@ class Parser:
         "delete": re.compile(
             r"#delete\s+(\S+)\s+([\d:,]+)\s*#end", re.DOTALL | re.IGNORECASE
         ),
+        "task": re.compile(r"#task\s+(.*?)\s*#end", re.DOTALL | re.IGNORECASE),
+        "history": re.compile(r"#history\s+(.*?)\s*#end", re.DOTALL | re.IGNORECASE),
     }
 
     def parse(self, response: str) -> List[Dict]:
@@ -53,6 +55,8 @@ class Parser:
         instructions.extend(self.parse_edit(response))
         instructions.extend(self.parse_comment(response))
         instructions.extend(self.parse_delete(response))
+        instructions.extend(self.parse_task(response))
+        instructions.extend(self.parse_history(response))
         return instructions
 
     # ========== 11 种标签解析函数 ==========
@@ -318,6 +322,22 @@ class Parser:
                     "end_line": end_line,
                 }
             )
+        return results
+
+    def parse_task(self, text: str) -> List[Dict]:
+        """解析 #task 标签"""
+        pattern = self.PATTERNS["task"]
+        results = []
+        for match in pattern.finditer(text):
+            results.append({"type": "task", "content": match.group(1).strip()})
+        return results
+
+    def parse_history(self, text: str) -> List[Dict]:
+        """解析 #history 标签"""
+        pattern = self.PATTERNS["history"]
+        results = []
+        for match in pattern.finditer(text):
+            results.append({"type": "history", "content": match.group(1).strip()})
         return results
 
     def extract_tags(self, text: str) -> List[str]:

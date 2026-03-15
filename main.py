@@ -117,14 +117,25 @@ def main():
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                 )
-                stdout, stderr = proc.communicate(timeout=180)
+                try:
+                    stdout, stderr = proc.communicate(timeout=180)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    print("调用超时", flush=True)
+                    break
 
                 if stderr:
                     print(f"错误: {stderr.decode()}", flush=True)
                     break
 
+                if not stdout:
+                    print("没有返回结果", flush=True)
+                    break
+
                 data = json.loads(stdout.decode())
                 result = data["result"]
+
+                print(f"返回结果长度: {len(result)}", flush=True)
 
                 # 写入 debug.log
                 with open("debug.log", "w", encoding="utf-8") as f:
@@ -136,16 +147,47 @@ def main():
                 if instructions:
                     print("[解析指令...]", flush=True)
                     print(f"instructions: {instructions}", flush=True)
-                    print("[执行指令...]", flush=True)
-                    exec_results = []
-                    for instr in instructions:
-                        exec_result = executor.execute(instr)
-                        print(f"执行结果: {exec_result}", flush=True)
-                        exec_results.append(exec_result)
-                    print(flush=True)
 
-                    # 有指令执行完，继续循环
-                    continue
+                    # 分离执行类指令和元信息指令
+                    exec_instructions = [
+                        i
+                        for i in instructions
+                        if i.get("type") not in ["task", "history"]
+                    ]
+                    meta_instructions = [
+                        i for i in instructions if i.get("type") in ["task", "history"]
+                    ]
+
+                    if exec_instructions:
+                        print("[执行指令...]", flush=True)
+                        exec_results = []
+                        for instr in exec_instructions:
+                            exec_result = executor.execute(instr)
+                            print(f"执行结果: {exec_result}", flush=True)
+                            exec_results.append(exec_result["output"])
+                        print(flush=True)
+                    else:
+                        exec_results = []
+
+                    # 提取 #task 和 #history 标签（需要原样返回给 API）
+                    extra_info = ""
+                    for tag in ["task", "history"]:
+                        import re
+
+                        pattern = r"(#\s*" + tag + r".*?#end)"
+                        matches = re.findall(pattern, result, re.DOTALL | re.IGNORECASE)
+                        if matches:
+                            extra_info += "\n\n" + "\n".join(matches)
+
+                    # 构建发送给 API 的提示词（包含执行结果）
+                    prompt_with_result = f"{user_input}\n\n--- 上一次执行结果 ---\n{chr(10).join(exec_results)}{extra_info}"
+                    print("=== 发送给 API 的提示词 ===", flush=True)
+                    print(prompt_with_result, flush=True)
+                    print("=== 提示词结束 ===\n", flush=True)
+                    break  # stop
+
+                # 有指令执行完，继续循环
+                # continue
 
                 # 没有指令，检查是否完成
                 if "[success!]" in result:

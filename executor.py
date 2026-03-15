@@ -705,6 +705,24 @@ class Executor:
         self.execution_history.append(result)
         return result
 
+    def execute_task(self, content: str) -> Dict[str, Any]:
+        """执行 #task 标签 - 返回任务进度信息"""
+        return {
+            "success": True,
+            "output": f"[任务进度]\n{content}",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    def execute_history(self, content: str) -> Dict[str, Any]:
+        """执行 #history 标签 - 返回历史上下文信息"""
+        return {
+            "success": True,
+            "output": f"[历史上下文]\n{content}",
+            "error": "",
+            "timestamp": datetime.now().isoformat(),
+        }
+
     def execute(self, instruction: Dict) -> Dict[str, Any]:
         """
         执行单条指令（统一入口）
@@ -748,6 +766,8 @@ class Executor:
             "delete": lambda: self.execute_delete(
                 instruction["target"], instruction.get("line_spec", "")
             ),
+            "task": lambda: self.execute_task(instruction["content"]),
+            "history": lambda: self.execute_history(instruction["content"]),
         }
 
         instruction_type = instruction.get("type")
