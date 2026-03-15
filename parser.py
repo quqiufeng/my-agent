@@ -21,7 +21,7 @@ class Parser:
             r"#read\s+(\S+)(?:\s+(\d+)(?::(\d+))?)?\s*#end", re.DOTALL | re.IGNORECASE
         ),
         "file": re.compile(
-            r"#file\s+(?:file:)?\S+\s*(.*?)\s*#end", re.DOTALL | re.IGNORECASE
+            r"#file\s+file:(\S+)\s*\n(.*?)\n#end", re.DOTALL | re.IGNORECASE
         ),
         "dir": re.compile(r"#dir\s+(\S+)\s*#end", re.DOTALL | re.IGNORECASE),
         "log": re.compile(
