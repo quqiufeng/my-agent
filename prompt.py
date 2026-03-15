@@ -224,7 +224,7 @@ def build_history_info(prompt: str, info: str = "") -> str:
     return prompt.replace("{history_info}", info or "暂无历史上下文信息")
 
 
-def build_system_info(prompt: str, info: str = "") -> str:
+def build_system_info(prompt: str, project_root: str = "", info: str = "") -> str:
     def get_path(cmd: str) -> str:
         try:
             result = subprocess.run(
@@ -239,6 +239,20 @@ def build_system_info(prompt: str, info: str = "") -> str:
             pass
         return "未安装"
 
+    def get_cuda_paths() -> list[str]:
+        cuda_paths = []
+        nvcc_path = get_path("nvcc")
+        if nvcc_path and nvcc_path != "未安装":
+            cuda_home = os.path.dirname(os.path.dirname(nvcc_path))
+            cuda_lib = os.path.join(cuda_home, "lib64")
+            if os.path.exists(cuda_lib):
+                cuda_paths.append(f"CUDA lib: {cuda_lib}")
+            else:
+                cuda_lib = os.path.join(cuda_home, "lib")
+                if os.path.exists(cuda_lib):
+                    cuda_paths.append(f"CUDA lib: {cuda_lib}")
+        return cuda_paths
+
     paths = [
         f"Python: {sys.executable}",
         f"系统: {platform.system()} {platform.release()}",
@@ -250,7 +264,9 @@ def build_system_info(prompt: str, info: str = "") -> str:
         f"node: {get_path('node')}",
         f"npm: {get_path('npm')}",
     ]
+    paths.extend(get_cuda_paths())
     system_info = info or "\n".join(paths)
+    prompt = prompt.replace("{project_root}", project_root or os.getcwd())
     return prompt.replace("{system_info}", system_info)
 
 
@@ -300,6 +316,7 @@ def build_user_prompt(user_prompt: str) -> str:
 ##
 
 ## 系统环境
+项目根目录: {project_root}
 {system_info}
 ##
 
@@ -308,8 +325,8 @@ def build_user_prompt(user_prompt: str) -> str:
 ##
 
 ## 工作流程（续）
-- 所有操作必须使用标签格式
-- 每次只执行少量操作，等待结果后再继续
+- 如果项目相关信息不够，应该先用指令标签一次收集够，再开始工作
+- 与客户端如果有多次交互，需要自己维护上下文信息，返回内容中要包含 #history #end 包裹的内容，维护最近10条即可，控制好记录总数
 - 如果执行失败，分析错误原因并修复"""
 
     result = build_tag_info(system_prompt)
@@ -317,7 +334,7 @@ def build_user_prompt(user_prompt: str) -> str:
     result = build_user_prompt_content(result, user_prompt)
     result = build_task_info(result, "")
     result = build_history_info(result, "")
-    result = build_system_info(result, "")
+    result = build_system_info(result, os.getcwd(), "")
     return result
 
 
