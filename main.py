@@ -143,7 +143,14 @@ def main():
                 print("已写入 debug.log", flush=True)
 
                 # 解析并执行指令
-                instructions = parser.parse(result)
+                try:
+                    instructions = parser.parse(result)
+                except Exception as e:
+                    print(f"解析错误: {e}", flush=True)
+                    import traceback
+
+                    traceback.print_exc()
+                    break
                 if instructions:
                     print("[解析指令...]", flush=True)
                     print(f"instructions: {instructions}", flush=True)
