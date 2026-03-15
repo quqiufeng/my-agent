@@ -69,6 +69,14 @@ def build_tag_info(prompt: str) -> str:
 用途：创建新文件或整体替换已有文件
 格式：`#file file:文件路径 内容 #end`
 示例：`#file src/main.py def main(): pass #end`
+完整示例（多行代码）：
+```
+#file file:src/main.py
+class Main:
+    def run(self):
+        print("hello")
+#end
+```
 
 ### 7. #dir - 创建目录
 用途：创建目录结构
