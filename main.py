@@ -17,8 +17,25 @@ from executor import Executor
 from prompt import build_user_prompt
 
 SAFE_SHELL_COMMANDS = {
-    "ls", "pwd", "cd", "cat", "head", "tail", "grep", "find", "tree",
-    "git", "which", "whereis", "file", "stat", "wc", "sort", "uniq", "awk", "sed",
+    "ls",
+    "pwd",
+    "cd",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "find",
+    "tree",
+    "git",
+    "which",
+    "whereis",
+    "file",
+    "stat",
+    "wc",
+    "sort",
+    "uniq",
+    "awk",
+    "sed",
 }
 
 
@@ -69,7 +86,7 @@ def main():
                 continue
 
             while True:
-                print("\n[正在发送到远程 API...]")
+                print("\n[正在发送到远程 API...]" + "\n", flush=True)
                 proc = subprocess.Popen(
                     [
                         sys.executable,
@@ -87,24 +104,24 @@ def main():
                     break
 
                 if stderr:
-                    print(f"错误: {stderr.decode()}")
+                    print(f"错误: {stderr.decode()}", flush=True)
                     break
                 if not stdout:
-                    print("没有返回结果")
+                    print("没有返回结果", flush=True)
                     break
 
                 data = json.loads(stdout.decode())
                 result = data["result"]
-                print(f"返回结果长度: {len(result)}")
+                print(f"返回结果长度: {len(result)}", flush=True)
 
                 with open("debug.log", "w") as f:
                     f.write(result)
-                print("已写入 debug.log")
+                print("已写入 debug.log", flush=True)
 
                 try:
                     instructions = parser.parse(result)
                 except Exception as e:
-                    print(f"解析错误: {e}")
+                    print(f"解析错误: {e}", flush=True)
                     break
 
                 if instructions:
@@ -119,7 +136,7 @@ def main():
 
                     exec_results = []
                     if exec_instructions:
-                        print("[执行指令...]")
+                        print("[执行指令...]", flush=True)
                         for instr in exec_instructions:
                             r = executor.execute(instr)
                             exec_results.append(r["output"])
@@ -136,14 +153,14 @@ def main():
                     break
 
                 if "[success!]" in result:
-                    print("[任务完成]")
+                    print("[任务完成]", flush=True)
                     break
 
                 user_continue = (
                     input("[是否继续？(y/n) 或输入补充信息] ").strip().lower()
                 )
                 if user_continue in ["n", "no"]:
-                    print("[结束任务]")
+                    print("[结束任务]", flush=True)
                     break
                 elif user_continue in ["y", "yes", ""]:
                     continue
