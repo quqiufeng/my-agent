@@ -130,6 +130,8 @@ def main():
                 for instr in instructions:
                     exec_result = executor.execute(instr)
                     print(f"执行结果: {exec_result}")
+            elif "[success!]" in result:
+                print("[任务完成]")
             print()
 
         except KeyboardInterrupt:
