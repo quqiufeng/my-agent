@@ -116,7 +116,8 @@ def build_tag_info(prompt: str) -> str:
 5. 执行结果会返回给你，根据结果决定下一步。
 6. 标签内的内容 不得危害本地环境，包括操作系统和不得下载与项目无关的文件。
 7. #file 标签 权重要比 #code 高,#file标签用于创建py脚本必须严格按照标签格式来,需要有#end标签结束。
-8. !!!!非常重要：每个标签都必须有对应的 #end 结束，没有 #end 的一律不会被执行。"""
+8. 大段代码应该用 #file #end 创建 py 脚本，然后用 #shell #end 执行 python -c 代码测试。
+9. !!!!非常重要：每个标签都必须有对应的 #end 结束，没有 #end 的一律不会被执行。"""
 
     return prompt.replace("{tag_info}", system_prompt or "未提供项目信息")
 
