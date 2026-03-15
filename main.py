@@ -87,6 +87,7 @@ def main():
 
             while True:
                 print("\n[正在发送到远程 API...]" + "\n", flush=True)
+
                 proc = subprocess.Popen(
                     [
                         sys.executable,
@@ -100,7 +101,7 @@ def main():
                     stdout, stderr = proc.communicate(timeout=180)
                 except subprocess.TimeoutExpired:
                     proc.kill()
-                    print("调用超时")
+                    print("调用超时", flush=True)
                     break
 
                 if stderr:
@@ -147,9 +148,9 @@ def main():
                         meta_results.append(r["output"])
 
                     prompt_with_result = f"{user_input}\n\n--- 上一次执行结果 ---\n{chr(10).join(exec_results + meta_results)}"
-                    print("=== 发送给 API 的提示词 ===")
-                    print(prompt_with_result[:500])
-                    print("=== 提示词结束 ===\n")
+                    print("=== 发送给 API 的提示词 ===", flush=True)
+                    print(prompt_with_result[:500], flush=True)
+                    print("=== 提示词结束 ===\n", flush=True)
                     break
 
                 if "[success!]" in result:
