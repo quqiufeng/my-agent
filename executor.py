@@ -24,7 +24,7 @@ class Executor:
         # 执行历史
         self.execution_history: List[Dict] = []
 
-    # 返回信息给远程 AI
+    #执行shell 标签 返回shell命令 和 执行命令后的结果
     def execute_shell(self, command: str, timeout: int = 60) -> Dict[str, Any]:
         """
         执行Shell命令
@@ -41,11 +41,10 @@ class Executor:
             "command": command,
             "success": False,
             "output": "",
-            "info": f"shell({command})执行成功",
+            "info": f"执行shell命令,({command}) 返回结果: ",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
-
         try:
             # 使用shell执行
             process = subprocess.run(
@@ -56,7 +55,6 @@ class Executor:
                 timeout=timeout,
                 cwd=str(self.project_root),
             )
-
             result["success"] = process.returncode == 0
             result["output"] = process.stdout
             result["error"] = process.stderr
@@ -70,7 +68,7 @@ class Executor:
         self.execution_history.append(result)
         return result
 
-    # 返回信息给远程 AI
+    #执行 code标签 包含的代码 返回执行结果 
     def execute_code(self, code: str) -> Dict[str, Any]:
         """
         执行Python代码
@@ -86,7 +84,7 @@ class Executor:
             "code": code,
             "success": False,
             "output": "",
-            "info": "代码调试结果:",
+            "info": "执行指定代码, 返回结果: ",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -120,7 +118,7 @@ class Executor:
         self.execution_history.append(result)
         return result
 
-    # 返回信息给远程 AI
+    #执行 debug 标签返回 执行结果 
     def execute_debug(self, code: str) -> Dict[str, Any]:
         """
         功能：调试 Python 代码
@@ -131,14 +129,13 @@ class Executor:
             "code": code,
             "success": False,
             "output": "",
+            "info": "执行python -c 调试代码, 返回结果: ",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
-
         try:
             env = os.environ.copy()
             env["PYTHONPATH"] = str(self.project_root) + ":" + env.get("PYTHONPATH", "")
-
             process = subprocess.run(
                 [sys.executable, "-c", code],
                 capture_output=True,
@@ -147,7 +144,6 @@ class Executor:
                 cwd=str(self.project_root),
                 env=env,
             )
-
             result["success"] = process.returncode == 0
             result["output"] = process.stdout
             result["error"] = process.stderr
@@ -161,7 +157,7 @@ class Executor:
         self.execution_history.append(result)
         return result
 
-    # 返回信息给远程 AI
+    # 执行 read标签返回读取内容
     def execute_read(
         self, file_path: str, start_line: int = None, end_line: int = None
     ) -> Dict[str, Any]:
@@ -174,7 +170,7 @@ class Executor:
             "target": file_path,
             "success": False,
             "output": "",
-            "info": f"读取({file_path})",
+            "info": f"读取({file_path}),返回内容: ",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -208,7 +204,6 @@ class Executor:
     def _backup_file(self, file_path: Path) -> Optional[Path]:
         """
         备份文件
-
         Args:
             file_path: 文件路径
 
@@ -217,14 +212,12 @@ class Executor:
         """
         if not file_path.exists():
             return None
-
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_name = f"{file_path.name}.{timestamp}.bak"
         backup_path = self.backup_dir / backup_name
 
         backup_path.write_text(file_path.read_text(encoding="utf-8"))
         return backup_path
-
     def execute_file(self, file_path: str, content: str) -> Dict[str, Any]:
         """
         写入文件
@@ -241,14 +234,12 @@ class Executor:
             "target": file_path,
             "success": False,
             "output": "",
-            "info": f"file({file_path})创建成功",
+            "info": f"file:({file_path})创建成功",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
-
         try:
             target_path = self.project_root / file_path
-
             # 备份已存在的文件
             if target_path.exists():
                 backup = self._backup_file(target_path)
@@ -284,7 +275,7 @@ class Executor:
             "target": dir_path,
             "success": False,
             "output": "",
-            "info": f"创建文件夹({dir_path})",
+            "info": f"创建文件夹:({dir_path}): ",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -323,6 +314,7 @@ class Executor:
             "target": file_path,
             "success": False,
             "output": "",
+            "info": f"给:({file_path}),添加日志: ",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -402,7 +394,7 @@ class Executor:
             "target": file_path,
             "success": False,
             "output": "",
-            "info": f"编辑了文件({file_path})",
+            "info": f"编辑文件:({file_path}) :",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -475,7 +467,7 @@ class Executor:
             "target": file_path,
             "success": False,
             "output": "",
-            "info": f"给文件({file_path})加注释",
+            "info": f"注释文件:({file_path}): ",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -554,7 +546,7 @@ class Executor:
 
         return lines_to_delete
 
-    # 返回信息给远程 AI
+    # 执行自省标签 返回类的函数有哪些 
     def execute_inspect(self, target: str) -> Dict[str, Any]:
         """
         功能：自省模块/函数
@@ -566,7 +558,7 @@ class Executor:
             "target": target,
             "success": False,
             "output": "",
-            "info": f"查看类({target})下的函数",
+            "info": f"查看类({target})下的函数: ",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -666,11 +658,10 @@ class Executor:
             "target": file_path,
             "success": False,
             "output": "",
-            "info": f"删除了文件({file_path})",
+            "info": f"删除了文件({file_path}) ",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
-
         try:
             target_path = self.project_root / file_path
 
@@ -715,7 +706,7 @@ class Executor:
         return result
 
     def execute_task(self, content: str) -> Dict[str, Any]:
-        """执行 #task 标签 - 返回任务进度信息"""
+        """#task 标签 - 原样返回 任务进度远程api自己维护"""
         return {
             "success": True,
             "output": f"[任务进度]\n{content}",
@@ -724,7 +715,7 @@ class Executor:
         }
 
     def execute_history(self, content: str) -> Dict[str, Any]:
-        """执行 #history 标签 - 返回历史上下文信息"""
+        """#history 标签 - 原样返回 同上"""
         return {
             "success": True,
             "output": f"[历史上下文]\n{content}",
