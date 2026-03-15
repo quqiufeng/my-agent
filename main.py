@@ -28,7 +28,7 @@ print('解析指令数:', len(instructions))
 exec_results = []
 for instr in instructions:
     r = executor.execute(instr)
-    exec_results.append(r['output'])
+    exec_results.append(r.get("info", "") + "\n" + r.get("output", ""))
 
 prompt_with_result = f'{user_input}\n\n--- 上一次执行结果 ---\n{chr(10).join(exec_results)}'
 print('=== 发送给 API 的提示词 ===')
@@ -51,9 +51,27 @@ from executor import Executor
 from prompt import build_user_prompt
 
 SAFE_SHELL_COMMANDS = {
-"ls","pwd","cd","cat","head","tail","grep","find","tree","git",
-"which","whereis","file","stat","wc","sort","uniq","awk","sed"
+    "ls",
+    "pwd",
+    "cd",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "find",
+    "tree",
+    "git",
+    "which",
+    "whereis",
+    "file",
+    "stat",
+    "wc",
+    "sort",
+    "uniq",
+    "awk",
+    "sed",
 }
+
 
 def is_direct_shell_command(command: str) -> bool:
     return command.startswith("!") and not command.startswith("!!")
