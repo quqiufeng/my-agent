@@ -171,11 +171,15 @@ class Parser:
         pattern = self.PATTERNS["file"]
         results = []
         for match in pattern.finditer(text):
+            if match.lastindex and match.lastindex >= 2:
+                content = match.group(2).strip()
+            else:
+                content = ""
             results.append(
                 {
                     "type": "file",
                     "target": match.group(1).strip(),
-                    "content": match.group(2).strip(),
+                    "content": content,
                 }
             )
         return results
