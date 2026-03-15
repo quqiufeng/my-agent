@@ -130,8 +130,7 @@ def main():
 
                 data = json.loads(stdout.decode())
                 result = data["result"]
-                print(f"返回结果长度: {len(result)}", flush=True)
-
+                #print(f"返回结果长度: {len(result)}", flush=True)
                 with open("debug.log", "w") as f:
                     f.write(result)
                 print("已写入 debug.log", flush=True)
@@ -147,9 +146,9 @@ def main():
                     exec_results = []
                     for instr in instructions:
                         r = executor.execute(instr)
-                        exec_results.append(
-                            r.get("info", "") + "\n" + r.get("output", "")
-                        )
+                        res = r.get("info", "") + "\n" + r.get("output", "")
+                        print(res, flush=True)
+                        exec_results.append(res)
 
                     # 提取 task 和 history
                     import re
@@ -164,7 +163,6 @@ def main():
                     history_info = (
                         history_match.group(1).strip() if history_match else ""
                     )
-
                     # 调用 build_user_prompt 获取提示词
                     prompt_with_result = build_user_prompt(
                         user_input, task_info, history_info
@@ -172,7 +170,6 @@ def main():
                     print("=== 发送给 API 的提示词 ===", flush=True)
                     print(prompt_with_result, flush=True)
                     print("=== 提示词结束 ===\n", flush=True)
-
                     break
 
                 if "[success!]" in result:
