@@ -53,7 +53,7 @@ def execute_direct_shell(command: str) -> str:
         result = subprocess.run(
             cmd, shell=True, capture_output=True, text=True, timeout=30
         )
-        return result.stdout or result.stderr or "命令执行完成（无输出）"
+        return result.stdout or result.stderr or "命令执行完成"
     except Exception as e:
         return f"执行失败: {e}"
 
@@ -78,6 +78,7 @@ def main():
             if user_input.lower() in ["quit", "exit", "q", "!quit"]:
                 print("再见!")
                 break
+
             if is_direct_shell_command(user_input):
                 print("\n[直接执行 shell 命令...]")
                 print(execute_direct_shell(user_input))
@@ -85,7 +86,7 @@ def main():
                 continue
 
             while True:
-                print("\n[正在发送到远程 API...]" + "\n", flush=True)
+                print("\n[正在发送到远程 API...]")
                 proc = subprocess.Popen(
                     [
                         sys.executable,
@@ -99,34 +100,31 @@ def main():
                     stdout, stderr = proc.communicate(timeout=180)
                 except subprocess.TimeoutExpired:
                     proc.kill()
-                    print("调用超时", flush=True)
+                    print("调用超时")
                     break
+
                 if stderr:
-                    print(f"错误: {stderr.decode()}", flush=True)
+                    print(f"错误: {stderr.decode()}")
                     break
                 if not stdout:
-                    print("没有返回结果", flush=True)
+                    print("没有返回结果")
                     break
 
                 data = json.loads(stdout.decode())
                 result = data["result"]
-                print(f"返回结果长度: {len(result)}", flush=True)
+                print(f"返回结果长度: {len(result)}")
 
-                with open("debug.log", "w", encoding="utf-8") as f:
+                with open("debug.log", "w") as f:
                     f.write(result)
-                print("已写入 debug.log", flush=True)
+                print("已写入 debug.log")
 
                 try:
                     instructions = parser.parse(result)
                 except Exception as e:
-                    print(f"解析错误: {e}", flush=True)
-                    import traceback
-
-                    traceback.print_exc()
+                    print(f"解析错误: {e}")
                     break
 
                 if instructions:
-                    print(f"instructions: {instructions[:3]}")
                     exec_instructions = [
                         i
                         for i in instructions
@@ -141,7 +139,6 @@ def main():
                         print("[执行指令...]")
                         for instr in exec_instructions:
                             r = executor.execute(instr)
-                            print(f"执行结果: {r.get('output', '')[:100]}")
                             exec_results.append(r["output"])
 
                     meta_results = []
@@ -156,14 +153,14 @@ def main():
                     break
 
                 if "[success!]" in result:
-                    print("[任务完成]", flush=True)
+                    print("[任务完成]")
                     break
 
                 user_continue = (
                     input("[是否继续？(y/n) 或输入补充信息] ").strip().lower()
                 )
                 if user_continue in ["n", "no"]:
-                    print("[结束任务]", flush=True)
+                    print("[结束任务]")
                     break
                 elif user_continue in ["y", "yes", ""]:
                     continue
