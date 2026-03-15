@@ -293,7 +293,7 @@ def build_system_info(prompt: str, project_root: str = "", info: str = "") -> st
     return prompt.replace("{system_info}", system_info)
 
 
-def build_user_prompt(user_prompt: str) -> str:
+def build_user_prompt(user_prompt: str, task: str = "", history: str = "") -> str:
     system_prompt = """你是一个本地 AI 编程助手。
 
 ## 你的能力
@@ -368,8 +368,8 @@ def build_user_prompt(user_prompt: str) -> str:
     result = build_tag_info(system_prompt)
     result = build_project_info(result, "")
     result = build_user_prompt_content(result, user_prompt)
-    result = build_task_info(result, "")
-    result = build_history_info(result, "")
+    result = build_task_info(result, task)
+    result = build_history_info(result, history)
     result = build_system_info(result, os.getcwd(), "")
     return result
 
