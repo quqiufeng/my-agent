@@ -41,6 +41,7 @@ class Executor:
             "command": command,
             "success": False,
             "output": "",
+            "info": f"shell({command})执行成功",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -85,6 +86,7 @@ class Executor:
             "code": code,
             "success": False,
             "output": "",
+            "info": "代码调试结果:",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -172,6 +174,7 @@ class Executor:
             "target": file_path,
             "success": False,
             "output": "",
+            "info": f"读取({file_path})",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -238,6 +241,7 @@ class Executor:
             "target": file_path,
             "success": False,
             "output": "",
+            "info": f"file({file_path})创建成功",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -280,6 +284,7 @@ class Executor:
             "target": dir_path,
             "success": False,
             "output": "",
+            "info": f"创建文件夹({dir_path})",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -397,6 +402,7 @@ class Executor:
             "target": file_path,
             "success": False,
             "output": "",
+            "info": f"编辑了文件({file_path})",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -469,6 +475,7 @@ class Executor:
             "target": file_path,
             "success": False,
             "output": "",
+            "info": f"给文件({file_path})加注释",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -559,6 +566,7 @@ class Executor:
             "target": target,
             "success": False,
             "output": "",
+            "info": f"查看类({target})下的函数",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
@@ -658,6 +666,7 @@ class Executor:
             "target": file_path,
             "success": False,
             "output": "",
+            "info": f"删除了文件({file_path})",
             "error": "",
             "timestamp": datetime.now().isoformat(),
         }
