@@ -68,7 +68,7 @@ def build_tag_info(prompt: str) -> str:
 ### 6. #file - 写入文件（整体替换）
 用途：创建新文件或整体替换已有文件
 格式：`#file file:文件路径 内容 #end`
-示例：`#file src/main.py def main(): pass #end`
+注意：文件路径必须是英文，不能是中文！例如用 `redblack_tree.py` 而不是 `红黑树.py`
 完整示例（多行代码）：
 ```
 #file file:src/main.py
