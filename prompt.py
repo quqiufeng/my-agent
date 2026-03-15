@@ -170,6 +170,10 @@ def build_task_info(prompt: str, info: str = "") -> str:
     return prompt.replace("{task_info}", info or "暂无任务进度")
 
 
+def build_history_info(prompt: str, info: str = "") -> str:
+    return prompt.replace("{history_info}", info or "暂无历史上下文信息")
+
+
 def build_system_info(prompt: str, info: str = "") -> str:
     def get_path(cmd: str) -> str:
         try:
@@ -235,6 +239,9 @@ def build_user_prompt(user_prompt: str) -> str:
 ## 系统环境
 {system_info}
 
+## 上下文历史信息
+{history_info}
+
 ## 重要约束
 - 所有操作必须使用标签格式
 - 每次只执行少量操作，等待结果后再继续
@@ -243,6 +250,7 @@ def build_user_prompt(user_prompt: str) -> str:
     result = build_project_info(system_prompt, "")
     result = build_user_prompt_content(result, user_prompt)
     result = build_task_info(result, "")
+    result = build_history_info(result, "")
     result = build_system_info(result, "")
     return result
 
