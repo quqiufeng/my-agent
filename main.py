@@ -51,27 +51,9 @@ from executor import Executor
 from prompt import build_user_prompt
 
 SAFE_SHELL_COMMANDS = {
-    "ls",
-    "pwd",
-    "cd",
-    "cat",
-    "head",
-    "tail",
-    "grep",
-    "find",
-    "tree",
-    "git",
-    "which",
-    "whereis",
-    "file",
-    "stat",
-    "wc",
-    "sort",
-    "uniq",
-    "awk",
-    "sed",
+"ls","pwd","cd","cat","head","tail","grep","find","tree","git",
+"which","whereis","file","stat","wc","sort","uniq","awk","sed"
 }
-
 
 def is_direct_shell_command(command: str) -> bool:
     return command.startswith("!") and not command.startswith("!!")
