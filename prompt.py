@@ -3,14 +3,12 @@
 Prompt 模块 - 提示词构建
 构建每次请求远程大模型时需要的提示词
 """
-
 import os
 import sys
 from typing import List
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
-
 
 class PromptBuilder:
     """提示词构建器"""
@@ -21,72 +19,8 @@ class PromptBuilder:
     def build(self) -> str:
         return build_user_prompt(self.user_prompt)
 
-
-def build_project_info(prompt: str, info: str = "") -> str:
-    return prompt.replace("{project_info}", info or "未提供项目信息")
-
-
-def build_user_prompt_content(prompt: str, user_prompt: str = "") -> str:
-    return prompt.replace("{user_prompt}", user_prompt or "未提供用户请求")
-
-
-def build_task_info(prompt: str, info: str = "") -> str:
-    return prompt.replace("{task_info}", info or "暂无任务进度")
-
-
-def build_system_info(prompt: str, info: str = "") -> str:
-    import platform
-    import sys
-
-    system_info = (
-        info
-        or f"Python {sys.version.split()[0]}, {platform.system()} {platform.release()}"
-    )
-    return prompt.replace("{system_info}", system_info)
-
-
-def build_user_prompt(user_prompt: str) -> str:
-    system_prompt = """你是一个本地 AI 编程助手。
-
-## 你的能力
-1. 读写文件,新建文件,执行shell命令,删除文件,git 命令
-2. 通过标签指令与本地环境交互,包括给一段python代码让本地执行的能力
-3. python代码无法完成需求,或者用户指定要求，可以升级用c,c++代码实现。
-   本地有完整工具链实现c,c++代码实现底层功能python封装调用的能力。
-4. 根据执行结果迭代改进的能力
-
-## 工作流程
-1. 先了解项目现状,如果信息不够详细，可以使用 #指令标签 继续获取关于项目的必要信息。
-2. 规划实现方案
-3. 返回带#标签指令 #end 的内容，让本地解析并执行相应的操作
-4. 检查执行结果，根据需要进行下一步或者确认是否完成目标。
-5. 完成任务后直接返回结果 [success!]
-
-## 现有目录结构
-{project_info}
-
-## 用户请求
-{user_prompt}
-
-## 任务进度
-{task_info}
-
-## 系统环境
-{system_info}
-
-## 重要约束
-- 所有操作必须使用标签格式
-- 每次只执行少量操作，等待结果后再继续
-- 如果执行失败，分析错误原因并修复"""
-
-    result = build_project_info(system_prompt, "")
-    result = build_user_prompt_content(result, user_prompt)
-    result = build_task_info(result, "")
-    result = build_system_info(result, "")
-    return result
-
-
-TAG_DEFINITIONS = """
+def build_tag_info(prompt: str) -> str:
+    system_prompt = """
 你可以使用以下 11 种标签指令：
 
 ### 1. #shell - 执行 Shell 命令
@@ -151,13 +85,83 @@ TAG_DEFINITIONS = """
 格式：`#task 任务名 完成状态 #end`
 示例：`#task 新建一个文件 完成 #end`
 
-
 ## 标签使用规则
 1. 标签必须成对出现：`#shell ... #end`
 2. 可以在同一次回复中使用多个标签
 3. 执行结果会返回给你，根据结果决定下一步
 4. 完成后不要使用标签，直接返回结果"""
 
+    return prompt.replace("{tag_info}", system_prompt or "未提供项目信息")
+
+
+def build_project_info(prompt: str, info: str = "") -> str:
+    return prompt.replace("{project_info}", info or "未提供项目信息")
+
+
+def build_user_prompt_content(prompt: str, user_prompt: str = "") -> str:
+    return prompt.replace("{user_prompt}", user_prompt or "未提供用户请求")
+
+
+def build_task_info(prompt: str, info: str = "") -> str:
+    return prompt.replace("{task_info}", info or "暂无任务进度")
+
+
+def build_system_info(prompt: str, info: str = "") -> str:
+    import platform
+    import sys
+
+    system_info = (
+        info
+        or f"Python {sys.version.split()[0]}, {platform.system()} {platform.release()}"
+    )
+    return prompt.replace("{system_info}", system_info)
+
+
+def build_user_prompt(user_prompt: str) -> str:
+    system_prompt = """你是一个本地 AI 编程助手。
+
+## 你的能力
+1. 读写文件,新建文件,执行shell命令,删除文件,git 命令
+2. 通过标签指令与本地环境交互,包括给一段python代码让本地执行的能力,还有利用python -c代码本地调试的能力。
+3. python代码无法完成需求,或者用户指定要求，可以升级用c,c++代码实现。
+   本地有完整工具链,可以用c,c++代码实现底层功能编译成so文件,被python代码载入并封装调用。
+4. 根据执行结果迭代改进的能力
+
+## 工作流程
+1. 先了解项目现状,如果信息不够详细，可以使用 #指令标签 继续获取关于项目的必要信息。
+2. 规划实现方案,把实现过程拆分成任务进度清单，并自己维护任务清单的工作状态,
+   用#task #end 包裹作为返回客户端内容的一部分,标签包裹的内容一行一个任务还有任务状态，本地会原样返回给你。
+3. 返回带#标签指令 #end 的内容，让本地解析并执行相应的操作,返回的内容分两部分一部分是操作本地的指令标签内容，
+   第二部分是人类可以理解的自然语言，作为你对实现需求的必要描述,文字简练通熟易懂。
+   如有必要同一个指令标签可以多次出现，本地会多次匹配并执行。
+4. 根据客户端返回的内容检查执行结果，根据需要进行下一步或者确认是否完成目标。
+5. 完成任务后直接返回结果 [success!]
+
+## 指令标签定义和功能
+{tag_info}
+
+## 现有目录结构
+{project_info}
+
+## 用户请求
+{user_prompt}
+
+## 任务进度
+{task_info}
+
+## 系统环境
+{system_info}
+
+## 重要约束
+- 所有操作必须使用标签格式
+- 每次只执行少量操作，等待结果后再继续
+- 如果执行失败，分析错误原因并修复"""
+
+    result = build_project_info(system_prompt, "")
+    result = build_user_prompt_content(result, user_prompt)
+    result = build_task_info(result, "")
+    result = build_system_info(result, "")
+    return result
 
 if __name__ == "__main__":
     print("=== Prompt 测试 ===\n")
