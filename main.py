@@ -32,7 +32,7 @@ for instr in instructions:
 
 prompt_with_result = f'{user_input}\n\n--- 上一次执行结果 ---\n{chr(10).join(exec_results)}'
 print('=== 发送给 API 的提示词 ===')
-print(prompt_with_result[:300])
+print(prompt_with_result)
 print('=== 提示词结束 ===')
 ```
 """
@@ -51,8 +51,25 @@ from executor import Executor
 from prompt import build_user_prompt
 
 SAFE_SHELL_COMMANDS = {
-    "ls", "pwd", "cd", "cat", "head", "tail", "grep", "find", "tree",
-    "git", "which", "whereis", "file", "stat", "wc", "sort", "uniq", "awk", "sed",
+    "ls",
+    "pwd",
+    "cd",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "find",
+    "tree",
+    "git",
+    "which",
+    "whereis",
+    "file",
+    "stat",
+    "wc",
+    "sort",
+    "uniq",
+    "awk",
+    "sed",
 }
 
 
