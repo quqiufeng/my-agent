@@ -25,11 +25,46 @@ def is_direct_shell_command(user_input: str) -> bool:
     return user_input.startswith("!")
 
 
+SAFE_SHELL_COMMANDS = {
+    "ls",
+    "pwd",
+    "cd",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "find",
+    "tree",
+    "git status",
+    "git log",
+    "git diff",
+    "which",
+    "whereis",
+    "file",
+    "stat",
+    "wc",
+    "sort",
+    "uniq",
+    "awk",
+    "sed",
+}
+
+
 def execute_direct_shell(command: str) -> str:
-    """直接执行 shell 命令"""
+    """直接执行安全的 shell 命令"""
+    cmd = command[1:].strip()
+    safe = False
+    for safe_cmd in SAFE_SHELL_COMMANDS:
+        if cmd.startswith(safe_cmd):
+            safe = True
+            break
+
+    if not safe:
+        return f"安全提示：不允许执行此命令，仅支持只读查询类命令（如 ls, pwd, cat, git status 等）"
+
     try:
         result = subprocess.run(
-            command[1:],  # 去掉 ! 前缀
+            cmd,
             shell=True,
             capture_output=True,
             text=True,
