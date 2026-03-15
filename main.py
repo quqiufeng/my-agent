@@ -51,25 +51,8 @@ from executor import Executor
 from prompt import build_user_prompt
 
 SAFE_SHELL_COMMANDS = {
-    "ls",
-    "pwd",
-    "cd",
-    "cat",
-    "head",
-    "tail",
-    "grep",
-    "find",
-    "tree",
-    "git",
-    "which",
-    "whereis",
-    "file",
-    "stat",
-    "wc",
-    "sort",
-    "uniq",
-    "awk",
-    "sed",
+    "ls", "pwd", "cd", "cat", "head", "tail", "grep", "find", "tree",
+    "git", "which", "whereis", "file", "stat", "wc", "sort", "uniq", "awk", "sed",
 }
 
 
