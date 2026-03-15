@@ -51,8 +51,25 @@ from executor import Executor
 from prompt import build_user_prompt
 
 SAFE_SHELL_COMMANDS = {
-    "ls", "pwd", "cd", "cat", "head", "tail", "grep", "find", "tree",
-    "git", "which", "whereis", "file", "stat", "wc", "sort", "uniq", "awk", "sed",
+    "ls",
+    "pwd",
+    "cd",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "find",
+    "tree",
+    "git",
+    "which",
+    "whereis",
+    "file",
+    "stat",
+    "wc",
+    "sort",
+    "uniq",
+    "awk",
+    "sed",
 }
 
 
@@ -151,10 +168,28 @@ def main():
                             r.get("info", "") + "\n" + r.get("output", "")
                         )
 
-                    prompt_with_result = f"{user_input}\n\n--- 上一次执行结果 ---\n{chr(10).join(exec_results)}"
+                    # 提取 task 和 history
+                    import re
+
+                    task_match = re.search(
+                        r"#task\s+(.*?)\s*#end", result, re.DOTALL | re.IGNORECASE
+                    )
+                    history_match = re.search(
+                        r"#history\s+(.*?)\s*#end", result, re.DOTALL | re.IGNORECASE
+                    )
+                    task_info = task_match.group(1).strip() if task_match else ""
+                    history_info = (
+                        history_match.group(1).strip() if history_match else ""
+                    )
+
+                    # 调用 build_user_prompt 获取提示词
+                    prompt_with_result = build_user_prompt(
+                        user_input, task_info, history_info
+                    )
                     print("=== 发送给 API 的提示词 ===", flush=True)
-                    print(prompt_with_result[:500], flush=True)
+                    print(prompt_with_result, flush=True)
                     print("=== 提示词结束 ===\n", flush=True)
+
                     break
 
                 if "[success!]" in result:
