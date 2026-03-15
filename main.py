@@ -98,7 +98,7 @@ def main():
 
             # 需要发送到远程 API 处理
             while True:
-                print("\n[正在发送到远程 API...]\n")
+                print("\n[正在发送到远程 API...]" + "\n", flush=True)
 
                 prompt = build_user_prompt(user_input)
                 result = chat(
@@ -107,26 +107,30 @@ def main():
                     max_tokens=8192,
                 )
 
-                print("=" * 50)
-                print("API 返回结果:")
-                print("=" * 50)
-                print(result)
-                print()
+                # 写入 debug.log
+                with open("debug.log", "w", encoding="utf-8") as f:
+                    f.write(result)
+                print("已写入 debug.log", flush=True)
 
                 # 解析并执行指令
                 instructions = parser.parse(result)
                 if instructions:
-                    print("[执行指令...]")
+                    print("[解析指令...]", flush=True)
+                    print(f"instructions: {instructions}", flush=True)
+                    print("[执行指令...]", flush=True)
+                    exec_results = []
                     for instr in instructions:
                         exec_result = executor.execute(instr)
-                        print(f"执行结果: {exec_result}")
-                    print()
-                    # 有指令执行完，继续循环等待下一次 API 调用
+                        print(f"执行结果: {exec_result}", flush=True)
+                        exec_results.append(exec_result)
+                    print(flush=True)
+
+                    # 有指令执行完，继续循环
                     continue
 
                 # 没有指令，检查是否完成
                 if "[success!]" in result:
-                    print("[任务完成]")
+                    print("[任务完成]", flush=True)
                     break
 
                 # 没有指令也没有 success，询问用户
@@ -134,7 +138,7 @@ def main():
                     input("[是否继续？(y/n) 或输入补充信息] ").strip().lower()
                 )
                 if user_continue in ["n", "no"]:
-                    print("[结束任务]")
+                    print("[结束任务]", flush=True)
                     break
                 elif user_continue in ["y", "yes", ""]:
                     # 继续调用 API
