@@ -61,27 +61,31 @@ def execute_direct_shell(command: str) -> str:
 def main():
     print("=" * 50)
     print("AI 编程助手 - 命令行模式")
-    print("输入需求按回车执行，!命令 直接执行shell，quit 退出")
-    print("=" * 50 + "\n")
+    print("输入你的需求，按回车执行")
+    print("输入 '!shell 命令' 直接执行 shell")
+    print("输入 'quit' 或 'exit' 退出")
+    print("=" * 50)
+    print()
 
-    parser, executor = Parser(), Executor()
+    parser = Parser()
+    executor = Executor()
 
     while True:
         try:
             user_input = input(">>> ").strip()
-            if not user_input or user_input.lower() in ["quit", "exit", "q", "!quit"]:
+            if not user_input:
+                continue
+            if user_input.lower() in ["quit", "exit", "q", "!quit"]:
                 print("再见!")
                 break
-
             if is_direct_shell_command(user_input):
-                print("[直接执行 shell 命令...]")
+                print("\n[直接执行 shell 命令...]")
                 print(execute_direct_shell(user_input))
                 print()
                 continue
 
             while True:
-                print("\n[正在发送到远程 API...]\n", flush=True)
-
+                print("\n[正在发送到远程 API...]" + "\n", flush=True)
                 proc = subprocess.Popen(
                     [
                         sys.executable,
@@ -95,35 +99,34 @@ def main():
                     stdout, stderr = proc.communicate(timeout=180)
                 except subprocess.TimeoutExpired:
                     proc.kill()
-                    print("调用超时")
+                    print("调用超时", flush=True)
                     break
-
                 if stderr:
-                    print(f"错误: {stderr.decode()}")
+                    print(f"错误: {stderr.decode()}", flush=True)
                     break
                 if not stdout:
-                    print("没有返回结果")
+                    print("没有返回结果", flush=True)
                     break
 
-                result = json.loads(stdout.decode())["result"]
-                print(f"返回结果长度: {len(result)}")
+                data = json.loads(stdout.decode())
+                result = data["result"]
+                print(f"返回结果长度: {len(result)}", flush=True)
 
-                with open("debug.log", "w") as f:
+                with open("debug.log", "w", encoding="utf-8") as f:
                     f.write(result)
-                print("已写入 debug.log")
+                print("已写入 debug.log", flush=True)
 
                 try:
                     instructions = parser.parse(result)
                 except Exception as e:
-                    print(f"解析错误: {e}")
+                    print(f"解析错误: {e}", flush=True)
                     import traceback
 
                     traceback.print_exc()
                     break
 
                 if instructions:
-                    print(f"instructions: {instructions[:3]}")  # 只打印前3个
-
+                    print(f"instructions: {instructions[:3]}")
                     exec_instructions = [
                         i
                         for i in instructions
@@ -141,7 +144,6 @@ def main():
                             print(f"执行结果: {r.get('output', '')[:100]}")
                             exec_results.append(r["output"])
 
-                    # 元信息指令也加进去
                     meta_results = []
                     for instr in meta_instructions:
                         r = executor.execute(instr)
@@ -154,17 +156,20 @@ def main():
                     break
 
                 if "[success!]" in result:
-                    print("[任务完成]")
+                    print("[任务完成]", flush=True)
                     break
 
                 user_continue = (
                     input("[是否继续？(y/n) 或输入补充信息] ").strip().lower()
                 )
                 if user_continue in ["n", "no"]:
-                    print("[结束任务]")
+                    print("[结束任务]", flush=True)
                     break
-                elif user_continue and user_continue not in ["y", "yes", ""]:
+                elif user_continue in ["y", "yes", ""]:
+                    continue
+                else:
                     user_input = f"{user_input}\n{user_continue}"
+                    continue
 
         except KeyboardInterrupt:
             print("\n再见!")
