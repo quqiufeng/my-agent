@@ -3,7 +3,14 @@
 AI 编程助手 - 命令行交互模式
 """
 
+import json
+import os
 import subprocess
+import sys
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+
 from api import chat
 from parser import Parser
 from executor import Executor
@@ -96,16 +103,28 @@ def main():
                 print()
                 continue
 
-            # 需要发送到远程 API 处理
+            # 需要发送到远程 API 处理（子进程调用）
             while True:
                 print("\n[正在发送到远程 API...]" + "\n", flush=True)
 
-                prompt = build_user_prompt(user_input)
-                result = chat(
-                    messages=[{"role": "user", "content": prompt}],
-                    source="minimax",
-                    max_tokens=8192,
+                # 子进程调用，避免阻塞
+                proc = subprocess.Popen(
+                    [
+                        sys.executable,
+                        os.path.join(SCRIPT_DIR, "call_api.py"),
+                        user_input,
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                 )
+                stdout, stderr = proc.communicate(timeout=180)
+
+                if stderr:
+                    print(f"错误: {stderr.decode()}", flush=True)
+                    break
+
+                data = json.loads(stdout.decode())
+                result = data["result"]
 
                 # 写入 debug.log
                 with open("debug.log", "w", encoding="utf-8") as f:
