@@ -51,8 +51,25 @@ from executor import Executor
 from prompt import build_user_prompt
 
 SAFE_SHELL_COMMANDS = {
-    "ls", "pwd", "cd", "cat", "head", "tail", "grep", "find", "tree",
-    "git", "which", "whereis", "file", "stat", "wc", "sort", "uniq", "awk", "sed",
+    "ls",
+    "pwd",
+    "cd",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "find",
+    "tree",
+    "git",
+    "which",
+    "whereis",
+    "file",
+    "stat",
+    "wc",
+    "sort",
+    "uniq",
+    "awk",
+    "sed",
 }
 
 
@@ -130,7 +147,7 @@ def main():
 
                 data = json.loads(stdout.decode())
                 result = data["result"]
-                #print(f"返回结果长度: {len(result)}", flush=True)
+                # print(f"返回结果长度: {len(result)}", flush=True)
                 with open("debug.log", "w") as f:
                     f.write(result)
                 print("已写入 debug.log", flush=True)
@@ -153,11 +170,18 @@ def main():
                     # 提取 task 和 history
                     import re
 
+                    # 先过滤掉 think 标签
+                    clean_result = re.sub(
+                        r"<think>.*?</think>", "", result, flags=re.DOTALL
+                    )
+
                     task_match = re.search(
-                        r"#task\s+(.*?)\s*#end", result, re.DOTALL | re.IGNORECASE
+                        r"#task\s+(.*?)\s*#end", clean_result, re.DOTALL | re.IGNORECASE
                     )
                     history_match = re.search(
-                        r"#history\s+(.*?)\s*#end", result, re.DOTALL | re.IGNORECASE
+                        r"#history\s+(.*?)\s*#end",
+                        clean_result,
+                        re.DOTALL | re.IGNORECASE,
                     )
                     task_info = task_match.group(1).strip() if task_match else ""
                     history_info = (
