@@ -95,7 +95,7 @@ def main():
             if not user_input:
                 continue
 
-            if user_input.lower() in ["quit", "exit", "q"]:
+            if user_input.lower() in ["quit", "exit", "q", "!quit"]:
                 print("再见!")
                 break
 
