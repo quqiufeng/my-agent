@@ -1,6 +1,40 @@
 #!/usr/bin/env python3
 """
 AI 编程助手 - 命令行交互模式
+
+调试方法：
+```python
+import sys
+import subprocess
+import json
+sys.path.insert(0, '.')
+from parser import Parser
+from executor import Executor
+
+user_input = '用python实现一个红黑树'
+proc = subprocess.Popen([sys.executable, 'call_api.py', user_input], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+stdout, stderr = proc.communicate(timeout=180)
+result = json.loads(stdout.decode())['result']
+
+with open('debug.log', 'w') as f:
+    f.write(result)
+print('API 返回长度:', len(result))
+
+parser = Parser()
+executor = Executor()
+instructions = parser.parse(result)
+print('解析指令数:', len(instructions))
+
+exec_results = []
+for instr in instructions:
+    r = executor.execute(instr)
+    exec_results.append(r['output'])
+
+prompt_with_result = f'{user_input}\n\n--- 上一次执行结果 ---\n{chr(10).join(exec_results)}'
+print('=== 发送给 API 的提示词 ===')
+print(prompt_with_result[:300])
+print('=== 提示词结束 ===')
+```
 """
 
 import json
