@@ -153,7 +153,13 @@ def main():
                 print("已写入 debug.log", flush=True)
 
                 try:
-                    instructions = parser.parse(result)
+                    # 先过滤 think 标签
+                    import re
+
+                    clean_result = re.sub(
+                        r"<think>.*?</think>", "", result, flags=re.DOTALL
+                    )
+                    instructions = parser.parse(clean_result)
                 except Exception as e:
                     print(f"解析错误: {e}", flush=True)
                     break
