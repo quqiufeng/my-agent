@@ -17,8 +17,25 @@ from executor import Executor
 from prompt import build_user_prompt
 
 SAFE_SHELL_COMMANDS = {
-    "ls", "pwd", "cd", "cat", "head", "tail", "grep", "find", "tree",
-    "git", "which", "whereis", "file", "stat", "wc", "sort", "uniq", "awk", "sed",
+    "ls",
+    "pwd",
+    "cd",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "find",
+    "tree",
+    "git",
+    "which",
+    "whereis",
+    "file",
+    "stat",
+    "wc",
+    "sort",
+    "uniq",
+    "awk",
+    "sed",
 }
 
 
@@ -112,15 +129,25 @@ def main():
                         for i in instructions
                         if i.get("type") not in ["task", "history"]
                     ]
+                    meta_instructions = [
+                        i for i in instructions if i.get("type") in ["task", "history"]
+                    ]
+
+                    exec_results = []
                     if exec_instructions:
                         print("[执行指令...]")
-                        exec_results = []
                         for instr in exec_instructions:
                             r = executor.execute(instr)
                             print(f"执行结果: {r.get('output', '')[:100]}")
                             exec_results.append(r["output"])
 
-                    prompt_with_result = f"{user_input}\n\n--- 上一次执行结果 ---\n{chr(10).join(exec_results)}"
+                    # 元信息指令也加进去
+                    meta_results = []
+                    for instr in meta_instructions:
+                        r = executor.execute(instr)
+                        meta_results.append(r["output"])
+
+                    prompt_with_result = f"{user_input}\n\n--- 上一次执行结果 ---\n{chr(10).join(exec_results + meta_results)}"
                     print("=== 发送给 API 的提示词 ===")
                     print(prompt_with_result[:500])
                     print("=== 提示词结束 ===\n")
