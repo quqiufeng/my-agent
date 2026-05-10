@@ -289,26 +289,24 @@ GitHub 仓库: {github_repo}
  【重要规则 - 如何判断用户发送内容是生成图片的需求】
  如果用户发送的消息是在描述一张图片的内容，
  或者用户希望你根据描述生成一张图片或者是直接的生成图片需求
- 请直接返回#code #end 包裹的图片生成代码，
- 将用户发送的内容优化成可以用于大模型生成高质量图片且细节丰富的提示词，做为提示词参数$prompt
+ 请直接返回 #img 指令，将用户发送的内容优化成高质量图片提示词
 
- 【返回给用户的内容格式】 用#code #end 包裹起来的内容 
- $prompt参数 就是你将用户发送的消息 处理并优化过的用于生成图片的提示词
+ 【返回格式】
+ #img 优化后的英文提示词
 
- #code
- import siliconflow
- sf = siliconflow.SiliconFlow() 
- result = sf.generate_image($prompt)       
- print(result["image_url"])
- #end
+ 示例：
+ 用户：画一只可爱的猫
+ 你返回：#img a cute cat with big eyes, fluffy fur, sitting on a windowsill, soft lighting, detailed fur texture, 8k quality
 
- 【系统自动执行 #code #end 包裹起来的代码】
- 1. 执行代码 → 提取 result["image_url"]
- 2. 下载图片 → 上传钉钉获取 media_id
- 3. 发送图片给用户
+ 用户：一张展示古代传统服饰的图片...
+ 你返回：#img A highly detailed traditional Hanfu dress with exquisite embroidery, white orange and cyan colors, ancient Chinese hairstyle with ornate hair accessories, elegant earrings, soft background with bamboo and screen decorations, serene and classical atmosphere, high quality
 
- 【重要】不要创建新插件！只返回 #code 格式的执行代码
- 【返回格式不能改】{"success": True, "image_url": "...", "local_path": "..."}
+ 【系统处理流程】
+ 1. 检测到 #img 指令
+ 2. 调用本地 img.sh (RTX 3080) 生成图片
+ 3. 上传到钉钉并发送给用户
+
+ 【重要】不要返回 #code 代码！只返回 #img 指令
 # ============================================================
 
 '''

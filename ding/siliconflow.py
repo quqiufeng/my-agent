@@ -98,7 +98,27 @@ class SiliconFlow:
         
         result = self._request("POST", "/images/generations", data, timeout=120)
         
-        if "data" in result and len(result["data"]) > 0:
+        # 检查返回是否有效
+        if result is None or not isinstance(result, dict):
+            return {
+                "success": False,
+                "error": f"API 返回无效数据: {result}",
+                "image_url": None,
+                "local_path": None,
+                "seed": None,
+            }
+        
+        # 检查 API 业务错误 (如模型禁用)
+        if result.get("code") == 30003 or result.get("code") == 20012:
+            return {
+                "success": False,
+                "error": result.get("message", "模型不可用或已被禁用"),
+                "image_url": None,
+                "local_path": None,
+                "seed": None,
+            }
+        
+        if "data" in result and result["data"] and len(result["data"]) > 0:
             image_url = result["data"][0].get("url", "")
             seed = result["data"][0].get("seed", None)
             
@@ -126,7 +146,7 @@ class SiliconFlow:
         
         return {
             "success": False,
-            "error": result.get("error", str(result)),
+            "error": result.get("error", result.get("message", str(result))),
             "image_url": None,
             "local_path": None,
             "seed": None,

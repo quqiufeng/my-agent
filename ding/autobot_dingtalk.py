@@ -185,9 +185,11 @@ class AutoBotHandler(ChatbotHandler):
             task_file = os.path.join(os.path.dirname(__file__), "tasks", f"{directive_name}.py")
             if os.path.exists(task_file):
                 self._reply_text("执行指令...", msg)
+                logger.info(f"[DEBUG] session_webhook={session_webhook}, directive={directive_name}")
                 result = self.dispatch_task(directive_name, {"raw": text}, session_webhook=session_webhook, timeout=120)
                 
                 # 检查 Worker 是否已发送图片（如 #img 指令）
+                logger.info(f"[DEBUG] result={json.dumps(result, ensure_ascii=False)[:500]}")
                 exec_responses = result.get('exec_responses', '')
                 if exec_responses and '__MEDIA_ID__' in exec_responses:
                     # Worker 已发送图片，不再发送文本回复

@@ -43,34 +43,39 @@ class ImgTask(BaseTask):
         if not args_str:
             return TaskResult.err("请提供提示词，例如: #img 一只可爱的猫").to_dict()
         
-        # 解析参数：提示词 [宽度] [高度]
-        # 支持：#img 一只可爱的猫
-        #       #img 一只可爱的猫 512 512
-        #       #img a beautiful sunset 1920 1080
-        parts = args_str.split()
-        
         # 默认尺寸
         width = "1280"
         height = "720"
         prompt = args_str
         
-        # 从后往前检查，最后两个纯数字作为宽高
-        if len(parts) >= 3:
-            # 检查最后两个是否都是数字
-            if parts[-1].isdigit() and parts[-2].isdigit():
-                height = parts[-1]
-                width = parts[-2]
-                prompt = " ".join(parts[:-2])
-        elif len(parts) == 2:
-            # 只有两部分，检查最后一个是数字（高度），前一个是提示词或宽度
-            if parts[-1].isdigit() and parts[-2].isdigit():
-                height = parts[-1]
-                width = parts[-2]
-                prompt = ""
-            elif parts[-1].isdigit():
-                # 只有一个数字，当作宽度，高度默认
-                width = parts[-1]
-                prompt = parts[0]
+        # ========== 智能尺寸解析 ==========
+        # 1. 先尝试匹配 prompt 中的 WxH 格式（如 120x120, 512x512, 1920x1080）
+        size_match = re.search(r'(\d{2,4})\s*[xX×]\s*(\d{2,4})', args_str)
+        if size_match:
+            w, h = size_match.group(1), size_match.group(2)
+            # 验证合理性：16~2048
+            if 16 <= int(w) <= 2048 and 16 <= int(h) <= 2048:
+                width, height = w, h
+                # 移除尺寸描述，保留其余 prompt
+                prompt = re.sub(r'\s*' + re.escape(size_match.group(0)) + r'\s*', ' ', args_str).strip()
+                # 同时移除常见的尺寸修饰词
+                prompt = re.sub(r'\s*(pixels?|px|resolution|尺寸|大小|宽高)\s*', ' ', prompt, flags=re.I).strip()
+        else:
+            # 2.  fallback：检查最后两个纯数字
+            parts = args_str.split()
+            if len(parts) >= 3:
+                if parts[-1].isdigit() and parts[-2].isdigit():
+                    height = parts[-1]
+                    width = parts[-2]
+                    prompt = " ".join(parts[:-2])
+            elif len(parts) == 2:
+                if parts[-1].isdigit() and parts[-2].isdigit():
+                    height = parts[-1]
+                    width = parts[-2]
+                    prompt = ""
+                elif parts[-1].isdigit():
+                    width = parts[-1]
+                    prompt = parts[0]
         
         # 生成输出文件名
         timestamp = str(int(time.time()))
@@ -101,6 +106,7 @@ class ImgTask(BaseTask):
                 return TaskResult.err("图片生成完成但未找到输出文件").to_dict()
             
             logger.info(f"[ImgTask] 图片生成成功: {output_file}")
+            logger.info(f"[DEBUG] session_webhook={session_webhook}")
             
             # 如果提供了 session_webhook，上传并发送图片
             exec_responses = ""

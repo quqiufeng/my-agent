@@ -50,7 +50,7 @@ MODELS = {
 # ============ 配置项 ============
 DINGTALK_CLIENT_ID = os.getenv("DINGTALK_CLIENT_ID", "")
 DINGTALK_CLIENT_SECRET = os.getenv("DINGTALK_CLIENT_SECRET", "")
-API_KEY = os.getenv("SILICONFLOW_API_KEY", "")
+API_KEY = os.getenv("SILICONFLOW_API_KEY") or os.getenv("API_KEY", "")
 MODEL_KEY = os.getenv("DEFAULT_MODEL", "deepseek-v3.2")
 WORK_DIR = os.getenv("WORK_DIR", SCRIPT_DIR)
 SANDBOX_DIR = os.getenv("SANDBOX_DIR", SCRIPT_DIR)

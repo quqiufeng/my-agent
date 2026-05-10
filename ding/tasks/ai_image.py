@@ -66,13 +66,37 @@ class AIImageTask(BaseTask):
         """处理文字消息 - AI 对话 + 可生成图片"""
         ai_result = self.ai.analyze(user_input)
         
-        prompt_match = re.search(r'sf\.generate_image\("([^"]+)"\)', 
-                                 ai_result.get("summary", ""))
+        summary = ai_result.get("summary", "")
+        
+        # 检查 AI 是否返回了 #img 指令（本地图片生成）
+        img_match = re.search(r'#img\s+(.+?)(?:\n|$)', summary, re.DOTALL)
+        if img_match:
+            logger.info(f"检测到 #img 指令: {img_match.group(1)[:100]}")
+            img_prompt = img_match.group(1).strip()
+            
+            # 从原始输入中提取尺寸，附加到 prompt（AI 可能忽略了尺寸）
+            size_from_input = self._extract_size_from_input(user_input)
+            if size_from_input:
+                img_prompt = f"{img_prompt} {size_from_input}"
+                logger.info(f"附加用户指定尺寸: {size_from_input}")
+            
+            # 调用本地 ImgTask 生成图片
+            from tasks.img import ImgTask
+            img_task = ImgTask()
+            img_result = img_task.execute({"raw": f"#img {img_prompt}"}, session_webhook)
+            
+            exec_responses = img_result.get("exec_responses", "")
+            return TaskResult(
+                success=img_result.get("success", False),
+                stdout=img_result.get("stdout", ""),
+                exec_responses=exec_responses
+            ).to_dict()
+        
+        prompt_match = re.search(r'sf\.generate_image\("([^"]+)"\)', summary)
         if prompt_match:
             logger.info(f"图片提示词: {prompt_match.group(1)}")
         
         plan = ai_result.get("plan", [])
-        summary = ai_result.get("summary", "")
         
         if not plan and summary:
             summary_code_match = re.search(r'#code\s*(.*?)\s*#end', summary, re.DOTALL)
@@ -214,3 +238,22 @@ class AIImageTask(BaseTask):
                     responses.append(stdout[:400])
         
         return "\n\n".join(responses), has_command
+    
+    def _extract_size_from_input(self, user_input: str) -> str:
+        """从用户原始输入中提取尺寸参数"""
+        # 匹配 120x120, 512x512 等格式
+        size_match = re.search(r'(\d{2,4})\s*[xX×]\s*(\d{2,4})', user_input)
+        if size_match:
+            w, h = size_match.group(1), size_match.group(2)
+            if 16 <= int(w) <= 2048 and 16 <= int(h) <= 2048:
+                return f"{w} {h}"
+        
+        # 匹配末尾两个数字（如 "50 50"）
+        parts = user_input.split()
+        if len(parts) >= 3:
+            if parts[-1].isdigit() and parts[-2].isdigit():
+                w, h = parts[-2], parts[-1]
+                if 16 <= int(w) <= 2048 and 16 <= int(h) <= 2048:
+                    return f"{w} {h}"
+        
+        return ""

@@ -52,6 +52,11 @@ class AI:
             response = requests.post(url, json=data, headers=headers, timeout=60)
             result = response.json()
             
+            # 检查 result 类型
+            if not isinstance(result, dict):
+                logger.error(f"API 返回非字典类型: {type(result)}, 内容: {str(result)[:500]}")
+                return {"plan": [], "summary": f"API 返回格式错误: {str(result)[:500]}"}
+            
             content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             logger.info(f"DEBUG API 返回 content: {content[:500]}")
             
@@ -72,6 +77,7 @@ class AI:
                             pass
                     return {"plan": [], "summary": content}
         except Exception as e:
+            logger.error(f"AI 调用异常: {e}")
             return {"plan": [], "summary": f"调用失败: {str(e)}"}
 
     def analyze_image(self, image_url, prompt=None):
