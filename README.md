@@ -470,27 +470,42 @@ cp .env.example .env
 
 # 4. 创建 Agent 目录
 mkdir -p agents
-
-# 5. 启动 Master Agent
-python ding/master.py --init
-
-# 6. 启动钉钉机器人
-cd ding
-python autobot_dingtalk.py
-
-# 7. 启动 Worker（另一个终端）
-python task_worker.py
 ```
 
-### 8.2 日常启动
+### 8.2 启动脚本 start.sh
 
+项目根目录提供 `start.sh` 一键启动/停止所有服务。
+
+**启动所有服务：**
 ```bash
-# 启动守护进程（自动拉起所有服务）
-python ding/guardian.py
+./start.sh start
+```
+启动以下 3 个进程：
+- **bot** (`autobot_dingtalk.py`) - 钉钉消息接收，日志 `/tmp/autobot_bot.log`
+- **worker** (`task_worker.py`) - 任务执行，日志 `/tmp/autobot_worker.log`
+- **master** (opencode serve) - Agent 管理，运行在 tmux session 中
 
-# 或手动启动
-tmux new-session -d -s autobot "python ding/autobot_dingtalk.py"
-tmux new-window -t autobot "python ding/task_worker.py"
+**停止所有服务：**
+```bash
+./start.sh stop
+```
+
+**重启：**
+```bash
+./start.sh restart
+```
+
+**查看运行状态：**
+```bash
+# 查看 bot 和 worker 进程
+ps aux | grep -E "autobot_dingtalk|task_worker"
+
+# 查看 master
+ps aux | grep "opencode serve"
+
+# 查看日志
+tail -f /tmp/autobot_bot.log
+tail -f /tmp/autobot_worker.log
 ```
 
 ### 8.3 通过钉钉控制
