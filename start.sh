@@ -26,15 +26,30 @@ start_worker() {
     echo "worker 已启动 (PID: $!)"
 }
 
+start_master() {
+    if tmux has-session -t master 2>/dev/null; then
+        echo "master 已在运行"
+        return
+    fi
+    tmux new-session -d -s master -n serve \
+        "cd '$SCRIPT_DIR' && opencode serve --port 4097"
+    sleep 2
+    tmux new-window -t master -n tui \
+        "opencode attach http://localhost:4097"
+    echo "master 已启动"
+}
+
 stop_all() {
     pkill -f "autobot_dingtalk.py" 2>/dev/null && echo "bot 已停止" || true
     pkill -f "task_worker.py" 2>/dev/null && echo "worker 已停止" || true
+    tmux kill-session -t master 2>/dev/null && echo "master 已停止" || true
 }
 
 case "${1:-}" in
     start)
         start_bot
         start_worker
+        start_master
         ;;
     stop)
         stop_all
@@ -44,6 +59,7 @@ case "${1:-}" in
         sleep 1
         start_bot
         start_worker
+        start_master
         ;;
     *)
         echo "用法: $0 start | stop | restart"
