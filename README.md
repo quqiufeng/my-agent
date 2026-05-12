@@ -1,0 +1,621 @@
+# Agent 管理系统 - 架构设计文档
+
+## 1. 项目概述
+
+本项目是一个基于钉钉的 **多 Agent 统一入口系统**。用户通过手机钉钉（支持语音输入）发送指令，系统通过 Master Agent 管理和调度多个 Worker Agent 执行复杂任务，实现"口袋里的远程编程助手"。
+
+**核心场景**：手机钉钉 → 语音输入 → 远程写代码/管理服务器/执行复杂任务
+
+---
+
+## 2. 系统架构
+
+### 2.1 整体架构图
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        用户端                                │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐                  │
+│  │ 钉钉手机 │  │ 钉钉PC   │  │ 语音输入 │                  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘                  │
+│       └──────────────┴──────────────┘                      │
+│                         │                                  │
+│                    WebSocket Stream                        │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────┐
+│                    钉钉网关层                                │
+│              ┌─────────────────────┐                       │
+│              │  autobot_dingtalk   │  接收消息、解析指令     │
+│              │     (主进程)        │  文件中转、结果回传     │
+│              └──────────┬──────────┘                       │
+└─────────────────────────┼───────────────────────────────────┘
+                          │ 消息/任务
+┌─────────────────────────▼───────────────────────────────────┐
+│                    核心调度层                                │
+│              ┌─────────────────────┐                       │
+│              │    task_worker      │  任务分发、插件执行     │
+│              │    (Worker进程)     │  结果收集、错误处理     │
+│              └──────────┬──────────┘                       │
+└─────────────────────────┼───────────────────────────────────┘
+                          │
+              ┌───────────┼───────────┐
+              │           │           │
+     ┌────────▼───┐ ┌─────▼────┐ ┌───▼────┐
+     │   本地插件  │ │ 本地执行  │ │ Agent  │
+     │  tasks/*.py │ │ executor │ │ 调度   │
+     └─────────────┘ └──────────┘ └───┬────┘
+                                      │
+┌─────────────────────────────────────▼───────────────────────┐
+│                    Agent 管理层                              │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              Master Agent (中央控制器)                │   │
+│  │  tmux session: master  port: 4097                   │   │
+│  │  - Agent 生命周期管理（创建/停止/监控）               │   │
+│  │  - 指令路由与分发                                     │   │
+│  │  - 状态聚合与汇报                                     │   │
+│  └──────────────────────┬──────────────────────────────┘   │
+│                         │ HTTP API                         │
+│         ┌───────────────┼───────────────┐                  │
+│         │               │               │                  │
+│  ┌──────▼─────┐  ┌─────▼──────┐  ┌─────▼──────┐          │
+│  │ Worker-1   │  │ Worker-2   │  │ Worker-N   │          │
+│  │ 代码专家   │  │ 系统运维   │  │ 数据分析   │          │
+│  │ port:4098  │  │ port:4099  │  │ port:4100  │          │
+│  └────────────┘  └────────────┘  └────────────┘          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 2.2 进程架构
+
+| 进程 | 职责 | 特点 |
+|------|------|------|
+| **主进程** (autobot_dingtalk) | 接收钉钉消息、维持长连接、文件下载 | 永不崩溃，轻量级 |
+| **Worker进程** (task_worker) | 执行插件任务、管理本地资源 | 可重启，不影响主进程 |
+| **Master Agent** (tmux:master) | Agent 管理中枢、指令路由 | 常驻，自动恢复 |
+| **Worker Agent** (tmux:agent-*) | 具体任务执行、代码编写 | 动态创建，独立环境 |
+
+### 2.3 数据流
+
+```
+用户消息 → 钉钉 → 主进程 → Worker进程 → Agent插件
+                                              ↓
+                         结果 ← 主进程 ← Master Agent ← Worker Agent
+```
+
+---
+
+## 3. 核心概念
+
+### 3.1 Agent 定义
+
+Agent 是一个**独立的 OpenCode 实例**，运行在独立的 tmux session 中，通过 HTTP API 接受指令并执行。
+
+每个 Agent 具有：
+- **唯一标识**：如 `master`, `coder`, `ops`, `data`
+- **独立端口**：如 4097, 4098, 4099...
+- **独立工作目录**：如 `~/agents/coder/`
+- **独立上下文**：记忆、历史、环境变量
+
+### 3.2 Master Agent
+
+Master 是特殊的 Agent，职责：
+1. **注册中心**：维护所有 Agent 的清单和状态
+2. **路由网关**：根据指令内容分发给合适的 Worker Agent
+3. **生命周期管理**：创建、停止、重启 Worker Agent
+4. **状态监控**：心跳检测、日志聚合、异常恢复
+
+### 3.3 指令格式
+
+```
+#agent <agent_name> <指令内容>
+```
+
+示例：
+- `#agent master 创建一个叫 coder 的 Agent，专门写 Python`
+- `#agent coder 帮我写一个爬取豆瓣电影的脚本`
+- `#agent ops 查看服务器内存使用情况`
+- `#agent master 列出所有 Agent 状态`
+
+---
+
+## 4. 模块设计
+
+### 4.1 钉钉网关 (autobot_dingtalk.py)
+
+**职责**：与钉钉保持 WebSocket 长连接，接收所有消息类型
+
+**支持的输入**：
+- 文本消息（含 #指令）
+- 图片消息（自动分析）
+- 文件消息（自动下载分析）
+- 语音消息（自动语音识别）
+- Markdown 消息
+
+**输出处理**：
+- 文本回复（截断 1000 字符）
+- 图片发送（通过 media_id）
+- 文件发送（通过钉钉文件接口）
+- 语音转文字后处理
+
+### 4.2 任务调度 (task_worker.py)
+
+**职责**：插件加载、任务执行、结果收集
+
+**插件机制**：
+- 自动扫描 `tasks/` 目录
+- 继承 `BaseTask` 即可注册
+- 支持热加载（重启 Worker 生效）
+
+**执行模式**：
+- 同步执行：简单任务（如天气查询）
+- 异步委托：复杂任务（如 Agent 指令）转交 Master 处理
+
+### 4.3 Agent 管理 (tasks/agent.py)
+
+**核心功能**：
+
+```python
+class AgentTask(BaseTask):
+    task_type = "agent"
+    
+    def execute(self, content, session_webhook):
+        # 1. 解析指令
+        # 2. 路由到目标 Agent
+        # 3. 调用 Master 或直接执行
+        # 4. 返回结果
+```
+
+**子功能**：
+
+| 功能 | 说明 | 示例 |
+|------|------|------|
+| `create` | 创建新 Agent | `#agent master create coder` |
+| `destroy` | 销毁 Agent | `#agent master destroy coder` |
+| `list` | 列出所有 Agent | `#agent master list` |
+| `status` | 查看 Agent 状态 | `#agent master status coder` |
+| `send` | 发送指令给 Agent | `#agent coder 写个脚本` |
+| `broadcast` | 广播指令 | `#agent master broadcast 全部更新` |
+
+### 4.4 Master Agent 服务 (master.py)
+
+**启动流程**：
+
+```bash
+# 1. 启动 Master OpenCode Server
+tmux new-session -d -s master "opencode serve --port 4097 --work-dir ~/agents/master"
+
+# 2. 启动 Master Agent TUI
+tmux new-window -t master -n tui "opencode attach http://localhost:4097"
+
+# 3. 启动 Master 管理脚本（监听 HTTP 或共享文件）
+tmux new-window -t master -n daemon "python master_daemon.py"
+```
+
+**master_daemon.py 职责**：
+- 维护 `~/agents/registry.json`（Agent 注册表）
+- 提供 HTTP API：
+  - `POST /agent/create` - 创建 Agent
+  - `POST /agent/destroy` - 销毁 Agent
+  - `GET /agent/list` - 列出 Agent
+  - `GET /agent/status/<name>` - 查看状态
+  - `POST /agent/<name>/send` - 发送指令
+- 心跳检测：定期检查 Agent 健康状态
+- 自动恢复：崩溃的 Agent 自动重启
+
+### 4.5 Worker Agent
+
+**创建流程**：
+
+```bash
+# Master 收到创建请求后执行：
+
+# 1. 创建工作目录
+mkdir -p ~/agents/coder
+
+# 2. 生成配置文件
+cat > ~/agents/coder/config.json << EOF
+{
+  "name": "coder",
+  "port": 4098,
+  "work_dir": "~/agents/coder",
+  "system_prompt": "你是一个专业的 Python 程序员...",
+  "created_by": "master",
+  "created_at": "2024-01-01T00:00:00"
+}
+EOF
+
+# 3. 启动 tmux session
+tmux new-session -d -s agent-coder "opencode serve --port 4098 --work-dir ~/agents/coder"
+
+# 4. 注册到 Master
+# 写入 registry.json
+```
+
+**特点**：
+- 每个 Worker 是独立的 OpenCode 实例
+- 有自己的工作目录和上下文
+- 通过 HTTP API 接受指令
+- 可独立重启，不影响其他 Agent
+
+---
+
+## 5. 通信协议
+
+### 5.1 Master ↔ Worker 通信
+
+**方式**：HTTP REST API
+
+**创建 Agent**：
+```http
+POST http://localhost:4097/agent/create
+Content-Type: application/json
+
+{
+  "name": "coder",
+  "type": "python",
+  "system_prompt": "你是一个 Python 专家"
+}
+
+# 返回
+{
+  "success": true,
+  "agent": {
+    "name": "coder",
+    "port": 4098,
+    "status": "running",
+    "pid": 12345
+  }
+}
+```
+
+**发送指令**：
+```http
+POST http://localhost:4097/agent/coder/send
+Content-Type: application/json
+
+{
+  "instruction": "写一个快速排序算法",
+  "session_id": "uuid-xxx",
+  "timeout": 120
+}
+
+# 返回
+{
+  "success": true,
+  "result": {
+    "stdout": "代码已生成...",
+    "files": ["/home/user/agents/coder/quicksort.py"]
+  }
+}
+```
+
+**查询状态**：
+```http
+GET http://localhost:4097/agent/list
+
+# 返回
+{
+  "agents": [
+    {"name": "master", "port": 4097, "status": "running"},
+    {"name": "coder", "port": 4098, "status": "running"},
+    {"name": "ops", "port": 4099, "status": "stopped"}
+  ]
+}
+```
+
+### 5.2 Worker → Master 汇报
+
+Worker 定期向 Master 汇报状态：
+
+```http
+POST http://localhost:4097/agent/heartbeat
+Content-Type: application/json
+
+{
+  "name": "coder",
+  "status": "running",
+  "tasks_completed": 42,
+  "current_task": null,
+  "uptime": 3600
+}
+```
+
+### 5.3 主进程 ↔ Agent 插件通信
+
+主进程通过文件系统或共享内存与 Worker 进程通信：
+
+```
+/tmp/autobot_tasks/
+├── task.json      # 主进程写入任务
+└── result.json    # Worker 进程写入结果
+```
+
+---
+
+## 6. 使用场景示例
+
+### 场景 1：远程写代码
+
+**用户**（手机钉钉语音）：
+> "帮我写一个爬取豆瓣 Top250 电影的 Python 脚本"
+
+**系统处理**：
+1. 钉钉接收语音 → 语音识别 → 文本
+2. 无 #指令 → 默认交给 ai_image（AI 对话）
+3. AI 判断需要写代码 → 内部调用 `#agent coder`
+4. 创建/复用 coder Agent
+5. 发送指令给 coder Agent
+6. coder Agent 生成代码并保存到文件
+7. 返回代码内容和文件路径
+8. 主进程发送结果给用户
+
+**回复**：
+> "已为你生成豆瓣爬虫脚本，保存在 `~/agents/coder/douban_spider.py`，核心逻辑：
+> 1. 使用 requests 请求豆瓣页面
+> 2. 使用 BeautifulSoup 解析 HTML
+> 3. 提取电影名称、评分、链接
+> 4. 保存为 CSV 文件
+>
+> 你可以运行 `#agent coder 执行这个脚本` 来测试"
+
+### 场景 2：多 Agent 协作
+
+**用户**：
+> `#agent master 创建数据分析团队，分析服务器日志`
+
+**系统处理**：
+1. Master 解析指令
+2. 创建多个 Agent：
+   - `data-collector`：负责收集日志
+   - `data-parser`：负责解析和清洗
+   - `data-analyzer`：负责分析和生成报告
+3. Master 协调任务顺序：
+   - 先让 collector 收集日志
+   - 然后 parser 解析
+   - 最后 analyzer 生成报告
+4. 汇总结果返回用户
+
+### 场景 3：服务器运维
+
+**用户**（手机钉钉）：
+> `#agent ops 查看服务器状态，如果有异常就重启 Nginx`
+
+**系统处理**：
+1. 指令路由到 ops Agent
+2. ops Agent 执行：
+   - `df -h` 检查磁盘
+   - `free -m` 检查内存
+   - `systemctl status nginx` 检查服务
+3. 发现 Nginx 异常
+4. 执行 `sudo systemctl restart nginx`
+5. 返回操作结果
+
+### 场景 4：Agent 管理
+
+**用户**：
+> `#agent master 列出所有 Agent`
+
+**回复**：
+> "当前运行的 Agent：
+> - 🤖 master (端口 4097) - 运行中 - 管理中枢
+> - 💻 coder (端口 4098) - 运行中 - 已完成 12 个任务
+> - 🔧 ops (端口 4099) - 已停止 - 上次运行 2 小时前
+> - 📊 data (端口 4100) - 运行中 - 正在执行数据分析"
+
+---
+
+## 7. 目录结构
+
+```
+my-agent/
+├── README.md                      # 本文档
+├── img.sh                         # 本地图像生成脚本
+├── ding/                          # 钉钉机器人核心
+│   ├── autobot_dingtalk.py        # 主进程：钉钉消息接收
+│   ├── task_worker.py             # Worker：任务执行
+│   ├── executor.py                # 执行器：Shell/Python
+│   ├── ai.py                      # AI 模块：任务分析
+│   ├── siliconflow.py             # SiliconFlow API
+│   ├── dingtalk.py                # 钉钉 API 封装
+│   ├── config.py                  # 配置管理
+│   ├── prompt.py                  # 系统提示词
+│   ├── guardian.py                # 守护进程
+│   ├── logger.py                  # 日志模块
+│   ├── nano_banana.py             # 图像生成
+│   ├── master.py                  # Master Agent 管理
+│   ├── agent.md                   # Agent 使用指南
+│   ├── tasks/                     # 插件目录
+│   │   ├── __init__.py
+│   │   ├── base.py                # 任务基类
+│   │   ├── registry.py            # 注册表
+│   │   ├── shell.py               # #shell 指令
+│   │   ├── code.py                # #code 指令
+│   │   ├── python.py              # #python 指令
+│   │   ├── agent.py               # #agent 指令
+│   │   ├── img.py                 # #img 指令
+│   │   ├── ai_image.py            # 默认 AI 对话
+│   │   ├── ai_analyze.py          # 图片分析
+│   │   └── ...
+│   └── logs/                      # 日志目录
+├── agents/                        # Agent 工作目录（自动创建）
+│   ├── registry.json              # Agent 注册表
+│   ├── master/                    # Master Agent
+│   │   ├── config.json
+│   │   └── work/                  # 工作文件
+│   ├── coder/                     # 代码专家 Agent
+│   │   ├── config.json
+│   │   └── work/
+│   └── ...
+└── .env                           # 环境变量
+```
+
+---
+
+## 8. 部署与启动
+
+### 8.1 首次部署
+
+```bash
+# 1. 克隆代码
+git clone <repo> my-agent
+cd my-agent
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. 配置环境变量
+cp .env.example .env
+# 编辑 .env 填入钉钉密钥、API Key 等
+
+# 4. 创建 Agent 目录
+mkdir -p agents
+
+# 5. 启动 Master Agent
+python ding/master.py --init
+
+# 6. 启动钉钉机器人
+cd ding
+python autobot_dingtalk.py
+
+# 7. 启动 Worker（另一个终端）
+python task_worker.py
+```
+
+### 8.2 日常启动
+
+```bash
+# 启动守护进程（自动拉起所有服务）
+python ding/guardian.py
+
+# 或手动启动
+tmux new-session -d -s autobot "python ding/autobot_dingtalk.py"
+tmux new-window -t autobot "python ding/task_worker.py"
+```
+
+### 8.3 通过钉钉控制
+
+启动后，所有操作都可通过钉钉完成：
+
+```
+# 查看帮助
+#agent help
+
+# 创建 Agent
+#agent master create coder --type python
+
+# 发送指令
+#agent coder 写一个 WebSocket 客户端
+
+# 查看状态
+#agent master list
+
+# 停止 Agent
+#agent master destroy coder
+```
+
+---
+
+## 9. 安全设计
+
+### 9.1 命令黑名单
+
+在 `config.py` 中配置，禁止执行危险命令：
+- `rm -rf /`
+- `mkfs`, `dd if=`
+- `shutdown`, `reboot`
+- `iptables`, `ufw`
+- `docker`, `kubectl`
+
+### 9.2 Agent 隔离
+
+- 每个 Agent 独立进程、独立目录
+- Agent 之间不能直接访问对方文件
+- 敏感操作需二次确认
+
+### 9.3 权限控制
+
+- 区分"只读 Agent"和"可写 Agent"
+- 系统级操作需要特殊权限
+- 生产环境建议启用 HTTP Basic Auth
+
+---
+
+## 10. 扩展性设计
+
+### 10.1 新增 Agent 类型
+
+只需定义系统提示词和配置：
+
+```python
+# tasks/agent_types.py
+AGENT_TYPES = {
+    "python": {
+        "system_prompt": "你是 Python 专家...",
+        "tools": ["python", "pip", "pytest"]
+    },
+    "frontend": {
+        "system_prompt": "你是前端开发专家...",
+        "tools": ["node", "npm", "vite"]
+    },
+    "ops": {
+        "system_prompt": "你是运维专家...",
+        "tools": ["docker", "kubectl", "nginx"]
+    }
+}
+```
+
+### 10.2 新增消息类型
+
+在 `autobot_dingtalk.py` 的 `process` 方法中添加处理逻辑即可。
+
+### 10.3 新增插件
+
+在 `tasks/` 目录下创建新文件，继承 `BaseTask`：
+
+```python
+from tasks.base import BaseTask, TaskResult
+
+class MyTask(BaseTask):
+    task_type = "mycommand"
+    
+    def execute(self, content, session_webhook=None):
+        return TaskResult.ok("执行成功")
+```
+
+---
+
+## 11.  roadmap
+
+### Phase 1: 基础架构 ✅
+- [x] 钉钉消息接收与回复
+- [x] 插件化任务系统
+- [x] 基础 Agent 管理
+
+### Phase 2: Master Agent 🔄
+- [ ] Master Agent 自动启动
+- [ ] Agent 生命周期管理
+- [ ] 指令路由与分发
+- [ ] 状态监控与心跳
+
+### Phase 3: 多模态支持 📋
+- [ ] 语音消息自动识别
+- [ ] 图片理解与生成
+- [ ] 文件上传与下载
+
+### Phase 4: 高级功能 📋
+- [ ] Agent 间协作
+- [ ] 长任务持久化
+- [ ] 结果文件自动发送
+- [ ] 权限与审计日志
+
+### Phase 5: 生态扩展 📋
+- [ ] Web 管理界面
+- [ ] 更多 Agent 类型
+- [ ] 插件市场
+- [ ] 多用户支持
+
+---
+
+*文档版本: 1.0*
+*更新日期: 2026-05-12*
