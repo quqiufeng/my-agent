@@ -5,51 +5,46 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DING_DIR="$SCRIPT_DIR/ding"
 
+LOG_BOT="/tmp/autobot_bot.log"
+LOG_WORKER="/tmp/autobot_worker.log"
+
+start_bot() {
+    if pgrep -f "autobot_dingtalk.py" > /dev/null 2>&1; then
+        echo "bot 已在运行"
+        return
+    fi
+    nohup python "$DING_DIR/autobot_dingtalk.py" > "$LOG_BOT" 2>&1 &
+    echo "bot 已启动 (PID: $!)"
+}
+
+start_worker() {
+    if pgrep -f "task_worker.py" > /dev/null 2>&1; then
+        echo "worker 已在运行"
+        return
+    fi
+    nohup python "$DING_DIR/task_worker.py" > "$LOG_WORKER" 2>&1 &
+    echo "worker 已启动 (PID: $!)"
+}
+
+stop_all() {
+    pkill -f "autobot_dingtalk.py" 2>/dev/null && echo "bot 已停止" || true
+    pkill -f "task_worker.py" 2>/dev/null && echo "worker 已停止" || true
+}
+
 case "${1:-}" in
     start)
-        # 1. 启动钉钉主进程（接收消息）
-        if ! tmux has-session -t bot 2>/dev/null; then
-            tmux new-session -d -s bot \
-                "cd '$DING_DIR' && python autobot_dingtalk.py"
-            echo "钉钉主进程已启动"
-        fi
-        
-        # 2. 启动 Task Worker（执行任务）
-        if ! tmux has-session -t worker 2>/dev/null; then
-            tmux new-session -d -s worker \
-                "cd '$DING_DIR' && python task_worker.py"
-            echo "Task Worker 已启动"
-        fi
-        
-        # 3. 启动 Master Agent
-        if ! tmux has-session -t master 2>/dev/null; then
-            tmux new-session -d -s master -n serve \
-                "cd '$SCRIPT_DIR' && opencode serve --port 4097"
-            sleep 2
-            tmux new-window -t master -n tui \
-                "opencode attach http://localhost:4097"
-            echo "Master Agent 已启动"
-        fi
-        
-        echo ""
-        echo "所有服务已启动:"
-        echo "  bot     - 钉钉消息接收"
-        echo "  worker  - 任务执行"
-        echo "  master  - Agent 管理"
+        start_bot
+        start_worker
         ;;
-        
     stop)
-        tmux kill-session -t bot 2>/dev/null && echo "钉钉主进程已停止" || true
-        tmux kill-session -t worker 2>/dev/null && echo "Worker 已停止" || true
-        tmux kill-session -t master 2>/dev/null && echo "Master 已停止" || true
+        stop_all
         ;;
-        
     restart)
-        $0 stop
+        stop_all
         sleep 1
-        $0 start
+        start_bot
+        start_worker
         ;;
-        
     *)
         echo "用法: $0 start | stop | restart"
         ;;
