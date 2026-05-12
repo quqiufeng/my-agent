@@ -1,17 +1,16 @@
 """
-Agent 任务 - 调用 Master Agent 或其他 Agent 执行指令
+Agent 任务 - 路由指令到指定 Agent 执行
 
 用法:
-    #agent master 查看当前目录结构
-    #agent coder 写一个 Python 爬虫
-
-参数:
-    - agent_name: Agent 名称（必填）
-    - instruction: 指令内容（必填）
+    #agent 查看当前目录结构          → 发给 master
+    #agent master 查看当前目录        → 发给 master（显式指定）
+    #agent coder 写一个 Python 爬虫   → 发给 coder（如未启动则自动启动）
 """
 import sys
 import os
+import subprocess
 import requests
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -19,46 +18,129 @@ from tasks.base import BaseTask, TaskResult
 from logger import task_logger as logger
 
 
-# Master Agent 默认端口
 MASTER_PORT = 4097
 AGENT_BASE_URL = "http://localhost"
+SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class AgentTask(BaseTask):
-    """Agent 任务 - 通过 HTTP API 发送指令给指定 Agent"""
+    """Agent 任务 - 智能路由指令到目标 Agent"""
     task_type = "agent"
     
     def execute(self, content: dict, session_webhook=None) -> dict:
         raw = content.get("raw", "")
-        # 去掉 #agent 前缀
         args_str = raw.replace("#agent", "").strip()
         
         if not args_str:
-            return TaskResult.err("请提供 Agent 名称和指令，例如: #agent master 查看当前目录").to_dict()
+            return TaskResult.err(
+                "请提供指令，例如:\n"
+                "#agent 查看当前目录\n"
+                "#agent coder 写一个爬虫"
+            ).to_dict()
         
-        # 解析 agent_name 和 instruction
-        parts = args_str.split(maxsplit=1)
-        agent_name = parts[0]
-        instruction = parts[1] if len(parts) > 1 else ""
+        # 解析：第一个词可能是 agent_name，也可能是指令的一部分
+        agent_name, instruction = self._parse_args(args_str)
         
-        if not instruction:
-            # 如果没有指令，可以查询 Agent 状态
-            if agent_name == "master":
-                return self._check_master_status()
-            return TaskResult.err(f"未提供指令，用法: #agent {agent_name} <指令>").to_dict()
+        logger.info(f"[AgentTask] 目标: {agent_name}, 指令: {instruction[:100]}...")
         
-        logger.info(f"[AgentTask] 发送指令到 {agent_name}: {instruction[:100]}...")
-        
-        # 构建 Agent URL
-        if agent_name == "master":
-            port = MASTER_PORT
-        else:
-            # 其他 Agent 的端口需要从注册表获取，这里暂时用默认规则
-            # 后续可以从 registry.json 读取
-            port = MASTER_PORT + hash(agent_name) % 1000
-        
+        # 获取 Agent 端口
+        port = self._get_agent_port(agent_name)
         agent_url = f"{AGENT_BASE_URL}:{port}"
         
+        # 检查 Agent 是否运行，没运行则启动
+        if not self._is_agent_running(agent_name):
+            logger.info(f"[AgentTask] Agent '{agent_name}' 未运行，正在启动...")
+            start_result = self._start_agent(agent_name, port)
+            if not start_result["success"]:
+                return TaskResult.err(f"启动 Agent '{agent_name}' 失败: {start_result['error']}").to_dict()
+            # 等待服务启动
+            if not self._wait_for_agent(port, timeout=10):
+                return TaskResult.err(f"Agent '{agent_name}' 启动后未响应").to_dict()
+        
+        # 发送指令
+        return self._send_instruction(agent_name, agent_url, instruction)
+    
+    def _parse_args(self, args_str: str) -> tuple:
+        """
+        解析参数
+        
+        规则：
+        - #agent <agent_name> <instruction> → 指定 agent
+        - #agent <instruction> → 默认给 master
+        """
+        parts = args_str.split(maxsplit=1)
+        if not parts:
+            return "master", ""
+        
+        # 只要有第二个词，第一个词就是 agent_name
+        if len(parts) > 1:
+            return parts[0], parts[1]
+        
+        # 只有一个词，默认给 master
+        return "master", args_str
+    
+    def _get_agent_port(self, agent_name: str) -> int:
+        """根据 agent_name 计算端口"""
+        if agent_name == "master":
+            return MASTER_PORT
+        # 其他 agent 使用固定偏移，避免冲突
+        return MASTER_PORT + 1 + (hash(agent_name) % 100)
+    
+    def _is_agent_running(self, agent_name: str) -> bool:
+        """检查 Agent 是否运行（通过 tmux session）"""
+        try:
+            result = subprocess.run(
+                ["tmux", "has-session", "-t", agent_name],
+                capture_output=True,
+                timeout=2
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+    
+    def _start_agent(self, agent_name: str, port: int) -> dict:
+        """启动 Agent（创建 tmux session）"""
+        try:
+            # 创建工作目录
+            work_dir = os.path.expanduser(f"~/agents/{agent_name}")
+            os.makedirs(work_dir, exist_ok=True)
+            
+            # 创建 tmux session 启动 opencode serve
+            cmd = [
+                "tmux", "new-session", "-d", "-s", agent_name,
+                f"cd '{work_dir}' && opencode serve --port {port}"
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            
+            if result.returncode != 0:
+                error = result.stderr or "未知错误"
+                logger.error(f"[AgentTask] 启动 {agent_name} 失败: {error}")
+                return {"success": False, "error": error}
+            
+            logger.info(f"[AgentTask] Agent '{agent_name}' 已启动 (port {port})")
+            return {"success": True}
+            
+        except Exception as e:
+            logger.error(f"[AgentTask] 启动异常: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _wait_for_agent(self, port: int, timeout: int = 10) -> bool:
+        """等待 Agent 服务就绪"""
+        url = f"{AGENT_BASE_URL}:{port}/global/health"
+        for i in range(timeout):
+            try:
+                resp = requests.get(url, timeout=2)
+                if resp.status_code == 200:
+                    logger.info(f"[AgentTask] Agent 就绪 (port {port})")
+                    return True
+            except Exception:
+                pass
+            time.sleep(1)
+        return False
+    
+    def _send_instruction(self, agent_name: str, agent_url: str, instruction: str) -> dict:
+        """发送指令到 Agent"""
         try:
             # 1. 发送提示词
             resp_append = requests.post(
@@ -68,7 +150,7 @@ class AgentTask(BaseTask):
             )
             
             if resp_append.status_code != 200:
-                return TaskResult.err(f"Agent 连接失败 (append): HTTP {resp_append.status_code}").to_dict()
+                return TaskResult.err(f"发送指令失败: HTTP {resp_append.status_code}").to_dict()
             
             # 2. 提交执行
             resp_submit = requests.post(
@@ -77,31 +159,21 @@ class AgentTask(BaseTask):
             )
             
             if resp_submit.status_code != 200:
-                return TaskResult.err(f"Agent 连接失败 (submit): HTTP {resp_submit.status_code}").to_dict()
+                return TaskResult.err(f"提交执行失败: HTTP {resp_submit.status_code}").to_dict()
             
             logger.info(f"[AgentTask] 指令已发送到 {agent_name}")
             
             return TaskResult.ok(
-                f"指令已发送给 {agent_name}，请在 tmux 窗口查看执行结果\n"
-                f"查看命令: tmux attach -t {agent_name}"
+                f"✓ 指令已发送给 {agent_name}\n"
+                f"  查看执行: tmux attach -t {agent_name}\n"
+                f"  端口: {agent_url}"
             ).to_dict()
             
         except requests.exceptions.ConnectionError:
-            logger.error(f"[AgentTask] 无法连接到 {agent_name} ({agent_url})")
             return TaskResult.err(
-                f"Agent '{agent_name}' 未启动或未响应\n"
-                f"请先启动: ./start.sh start"
+                f"Agent '{agent_name}' 连接失败\n"
+                f"可能正在启动中，请稍后再试"
             ).to_dict()
         except Exception as e:
-            logger.error(f"[AgentTask] 异常: {e}")
-            return TaskResult.err(f"Agent 调用异常: {str(e)}").to_dict()
-    
-    def _check_master_status(self) -> dict:
-        """检查 Master Agent 状态"""
-        try:
-            resp = requests.get(f"{AGENT_BASE_URL}:{MASTER_PORT}/global/health", timeout=5)
-            if resp.status_code == 200:
-                return TaskResult.ok("Master Agent 运行中").to_dict()
-            return TaskResult.err(f"Master Agent 异常: HTTP {resp.status_code}").to_dict()
-        except Exception as e:
-            return TaskResult.err(f"Master Agent 未启动: {e}").to_dict()
+            logger.error(f"[AgentTask] 发送异常: {e}")
+            return TaskResult.err(f"发送异常: {str(e)}").to_dict()
