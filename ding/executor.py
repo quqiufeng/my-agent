@@ -12,21 +12,6 @@ import uuid
 import hashlib
 import hmac
 
-from prompt import get_opencode_system_prompt
-
-import subprocess
-import re
-import os
-import sys
-import io
-import json
-import base64
-import time
-import datetime
-import random
-import uuid
-import hashlib
-import hmac
 from config import Config
 from logger import executor_logger as logger
 
@@ -230,40 +215,14 @@ class Executor:
             sys.stdout = old_stdout
             sys.stderr = old_stderr
 
-    def execute_opencode(self, message, timeout=300):
-        """通过 HTTP API 调用 OpenCode ACP"""
-        import requests
-
+    def execute_python_subprocess(self, code, timeout=60):
+        """通过 subprocess 执行 Python 代码"""
         try:
-            ACP_URL = "http://localhost:4096"
-
-            # 发送指令
-            requests.post(
-                f"{ACP_URL}/tui/append-prompt", json={"text": message}, timeout=10
-            )
-            requests.post(f"{ACP_URL}/tui/submit-prompt", timeout=10)
-
-            return {
-                "success": True,
-                "stdout": "指令已发送到 OpenCode，请在 OpenCode 窗口查看执行结果",
-                "stderr": "",
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e), "stdout": "", "stderr": str(e)}
-
-    def execute_python_subprocess(self, code, api_key=None, model=None):
-        """通过 subprocess 执行 OpenCode 命令"""
-        try:
-            # 获取脚本所在目录
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            # cd 到 autobot 目录，这样 opencode 可以修改本项目代码
-            autobot_dir = script_dir
-
-            # 使用 shell 执行，可以正确切换目录
-            cmd = f"cd {autobot_dir} && opencode run '{message}'"
-
             result = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=timeout
+                [sys.executable, "-c", code],
+                capture_output=True,
+                text=True,
+                timeout=timeout
             )
 
             output = result.stdout + result.stderr

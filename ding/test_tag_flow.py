@@ -25,7 +25,7 @@ test_messages = [
     ("#weather 北京", "weather"),
     ("普通文字消息", "ai_image"),
     ("#kimi 你好", "kimi"),
-    ("#opencode 写个排序", "opencode"),
+    ("#agent master 写个排序", "agent"),
 ]
 
 for msg, expected in test_messages:

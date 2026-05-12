@@ -196,7 +196,7 @@ ding/
 │   ├── img.py               # #img 指令（本地生成图片）
 │   ├── ai_image.py          # 默认 AI 对话
 │   ├── ai_analyze.py        # 图片分析
-│   ├── opencode.py          # #opencode 指令
+│   ├── agent.py             # #agent 指令
 │   ├── write.py             # #write 指令
 │   └── test.py              # #test 指令
 ├── logs/                    # 日志目录
