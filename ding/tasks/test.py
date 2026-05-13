@@ -4,23 +4,23 @@ Test 任务 - 测试新功能
 【AI 开发插件指南】
 
 开发新插件只需 3 步：
-1. 在 tasks/ 目录创建新文件，如 tasks/weather.py
+1. 在 tasks/ 目录创建新文件，如 tasks/hello.py
 2. 继承 BaseTask，实现 execute() 方法
 3. 定义 task_type = "指令名"
 
 示例：
-    class WeatherTask(BaseTask):
-        task_type = "weather"
+    class HelloTask(BaseTask):
+        task_type = "hello"
         
         def execute(self, content, session_webhook):
             # 获取用户输入
             user_input = content.get("user_input", "")
             # 处理业务逻辑
-            result = f"查询天气: {user_input}"
+            result = f"你好: {user_input}"
             # 返回结果
             return TaskResult.ok(result).to_dict()
 
-发送 #weather 北京天气 → 自动匹配 task_type="weather" 的任务
+发送 #hello → 自动匹配 task_type="hello" 的任务
 
 可用资源：
 - dingtalk.get_dingtalk() - 钉钉 API (发消息、上传图片等)

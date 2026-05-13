@@ -244,17 +244,17 @@ class XxxTask(BaseTask):
 2. 剩余细节由 Agent 补齐和验证
 #end
 
-示例：用户需求是"天气查询"，返回：
+示例：用户需求是"打招呼"，返回：
 #agent master
-1. 创建文件 tasks/weather.py，内容如下：
+1. 创建文件 tasks/hello.py，内容如下：
 from tasks.base import BaseTask, TaskResult
 
-class WeatherTask(BaseTask):
-    task_type = "weather"
+class HelloTask(BaseTask):
+    task_type = "hello"
     
     def execute(self, content, session_webhook=None):
         # 基础逻辑...
-        return TaskResult(success=True, stdout="天气查询").to_dict()
+        return TaskResult(success=True, stdout="你好！").to_dict()
 
 2. 剩余细节由 Agent 补齐和验证
 #end

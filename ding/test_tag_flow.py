@@ -22,7 +22,7 @@ print("=" * 60)
 test_messages = [
     ("#shell ls -la", "shell"),
     ("#code print('hello')", "code"),
-    ("#weather 北京", "weather"),
+
     ("普通文字消息", "ai_image"),
     ("#kimi 你好", "kimi"),
     ("#agent master 写个排序", "agent"),
@@ -53,7 +53,7 @@ print(f"已加载任务: {list_tasks()}")
 test_tasks = [
     {"type": "shell", "content": {"raw": "#shell echo hello"}},
     {"type": "code", "content": {"raw": "#code print(1+1)"}},
-    {"type": "weather", "content": {"raw": "#weather 北京"}},
+
     {"type": "test", "content": {"raw": "#test"}},
 ]
 
