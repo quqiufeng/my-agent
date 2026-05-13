@@ -206,3 +206,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+bin/piper
+models/piper/*.onnx
+models/piper/*.json
