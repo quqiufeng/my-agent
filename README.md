@@ -355,7 +355,96 @@ tmux new-session -d -s agent-coder "opencode serve --port 4098 --work-dir ~/agen
 
 ---
 
-## 5. 通信协议
+## 5. 语音识别优化（SenseVoice 共享库）
+
+### 5.1 背景
+
+原方案使用命令行调用 SenseVoice.cpp，每次识别都需要重新加载模型（~0.8s）。通过封装共享库实现模型常驻内存，**每次识别节省 ~0.6s**。
+
+| 方案 | 模型加载 | 单次识别 | 适用场景 |
+|------|---------|---------|---------|
+| 命令行调用 | 每次 0.8s | 1.0s | 低频使用 |
+| **共享库（当前）** | **仅一次 0.8s** | **0.25s** | **高频/实时** |
+
+### 5.2 新增文件
+
+| 文件 | 说明 | 来源 |
+|------|------|------|
+| `libs/libsensevoice.so` | 编译好的共享库（~650KB） | 编译生成 |
+| `sense-voice/csrc/sensevoice_wrapper.cpp` | C wrapper，导出 C 接口 | 新增 |
+| `ding/voice_recognition.py` | Python ctypes 封装 | 修改 |
+
+### 5.3 编译方法
+
+在 SenseVoice.cpp 源码目录执行：
+
+```bash
+cd /home/dministrator/SenseVoice.cpp
+
+# 1. 重新编译静态库（添加 -fPIC）
+cd build
+cmake -DCMAKE_CXX_FLAGS="-fPIC" ..
+make -j$(nproc)
+
+# 2. 单独编译 main.cc（含 sense_voice_free 等函数）
+g++ -c -fPIC -std=c++17 -I. -Isense-voice/csrc \
+  sense-voice/csrc/main.cc -o /tmp/main.o
+
+# 3. 编译 wrapper 为共享库
+g++ -shared -fPIC -std=c++17 \
+  -I. -Isense-voice/csrc \
+  -Ibuild/_deps/ggml-src/include \
+  sense-voice/csrc/sensevoice_wrapper.cpp \
+  /tmp/main.o \
+  build/lib/libsense-voice-core.a \
+  build/lib/libcommon.a \
+  -Lbuild/lib -lggml -lggml-base -lggml-cpu \
+  -o libsensevoice.so \
+  -lpthread -ldl
+
+# 4. 复制到项目目录
+cp libsensevoice.so /home/dministrator/my-agent/libs/
+```
+
+### 5.4 集成说明
+
+Python 通过 ctypes 加载共享库，模型在首次识别时自动加载，后续识别复用：
+
+```python
+from ding.voice_recognition import recognize_audio
+
+# 第一次：加载模型 + 识别（~0.9s）
+text = recognize_audio("/tmp/test.wav")
+
+# 后续：直接识别（~0.25s）
+text = recognize_audio("/tmp/test2.wav")
+```
+
+**环境要求**：
+- 需设置 `LD_LIBRARY_PATH` 包含 `SenseVoice.cpp/build/lib`（libggml.so 所在目录）
+- 模型文件：`models/sense-voice-small-q6_k.gguf`（~230MB）
+
+### 5.5 接口说明
+
+C wrapper 导出的接口：
+
+```c
+// 加载模型（常驻内存）
+void* sensevoice_load_model(const char* model_path, int n_threads);
+
+// 识别音频（复用已加载的模型）
+const char* sensevoice_recognize(void* ctx, const char* wav_path, int n_threads);
+
+// 释放文本（当前为空操作，使用静态缓冲区）
+void sensevoice_free_text(const char* text);
+
+// 释放模型（进程退出时调用）
+void sensevoice_free_model(void* ctx);
+```
+
+---
+
+## 6. 通信协议
 
 ### 5.1 Master ↔ Worker 通信
 
