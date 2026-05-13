@@ -27,6 +27,13 @@ class Executor:
         self.work_dir = work_dir or Config.WORK_DIR
         self.timeout = timeout or Config.TIMEOUT
         self.sandbox_dir = sandbox_dir or Config.SANDBOX_DIR  # 沙盒安全目录
+        # 预编译正则表达式（性能优化：避免每次执行都重新编译）
+        self._forbidden_regex = []
+        for pattern in self.forbidden:
+            try:
+                self._forbidden_regex.append(re.compile(pattern, re.IGNORECASE))
+            except re.error:
+                pass
         # 沙盒白名单 - 允许的 Python 模块
         self.allowed_modules = {
             # 标准库
@@ -390,16 +397,11 @@ shutil.rmtree = _no_rmtree
         if not cmd:
             return False
 
-        # 检查禁止的模式
-        for pattern in self.forbidden:
-            try:
-                if re.search(pattern, cmd, re.IGNORECASE):
-                    logger.error(f"命令包含禁止模式: {pattern}")
-                    return False
-            except re.error:
-                if pattern.lower() in cmd.lower():
-                    logger.error(f"命令包含禁止模式: {pattern}")
-                    return False
+        # 使用预编译的正则表达式检查（性能优化）
+        for regex in self._forbidden_regex:
+            if regex.search(cmd):
+                logger.error(f"命令包含禁止模式: {regex.pattern}")
+                return False
 
         return True
 

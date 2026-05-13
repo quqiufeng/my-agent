@@ -59,6 +59,22 @@ HTTP_PROXY = os.getenv("HTTP_PROXY", "")
 HTTPS_PROXY = os.getenv("HTTPS_PROXY", "")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "quqiufeng/my-game")
 
+# ============ 语音配置 ============
+# ASR (语音识别) - SenseVoice
+SENSEVOICE_DIR = os.getenv("SENSEVOICE_DIR", "/home/dministrator/SenseVoice.cpp")
+SENSEVOICE_SO = os.path.join(SCRIPT_DIR, "..", "libs", "libsensevoice.so")
+SENSEVOICE_MODEL = os.path.join(SENSEVOICE_DIR, "models", "sense-voice-small-q6_k.gguf")
+SENSEVOICE_GGML_PATH = os.path.join(SENSEVOICE_DIR, "build", "lib")
+
+# TTS (文本转语音) - Piper
+PIPER_SRC_DIR = os.getenv("PIPER_SRC_DIR", "/opt/piper-src")
+PIPER_BUILD_DIR = os.path.join(PIPER_SRC_DIR, "build")
+PIPER_LIB = os.path.join(PIPER_BUILD_DIR, "libpiper_tts.so")
+PIPER_MODEL_PATH = os.path.join(PIPER_SRC_DIR, "models", "zh_CN-huayan-medium.onnx")
+PIPER_MODEL_CONFIG = os.path.join(PIPER_SRC_DIR, "models", "zh_CN-huayan-medium.onnx.json")
+PIPER_ESPEAK_DATA = os.path.join(PIPER_BUILD_DIR, "pi", "share", "espeak-ng-data")
+PIPER_ONNX_PATH = os.path.join(PIPER_BUILD_DIR, "pi", "lib")
+
 
 # ============ 安全配置 - 黑名单模式 ============
 # 只禁止危险命令，其他都允许

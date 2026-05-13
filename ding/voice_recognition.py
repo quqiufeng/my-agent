@@ -11,15 +11,7 @@ import subprocess
 import tempfile
 
 from logger import app_logger as logger
-
-# 动态获取项目目录
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
-
-# SenseVoice 路径配置
-SENSEVOICE_DIR = "/home/dministrator/SenseVoice.cpp"
-SENSEVOICE_SO = os.path.join(PROJECT_DIR, "libs", "libsensevoice.so")
-SENSEVOICE_MODEL = os.path.join(SENSEVOICE_DIR, "models", "sense-voice-small-q6_k.gguf")
+from config import SENSEVOICE_SO, SENSEVOICE_MODEL, SENSEVOICE_GGML_PATH
 
 # ctypes 接口
 _lib = None
@@ -37,9 +29,8 @@ def _load_library() -> ctypes.CDLL:
 
     # 设置库搜索路径
     os.environ.setdefault("LD_LIBRARY_PATH", "")
-    ggml_path = os.path.join(SENSEVOICE_DIR, "build", "lib")
-    if ggml_path not in os.environ["LD_LIBRARY_PATH"]:
-        os.environ["LD_LIBRARY_PATH"] = f"{ggml_path}:{os.environ['LD_LIBRARY_PATH']}".rstrip(":")
+    if SENSEVOICE_GGML_PATH not in os.environ["LD_LIBRARY_PATH"]:
+        os.environ["LD_LIBRARY_PATH"] = f"{SENSEVOICE_GGML_PATH}:{os.environ['LD_LIBRARY_PATH']}".rstrip(":")
 
     _lib = ctypes.CDLL(SENSEVOICE_SO)
 

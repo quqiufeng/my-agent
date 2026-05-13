@@ -21,17 +21,18 @@
 import ctypes
 import os
 
-# 动态获取项目目录
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+from config import (
+    PIPER_LIB,
+    PIPER_MODEL_PATH,
+    PIPER_MODEL_CONFIG,
+    PIPER_ESPEAK_DATA,
+    PIPER_ONNX_PATH,
+)
 
-# Piper 配置（源码目录下的 models）
-PIPER_SRC_DIR = "/opt/piper-src"
-PIPER_BUILD_DIR = os.path.join(PIPER_SRC_DIR, "build")
-PIPER_LIB = os.path.join(PIPER_BUILD_DIR, "libpiper_tts.so")
-MODEL_PATH = os.path.join(PIPER_SRC_DIR, "models", "zh_CN-huayan-medium.onnx")
-MODEL_CONFIG_PATH = os.path.join(PIPER_SRC_DIR, "models", "zh_CN-huayan-medium.onnx.json")
-ESPEAK_DATA_PATH = os.path.join(PIPER_BUILD_DIR, "pi", "share", "espeak-ng-data")
+# 兼容：使用 config.py 中的变量
+MODEL_PATH = PIPER_MODEL_PATH
+MODEL_CONFIG_PATH = PIPER_MODEL_CONFIG
+ESPEAK_DATA_PATH = PIPER_ESPEAK_DATA
 
 # ctypes 接口
 _lib = None
