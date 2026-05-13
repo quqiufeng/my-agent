@@ -83,6 +83,107 @@
                          结果 ← 主进程 ← Master Agent ← Worker Agent
 ```
 
+### 2.4 指令执行流程
+
+系统支持两种指令类型：**#标签指令** 和 **自然语言指令**
+
+#### A. #标签指令执行流程
+
+用户发送以 `#` 开头的指令，如 `#img 一只猫`、`#shell ls -la`
+
+```
+用户: #img 一只可爱的猫
+  ↓
+autobot_dingtalk.py:182  正则匹配 #(\w+) → directive_name="img"
+  ↓
+autobot_dingtalk.py:186  检查 tasks/img.py 是否存在
+  ↓
+autobot_dingtalk.py:189  dispatch_task("img", {"raw": "#img 一只可爱的猫"})
+  ↓
+写入 /tmp/autobot_tasks/task.json
+  ↓
+task_worker.py:92        检测到任务文件
+  ↓
+task_worker.py:99        do_task() → get_task("img") → ImgTask()
+  ↓
+tasks/img.py:85          execute()
+  ├─ 解析参数: prompt="一只可爱的猫"
+  ├─ 调用 img.sh (RTX 3080) 生成图片
+  ├─ 上传钉钉: dt.upload_media()
+  └─ 发送图片: dt.send_markdown_image()
+    ↓
+返回 TaskResult(exec_responses="__MEDIA_ID__: xxx")
+  ↓
+写入 /tmp/autobot_tasks/result.json
+  ↓
+autobot_dingtalk.py:234  检测到 __MEDIA_ID__
+  ↓
+不发送文本（图片已发送）
+  ↓
+返回 AckMessage.STATUS_OK
+```
+
+#### B. 自然语言指令执行流程
+
+用户发送自然语言，如 "生成一张喵咪图片"、"帮我写个爬虫"
+
+```
+用户: 生成一张喵咪图片
+  ↓
+autobot_dingtalk.py:243  检测无 #标签 → 走 ai_image 任务
+  ↓
+autobot_dingtalk.py:244  dispatch_task("ai_image", {"user_input": "生成一张喵咪图片"})
+  ↓
+写入 /tmp/autobot_tasks/task.json
+  ↓
+task_worker.py:92        检测到任务文件
+  ↓
+task_worker.py:99        do_task() → get_task("ai_image") → AIImageTask()
+  ↓
+tasks/ai_image.py:67     _handle_text()
+  ├─ ai.analyze("生成一张喵咪图片") → 调用本地 OpenCode API
+  │     ↓
+  │   prompt.py:24        system prompt 意图识别规则
+  │   "如果用户消息是生成图片...返回 #img 指令"
+  │     ↓
+  │   OpenCode 返回: "#img a cute fluffy cat, big eyes..."
+  │     ↓
+  ├─ ai_image.py:72      正则匹配 #img → 提取提示词
+  │     ↓
+  ├─ ai_image.py:86      调用 ImgTask.execute({"raw": "#img ..."})
+  │     ↓
+  │   （进入 A 流程，从 ImgTask 开始执行）
+  │     ↓
+  └─ 返回 TaskResult(exec_responses="__MEDIA_ID__: xxx")
+    ↓
+写入 /tmp/autobot_tasks/result.json
+  ↓
+autobot_dingtalk.py:266  检测到 __MEDIA_ID__
+  ↓
+不发送文本（图片已发送）
+  ↓
+返回 AckMessage.STATUS_OK
+```
+
+**关键区别：**
+
+| 类型 | 触发方式 | 意图识别 | 执行路径 |
+|------|---------|---------|---------|
+| **#标签指令** | 用户直接发送 `#xxx` | 主进程正则匹配 | 直接分发到对应任务 |
+| **自然语言指令** | 用户发送普通文本 | OpenCode AI 分析意图 | 先走 ai_image 意图识别，再分发 |
+
+**支持的 #标签：**
+
+| 标签 | 功能 | 典型场景 |
+|------|------|---------|
+| `#agent` | 智能任务执行 | 写代码、创建插件、复杂任务 |
+| `#img` | 本地图片生成 | 画画、生成图片、做图 |
+| `#shell` | 执行 Shell 命令 | 查看文件、系统操作 |
+| `#code` / `#python` | 执行 Python 代码 | 计算、测试代码 |
+| `#ai_analyze` | AI 分析媒体 | 图片分析、语音转写（自动触发） |
+| `#test` | 测试任务 | 测试系统功能 |
+| `#write` | 写入文件 | 保存代码到文件 |
+
 ---
 
 ## 3. 核心概念
