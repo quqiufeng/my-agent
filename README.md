@@ -100,11 +100,11 @@ autobot_dingtalk.py:186  检查 tasks/img.py 是否存在
   ↓
 autobot_dingtalk.py:189  dispatch_task("img", {"raw": "#img 一只可爱的猫"})
   ↓
-写入 /tmp/autobot_tasks/task.json
+TaskClient 通过 Unix Domain Socket 发送任务
   ↓
-task_worker.py:92        检测到任务文件
+task_worker.py (TaskServer) 实时接收任务
   ↓
-task_worker.py:99        do_task() → get_task("img") → ImgTask()
+do_task() → get_task("img") → ImgTask()
   ↓
 tasks/img.py:85          execute()
   ├─ 解析参数: prompt="一只可爱的猫"
@@ -114,7 +114,9 @@ tasks/img.py:85          execute()
     ↓
 返回 TaskResult(exec_responses="__MEDIA_ID__: xxx")
   ↓
-写入 /tmp/autobot_tasks/result.json
+TaskServer 通过 Socket 返回结果
+  ↓
+TaskClient 收到结果
   ↓
 autobot_dingtalk.py:234  检测到 __MEDIA_ID__
   ↓
@@ -134,11 +136,11 @@ autobot_dingtalk.py:243  检测无 #标签 → 走 ai_image 任务
   ↓
 autobot_dingtalk.py:244  dispatch_task("ai_image", {"user_input": "生成一张喵咪图片"})
   ↓
-写入 /tmp/autobot_tasks/task.json
+TaskClient 通过 Unix Domain Socket 发送任务
   ↓
-task_worker.py:92        检测到任务文件
+task_worker.py (TaskServer) 实时接收任务
   ↓
-task_worker.py:99        do_task() → get_task("ai_image") → AIImageTask()
+do_task() → get_task("ai_image") → AIImageTask()
   ↓
 tasks/ai_image.py:67     _handle_text()
   ├─ ai.analyze("生成一张喵咪图片") → 调用本地 OpenCode API
@@ -156,7 +158,9 @@ tasks/ai_image.py:67     _handle_text()
   │     ↓
   └─ 返回 TaskResult(exec_responses="__MEDIA_ID__: xxx")
     ↓
-写入 /tmp/autobot_tasks/result.json
+TaskServer 通过 Socket 返回结果
+  ↓
+TaskClient 收到结果
   ↓
 autobot_dingtalk.py:266  检测到 __MEDIA_ID__
   ↓
@@ -171,6 +175,16 @@ autobot_dingtalk.py:266  检测到 __MEDIA_ID__
 |------|---------|---------|---------|
 | **#标签指令** | 用户直接发送 `#xxx` | 主进程正则匹配 | 直接分发到对应任务 |
 | **自然语言指令** | 用户发送普通文本 | OpenCode AI 分析意图 | 先走 ai_image 意图识别，再分发 |
+
+**通信机制（Unix Domain Socket）：**
+
+| 维度 | 文件轮询（旧） | Socket 通信（新） |
+|------|---------------|------------------|
+| **延迟** | 0.5-1s 轮询等待 | 实时通信，无延迟 |
+| **可靠性** | 文件读写可能冲突 | Socket 内核处理，更可靠 |
+| **超时控制** | 固定 sleep 检查 | 支持 socket 级别超时 |
+| **Worker 断开** | 任务文件堆积 | 连接断开立即感知 |
+| **重连能力** | 无 | 支持自动重连 |
 
 **支持的 #标签：**
 
