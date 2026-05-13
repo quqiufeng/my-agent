@@ -1,21 +1,115 @@
 #!/usr/bin/env python3
 """
-文本转语音模块 - 基于 Piper TTS
+文本转语音模块 - 基于 Piper TTS（源码集成）
 功能：将文本转为 WAV 音频文件
-特点：模型轻量(~63MB)，推理极快，纯 CPU 运行
+特点：
+  - 源码集成（非命令行调用）
+  - 模型轻量(~63MB)，推理极快
+  - 纯 CPU 运行，零显存占用
+  - C++ 共享库 + ctypes 调用
+
+编译方法（在 /opt/piper-src 目录）：
+    mkdir build && cd build
+    cmake -DCMAKE_CXX_FLAGS="-fPIC" ..
+    make -j$(nproc) piper_tts
+
+依赖：
+    - Piper 源码：https://github.com/rhasspy/piper
+    - CMake >= 3.13
+    - g++ >= 9.0
 """
+import ctypes
 import os
-import subprocess
 import sys
 from pathlib import Path
 
+# 动态获取项目目录
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 
-# Piper 配置（二进制和模型放在 /opt 目录下）
-PIPER_DIR = "/opt/piper"
-PIPER_BIN = os.path.join(PIPER_DIR, "piper")
-MODEL_PATH = os.path.join(PIPER_DIR, "models", "zh_CN-huayan-medium.onnx")
+# Piper 配置
+PIPER_SRC_DIR = "/opt/piper-src"
+PIPER_BUILD_DIR = os.path.join(PIPER_SRC_DIR, "build")
+PIPER_LIB = os.path.join(PIPER_BUILD_DIR, "libpiper_tts.so")
+MODEL_PATH = os.path.join(PROJECT_DIR, "models", "piper", "zh_CN-huayan-medium.onnx")
+MODEL_CONFIG_PATH = os.path.join(PROJECT_DIR, "models", "piper", "zh_CN-huayan-medium.onnx.json")
+ESPEAK_DATA_PATH = os.path.join(PIPER_BUILD_DIR, "pi", "share", "espeak-ng-data")
+
+# ctypes 接口
+_lib = None
+_voice = None
+
+
+def _load_library() -> ctypes.CDLL:
+    """加载 Piper TTS 共享库"""
+    global _lib
+    if _lib is not None:
+        return _lib
+
+    if not os.path.exists(PIPER_LIB):
+        raise FileNotFoundError(
+            f"Piper 共享库不存在: {PIPER_LIB}\n"
+            f"请先编译: cd {PIPER_SRC_DIR} && mkdir build && cd build && cmake .. && make piper_tts"
+        )
+
+    _lib = ctypes.CDLL(PIPER_LIB)
+
+    # 定义函数签名
+    _lib.piper_initialize.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+    _lib.piper_initialize.restype = ctypes.c_int
+
+    _lib.piper_load_voice.argtypes = [
+        ctypes.c_char_p,  # model_path
+        ctypes.c_char_p,  # model_config_path
+        ctypes.c_int64,   # speaker_id
+        ctypes.c_int,     # use_cuda
+    ]
+    _lib.piper_load_voice.restype = ctypes.c_void_p
+
+    _lib.piper_synthesize_to_file.argtypes = [
+        ctypes.c_void_p,  # voice
+        ctypes.c_char_p,  # text
+        ctypes.c_char_p,  # output_path
+    ]
+    _lib.piper_synthesize_to_file.restype = ctypes.c_int
+
+    _lib.piper_free_voice.argtypes = [ctypes.c_void_p]
+    _lib.piper_free_voice.restype = None
+
+    _lib.piper_terminate.argtypes = []
+    _lib.piper_terminate.restype = None
+
+    return _lib
+
+
+def _initialize():
+    """初始化 Piper TTS 引擎"""
+    global _voice
+    if _voice is not None:
+        return
+
+    lib = _load_library()
+
+    # 初始化引擎
+    espeak_path = ESPEAK_DATA_PATH.encode("utf-8")
+    result = lib.piper_initialize(espeak_path, None)
+    if result != 0:
+        raise RuntimeError("Piper 初始化失败")
+
+    # 加载语音模型
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(f"模型文件不存在: {MODEL_PATH}")
+    if not os.path.exists(MODEL_CONFIG_PATH):
+        raise FileNotFoundError(f"模型配置不存在: {MODEL_CONFIG_PATH}")
+
+    _voice = lib.piper_load_voice(
+        MODEL_PATH.encode("utf-8"),
+        MODEL_CONFIG_PATH.encode("utf-8"),
+        -1,  # 默认说话人
+        0,   # 不使用 CUDA
+    )
+    if not _voice:
+        raise RuntimeError("语音模型加载失败")
 
 
 def text_to_speech(text: str, output_path: str = None) -> str:
@@ -27,52 +121,30 @@ def text_to_speech(text: str, output_path: str = None) -> str:
         output_path: 输出文件路径，默认 /tmp/piper_tts_<timestamp>.wav
 
     Returns:
-        生成的音频文件路径，失败返回空字符串
+        生成的音频文件路径，失败抛出异常
     """
     if not text or not text.strip():
         return ""
 
-    if not os.path.exists(PIPER_BIN):
-        raise FileNotFoundError(f"Piper 可执行文件不存在: {PIPER_BIN}")
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(f"Piper 模型不存在: {MODEL_PATH}")
+    _initialize()
 
     if output_path is None:
         import time
         output_path = f"/tmp/piper_tts_{int(time.time())}.wav"
 
-    try:
-        # 使用 pipe 输入文本
-        cmd = [
-            PIPER_BIN,
-            "--model", MODEL_PATH,
-            "--output_file", output_path,
-        ]
+    lib = _load_library()
+    result = lib.piper_synthesize_to_file(
+        _voice,
+        text.strip().encode("utf-8"),
+        output_path.encode("utf-8"),
+    )
 
-        env = os.environ.copy()
-        env["LD_LIBRARY_PATH"] = PIPER_DIR
+    if result != 0:
+        raise RuntimeError(f"语音合成失败")
 
-        result = subprocess.run(
-            cmd,
-            input=text.strip(),
-            capture_output=True,
-            text=True,
-            timeout=30,
-            env=env,
-            cwd=PIPER_DIR,
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(f"Piper 合成失败: {result.stderr}")
-
-        if os.path.exists(output_path):
-            return output_path
-        return ""
-
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("Piper 合成超时")
-    except Exception as e:
-        raise RuntimeError(f"Piper 合成异常: {e}")
+    if os.path.exists(output_path):
+        return output_path
+    return ""
 
 
 def text_to_speech_file(text: str, output_path: str) -> bool:
@@ -93,15 +165,25 @@ def text_to_speech_file(text: str, output_path: str) -> bool:
         return False
 
 
+def cleanup():
+    """释放资源（进程退出时调用）"""
+    global _voice
+    if _voice is not None and _lib is not None:
+        _lib.piper_free_voice(_voice)
+        _voice = None
+    if _lib is not None:
+        _lib.piper_terminate()
+
+
 if __name__ == "__main__":
     import time
 
-    print("=== Piper TTS 测试 ===")
+    print("=== Piper TTS 源码集成测试 ===")
 
     test_texts = [
         "你好，我是钉钉机器人助手。",
         "今天天气不错，适合出去散步。",
-        "SenseVoice 语音识别模型加载成功。",
+        "源码集成测试成功。",
     ]
 
     for i, text in enumerate(test_texts):
@@ -117,3 +199,6 @@ if __name__ == "__main__":
                 print("  失败")
         except Exception as e:
             print(f"  错误: {e}")
+
+    cleanup()
+    print("\n资源已释放")
