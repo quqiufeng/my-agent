@@ -7,6 +7,8 @@
 - file:      文件消息
 - voice:     语音消息
 - markdown:  Markdown 消息
+
+通信方式: Unix Domain Socket (替代文件轮询)
 """
 import os
 import sys
@@ -25,6 +27,7 @@ from dingtalk_stream import Credential, ChatbotHandler, AckMessage
 from config import Config
 import voice_recognition
 import dingtalk
+from task_queue import TaskClient
 
 LOG_FILE = os.path.join(SCRIPT_DIR, "run.log")
 logger = logging.getLogger(__name__)
@@ -41,12 +44,11 @@ class AutoBotHandler(ChatbotHandler):
     def __init__(self, client=None):
         super().__init__()
         self.client = client
-        self.task_dir = "/tmp/autobot_tasks"
-        self.task_file = os.path.join(self.task_dir, "task.json")
-        self.result_file = os.path.join(self.task_dir, "result.json")
-        os.makedirs(self.task_dir, exist_ok=True)
+        # 使用 Socket 通信替代文件通信
+        self.task_client = TaskClient()
     
     def dispatch_task(self, task_type, content, session_webhook=None, timeout=60):
+        """通过 Socket 发送任务并等待结果"""
         task_id = str(uuid.uuid4())
         task = {
             "id": task_id,
@@ -56,28 +58,7 @@ class AutoBotHandler(ChatbotHandler):
             "timestamp": time.time()
         }
         
-        if os.path.exists(self.result_file):
-            os.remove(self.result_file)
-        
-        with open(self.task_file, 'w') as f:
-            json.dump(task, f, ensure_ascii=False)
-        
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            if os.path.exists(self.result_file):
-                with open(self.result_file, 'r') as f:
-                    result = json.load(f)
-                os.remove(self.result_file)
-                return result
-            time.sleep(0.5)
-        
-        return {
-            "task_id": task_id,
-            "type": task_type,
-            "success": False,
-            "error": f"超时 ({timeout}秒)",
-            "stdout": ""
-        }
+        return self.task_client.dispatch_task(task, timeout=timeout)
     
     def _reply_text(self, text, msg):
         """回复文本消息（封装错误处理）"""
@@ -161,7 +142,6 @@ class AutoBotHandler(ChatbotHandler):
                     download_url = dt.download_file(download_code, robot_code)
                     if download_url:
                         # 2. 下载到本地临时文件
-                        import tempfile
                         temp_dir = "/tmp/autobot_voice"
                         os.makedirs(temp_dir, exist_ok=True)
                         temp_path = os.path.join(temp_dir, f"voice_{int(time.time())}.amr")
@@ -285,7 +265,7 @@ def main():
     handler = AutoBotHandler(client)
     client.register_callback_handler(CHATBOT_TOPIC, handler)
     logger.info("钉钉机器人启动...")
-    print("🤖 AutoBot 启动")
+    print("🤖 AutoBot 启动（基于 Socket 通信）")
     client.start_forever()
 
 

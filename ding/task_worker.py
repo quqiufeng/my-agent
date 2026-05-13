@@ -1,6 +1,14 @@
-"""AutoBot Task Worker"""
-import os, sys, json, time, re
-import requests
+"""AutoBot Task Worker - 基于 Socket 通信
+
+替代原有的文件轮询机制，使用 Unix Domain Socket 实时通信
+用法:
+    python task_worker.py
+"""
+import os
+import sys
+import json
+import time
+import re
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -9,10 +17,7 @@ from config import Config
 from logger import task_logger as logger
 from tasks import load_all_tasks, get_task, list_tasks
 import dingtalk
-
-TASK_DIR = "/tmp/autobot_tasks"
-TASK_FILE = os.path.join(TASK_DIR, "task.json")
-RESULT_FILE = os.path.join(TASK_DIR, "result.json")
+from task_queue import TaskServer
 
 
 # 懒加载标记
@@ -77,41 +82,30 @@ def do_task(task):
 
 
 def run_worker():
-    """Worker 主循环"""
+    """Worker 主循环 - 基于 Socket"""
     _ensure_initialized()
-    os.makedirs(TASK_DIR, exist_ok=True)
-    logger.info(f"Task Worker 启动，监听任务文件: {TASK_FILE}")
-    logger.info(f"支持的任务: {list_tasks()}")
     
-    while True:
-        try:
-            if not os.path.exists(TASK_FILE):
-                time.sleep(1)
-                continue
-            
-            with open(TASK_FILE, 'r') as f:
-                task = json.load(f)
-            
-            task_id = task.get("id")
+    server = TaskServer()
+    logger.info(f"Task Worker 启动，支持的任务: {list_tasks()}")
+    
+    try:
+        for task in server.listen():
+            task_id = task.get("id", "unknown")
             logger.info(f"收到任务: {task_id}, 类型: {task.get('type')}")
             
-            os.remove(TASK_FILE)
+            # 执行任务
             result = do_task(task)
             
-            with open(RESULT_FILE, 'w') as f:
-                json.dump(result, f, ensure_ascii=False, indent=2)
+            # 发送结果
+            server.send_result(result)
             
             logger.info(f"任务完成: {task_id}, 成功: {result.get('success')}")
             
-            # 等待主进程读取结果
-            for _ in range(10):
-                time.sleep(0.5)
-                if not os.path.exists(RESULT_FILE):
-                    break
-                    
-        except Exception as e:
-            logger.error(f"Worker 错误: {e}")
-            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Worker 收到退出信号")
+    finally:
+        server.stop()
+        logger.info("Task Worker 已停止")
 
 
 if __name__ == "__main__":
