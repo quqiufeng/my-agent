@@ -12,10 +12,10 @@ from pathlib import Path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 
-# Piper 配置
-PIPER_DIR = os.path.join(PROJECT_DIR, "bin", "piper")
+# Piper 配置（二进制和模型放在 /opt 目录下）
+PIPER_DIR = "/opt/piper"
 PIPER_BIN = os.path.join(PIPER_DIR, "piper")
-MODEL_PATH = os.path.join(PROJECT_DIR, "models", "piper", "zh_CN-huayan-medium.onnx")
+MODEL_PATH = os.path.join(PIPER_DIR, "models", "zh_CN-huayan-medium.onnx")
 
 
 def text_to_speech(text: str, output_path: str = None) -> str:
