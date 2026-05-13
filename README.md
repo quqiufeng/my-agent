@@ -376,21 +376,35 @@ tmux new-session -d -s agent-coder "opencode serve --port 4098 --work-dir ~/agen
 
 ### 5.3 编译方法
 
-在 SenseVoice.cpp 源码目录执行：
+#### 前置条件
+
+- SenseVoice.cpp 源码已克隆（`git clone https://github.com/FunAudioLLM/SenseVoice.git`）
+- 已安装 cmake (>=3.12), g++ (>=9.0), make
+- CUDA 环境（可选，用于 GPU 加速）
+
+#### 详细步骤
 
 ```bash
-cd /home/dministrator/SenseVoice.cpp
+# 1. 进入 SenseVoice.cpp 目录
+cd /path/to/SenseVoice.cpp
 
-# 1. 重新编译静态库（添加 -fPIC）
-cd build
+# 2. 创建/重建 build 目录（必须添加 -fPIC 参数）
+# 原因：.so 文件要求位置无关代码
+mkdir -p build && cd build
 cmake -DCMAKE_CXX_FLAGS="-fPIC" ..
 make -j$(nproc)
 
-# 2. 单独编译 main.cc（含 sense_voice_free 等函数）
-g++ -c -fPIC -std=c++17 -I. -Isense-voice/csrc \
-  sense-voice/csrc/main.cc -o /tmp/main.o
+# 3. 单独编译 main.cc（关键步骤！）
+# 原因：sense_voice_free 等函数只在 main.cc 中定义，
+# 不在静态库 libsense-voice-core.a 中
+cd ..
+g++ -c -fPIC -std=c++17 \
+  -I. -Isense-voice/csrc \
+  -Ibuild/_deps/ggml-src/include \
+  sense-voice/csrc/main.cc \
+  -o /tmp/main.o
 
-# 3. 编译 wrapper 为共享库
+# 4. 编译 wrapper 为共享库
 g++ -shared -fPIC -std=c++17 \
   -I. -Isense-voice/csrc \
   -Ibuild/_deps/ggml-src/include \
@@ -402,9 +416,38 @@ g++ -shared -fPIC -std=c++17 \
   -o libsensevoice.so \
   -lpthread -ldl
 
-# 4. 复制到项目目录
-cp libsensevoice.so /home/dministrator/my-agent/libs/
+# 5. 复制到项目目录
+cp libsensevoice.so /path/to/my-agent/libs/
 ```
+
+#### 关键说明
+
+| 步骤 | 关键参数 | 原因 |
+|------|---------|------|
+| 步骤 2 | `-DCMAKE_CXX_FLAGS="-fPIC"` | 生成位置无关代码，.so 必须要求 |
+| 步骤 3 | 单独编译 main.cc | `sense_voice_free` 等函数只在 main.cc 中定义 |
+| 步骤 4 | 链接 main.o | 将 main.cc 中的函数链接到 .so |
+| 步骤 4 | `-lggml` 等 | 依赖 ggml 库进行张量计算 |
+
+#### 运行时环境变量
+
+```bash
+# 必须设置，否则找不到 libggml.so
+export LD_LIBRARY_PATH=/path/to/SenseVoice.cpp/build/lib:$LD_LIBRARY_PATH
+
+# 验证
+cd /path/to/my-agent
+python3 ding/voice_recognition.py
+```
+
+#### 常见问题
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `libggml.so: cannot open` | 未设置 LD_LIBRARY_PATH | 设置环境变量 |
+| `undefined reference to sense_voice_free` | 未链接 main.o | 确保编译时包含 /tmp/main.o |
+| `relocation R_X86_64_32S` | 静态库未用 -fPIC 编译 | 删除 build 目录重新 cmake |
+| `munmap_chunk(): invalid pointer` | 内存管理冲突 | 检查 free_text 实现是否匹配 |
 
 ### 5.4 集成说明
 
