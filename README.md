@@ -355,56 +355,66 @@ tmux new-session -d -s agent-coder "opencode serve --port 4098 --work-dir ~/agen
 
 ---
 
-## 5. 语音识别优化（SenseVoice 共享库）
+## 5. 语音功能集成
 
-### 5.1 背景
+系统支持**语音转文本（ASR）**和**文本转语音（TTS）**功能，基于 SenseVoice 和 Piper 两个开源项目源码集成。
 
-原方案使用命令行调用 SenseVoice.cpp，每次识别都需要重新加载模型（~0.8s）。通过封装共享库实现模型常驻内存，**每次识别节省 ~0.6s**。
+### 5.1 模型文件位置
 
-| 方案 | 模型加载 | 单次识别 | 适用场景 |
-|------|---------|---------|---------|
-| 命令行调用 | 每次 0.8s | 1.0s | 低频使用 |
-| **共享库（当前）** | **仅一次 0.8s** | **0.25s** | **高频/实时** |
+所有模型文件存放在**源码目录下的 `models/` 中**，不放入项目目录，保持项目轻量：
 
-### 5.2 新增文件
+| 功能 | 模型路径 | 大小 |
+|------|---------|------|
+| **ASR (SenseVoice)** | `/home/dministrator/SenseVoice.cpp/models/sense-voice-small-q6_k.gguf` | ~230MB |
+| **TTS (Piper)** | `/opt/piper-src/models/zh_CN-huayan-medium.onnx` | ~63MB |
 
-| 文件 | 说明 | 来源 |
+> 注意：模型文件通过 `.gitignore` 排除，不会提交到 git。部署新机器时需手动下载或复制。
+
+### 5.2 新增代码文件
+
+以下文件为本次集成新增/修改，已备份到项目目录：
+
+| 文件 | 说明 | 位置 |
 |------|------|------|
-| `libs/libsensevoice.so` | 编译好的共享库（~650KB） | 编译生成 |
-| `sense-voice/csrc/sensevoice_wrapper.cpp` | C wrapper，导出 C 接口 | 新增 |
-| `ding/voice_recognition.py` | Python ctypes 封装 | 修改 |
+| `ding/voice_recognition.py` | ASR Python 封装（ctypes） | 项目目录 |
+| `ding/text_to_speech.py` | TTS Python 封装（ctypes） | 项目目录 |
+| `sense-voice-wrapper/sensevoice_wrapper.cpp` | SenseVoice C wrapper | 项目目录（备份） |
+| `libs/libsensevoice.so` | SenseVoice 共享库 | 项目目录（编译产物） |
+| `src/cpp/piper_wrapper.cpp` | Piper C wrapper | `/opt/piper-src/src/cpp/` |
+| `libpiper_tts.so` | Piper 共享库 | `/opt/piper-src/build/` |
 
-### 5.3 编译方法
+### 5.3 语音转文本（ASR）- SenseVoice
 
-#### 前置条件
+#### 架构
 
-- SenseVoice.cpp 源码已克隆（`git clone https://github.com/FunAudioLLM/SenseVoice.git`）
-- 已安装 cmake (>=3.12), g++ (>=9.0), make
-- CUDA 环境（可选，用于 GPU 加速）
+```
+用户语音消息 → voice_recognition.py → ctypes → libsensevoice.so → SenseVoice C++ API → 文本
+```
 
-#### 详细步骤
+**特点**：
+- 模型**常驻内存**，首次加载后复用
+- 支持 GPU 加速（CUDA）
+- 支持多种音频格式（自动转换为 WAV）
+
+#### 编译方法
+
+在 SenseVoice.cpp 源码目录执行：
 
 ```bash
-# 1. 进入 SenseVoice.cpp 目录
-cd /path/to/SenseVoice.cpp
+cd /home/dministrator/SenseVoice.cpp
 
-# 2. 创建/重建 build 目录（必须添加 -fPIC 参数）
-# 原因：.so 文件要求位置无关代码
+# 1. 重新编译静态库（添加 -fPIC）
 mkdir -p build && cd build
 cmake -DCMAKE_CXX_FLAGS="-fPIC" ..
 make -j$(nproc)
 
-# 3. 单独编译 main.cc（关键步骤！）
-# 原因：sense_voice_free 等函数只在 main.cc 中定义，
-# 不在静态库 libsense-voice-core.a 中
+# 2. 单独编译 main.cc（关键！sense_voice_free 等函数只在此文件中）
 cd ..
-g++ -c -fPIC -std=c++17 \
-  -I. -Isense-voice/csrc \
+g++ -c -fPIC -std=c++17 -I. -Isense-voice/csrc \
   -Ibuild/_deps/ggml-src/include \
-  sense-voice/csrc/main.cc \
-  -o /tmp/main.o
+  sense-voice/csrc/main.cc -o /tmp/main.o
 
-# 4. 编译 wrapper 为共享库
+# 3. 编译 wrapper 为共享库
 g++ -shared -fPIC -std=c++17 \
   -I. -Isense-voice/csrc \
   -Ibuild/_deps/ggml-src/include \
@@ -416,74 +426,159 @@ g++ -shared -fPIC -std=c++17 \
   -o libsensevoice.so \
   -lpthread -ldl
 
-# 5. 复制到项目目录
-cp libsensevoice.so /path/to/my-agent/libs/
+# 4. 复制到项目目录
+cp libsensevoice.so /home/dministrator/my-agent/libs/
 ```
 
-#### 关键说明
-
-| 步骤 | 关键参数 | 原因 |
-|------|---------|------|
-| 步骤 2 | `-DCMAKE_CXX_FLAGS="-fPIC"` | 生成位置无关代码，.so 必须要求 |
-| 步骤 3 | 单独编译 main.cc | `sense_voice_free` 等函数只在 main.cc 中定义 |
-| 步骤 4 | 链接 main.o | 将 main.cc 中的函数链接到 .so |
-| 步骤 4 | `-lggml` 等 | 依赖 ggml 库进行张量计算 |
-
-#### 运行时环境变量
-
-```bash
-# 必须设置，否则找不到 libggml.so
-export LD_LIBRARY_PATH=/path/to/SenseVoice.cpp/build/lib:$LD_LIBRARY_PATH
-
-# 验证
-cd /path/to/my-agent
-python3 ding/voice_recognition.py
-```
-
-#### 常见问题
-
-| 问题 | 原因 | 解决 |
-|------|------|------|
-| `libggml.so: cannot open` | 未设置 LD_LIBRARY_PATH | 设置环境变量 |
-| `undefined reference to sense_voice_free` | 未链接 main.o | 确保编译时包含 /tmp/main.o |
-| `relocation R_X86_64_32S` | 静态库未用 -fPIC 编译 | 删除 build 目录重新 cmake |
-| `munmap_chunk(): invalid pointer` | 内存管理冲突 | 检查 free_text 实现是否匹配 |
-
-### 5.4 集成说明
-
-Python 通过 ctypes 加载共享库，模型在首次识别时自动加载，后续识别复用：
+#### 使用示例
 
 ```python
 from ding.voice_recognition import recognize_audio
 
-# 第一次：加载模型 + 识别（~0.9s）
-text = recognize_audio("/tmp/test.wav")
+# 识别音频文件（支持 wav/mp3/amr 等）
+text = recognize_audio("/tmp/voice_message.wav")
+print(text)  # 输出：你好，请问有什么可以帮您的吗？
 
-# 后续：直接识别（~0.25s）
-text = recognize_audio("/tmp/test2.wav")
+# 模型在第一次调用时自动加载，后续识别复用
 ```
 
-**环境要求**：
-- 需设置 `LD_LIBRARY_PATH` 包含 `SenseVoice.cpp/build/lib`（libggml.so 所在目录）
-- 模型文件：`models/sense-voice-small-q6_k.gguf`（~230MB）
+#### 性能
 
-### 5.5 接口说明
+| 指标 | 数值 |
+|------|------|
+| 首次加载 | ~0.9s（含模型加载） |
+| 后续识别 | ~0.25s |
+| 显存占用 | ~260MB（GPU） |
 
-C wrapper 导出的接口：
+#### 环境要求
 
-```c
-// 加载模型（常驻内存）
-void* sensevoice_load_model(const char* model_path, int n_threads);
-
-// 识别音频（复用已加载的模型）
-const char* sensevoice_recognize(void* ctx, const char* wav_path, int n_threads);
-
-// 释放文本（当前为空操作，使用静态缓冲区）
-void sensevoice_free_text(const char* text);
-
-// 释放模型（进程退出时调用）
-void sensevoice_free_model(void* ctx);
+```bash
+# 必须设置 LD_LIBRARY_PATH，否则找不到 libggml.so
+export LD_LIBRARY_PATH=/home/dministrator/SenseVoice.cpp/build/lib:$LD_LIBRARY_PATH
 ```
+
+---
+
+### 5.4 文本转语音（TTS）- Piper
+
+#### 架构
+
+```
+文本 → text_to_speech.py → ctypes → libpiper_tts.so → Piper C++ API → ONNX Runtime → WAV 音频
+```
+
+**特点**：
+- **源码集成**（非命令行调用）
+- 模型轻量（~63MB），推理极快
+- **纯 CPU 运行**，零显存占用
+- 支持中文、英文等多种语言
+
+#### 编译方法
+
+在 Piper 源码目录执行：
+
+```bash
+cd /opt/piper-src
+
+# 1. 配置并编译
+mkdir -p build && cd build
+cmake -DCMAKE_CXX_FLAGS="-fPIC" ..
+make -j$(nproc) piper_tts
+
+# 编译产物：build/libpiper_tts.so
+```
+
+#### 使用示例
+
+```python
+from ding.text_to_speech import text_to_speech
+
+# 将文本转为语音
+audio_path = text_to_speech("你好，我是钉钉机器人助手。")
+print(audio_path)  # 输出：/tmp/piper_tts_1234567890.wav
+
+# 指定输出路径
+audio_path = text_to_speech(
+    "今天天气不错，适合出去散步。",
+    output_path="/tmp/greeting.wav"
+)
+```
+
+#### 性能
+
+| 指标 | 数值 |
+|------|------|
+| 模型加载 | ~0.3s |
+| 文本合成 | ~0.15-0.5s |
+| 显存占用 | **0**（纯 CPU） |
+| 模型大小 | ~63MB |
+
+#### 环境要求
+
+```bash
+# 设置库搜索路径
+export LD_LIBRARY_PATH=/opt/piper-src/build/pi/lib:$LD_LIBRARY_PATH
+```
+
+---
+
+### 5.5 文件架构
+
+```
+# 项目目录（轻量，只含代码）
+my-agent/
+├── ding/
+│   ├── voice_recognition.py      # ASR Python 封装
+│   ├── text_to_speech.py         # TTS Python 封装
+│   └── ...
+├── libs/
+│   └── libsensevoice.so          # SenseVoice 共享库
+├── sense-voice-wrapper/
+│   └── sensevoice_wrapper.cpp    # SenseVoice C wrapper 源码备份
+└── README.md
+
+# SenseVoice 源码目录（含模型）
+/home/dministrator/SenseVoice.cpp/
+├── models/
+│   └── sense-voice-small-q6_k.gguf    # ASR 模型 (~230MB)
+├── build/
+│   └── lib/
+│       └── libggml.so                 # 运行时依赖
+└── sense-voice/csrc/
+    └── sensevoice_wrapper.cpp         # C wrapper（新增）
+
+# Piper 源码目录（含模型）
+/opt/piper-src/
+├── models/
+│   ├── zh_CN-huayan-medium.onnx       # TTS 模型 (~63MB)
+│   └── zh_CN-huayan-medium.onnx.json  # 模型配置
+├── build/
+│   ├── libpiper_tts.so                # 编译产物
+│   └── pi/lib/
+│       └── libonnxruntime.so          # 运行时依赖
+└── src/cpp/
+    └── piper_wrapper.cpp              # C wrapper（新增）
+```
+
+---
+
+### 5.6 常见问题
+
+#### ASR (SenseVoice)
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `libggml.so: cannot open` | 未设置 LD_LIBRARY_PATH | `export LD_LIBRARY_PATH=/home/dministrator/SenseVoice.cpp/build/lib:$LD_LIBRARY_PATH` |
+| `undefined reference to sense_voice_free` | 未链接 main.o | 确保编译时包含 `/tmp/main.o` |
+| `relocation R_X86_64_32S` | 静态库未用 -fPIC 编译 | 删除 build 目录重新 cmake |
+
+#### TTS (Piper)
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `libonnxruntime.so: cannot open` | 未设置 LD_LIBRARY_PATH | `export LD_LIBRARY_PATH=/opt/piper-src/build/pi/lib:$LD_LIBRARY_PATH` |
+| `piper_initialize: undefined symbol` | 共享库未正确导出 | 确保 C wrapper 中使用 `__attribute__((visibility("default")))` |
+| 模型加载失败 | 模型路径错误 | 检查 `/opt/piper-src/models/` 下是否有模型文件 |
 
 ---
 

@@ -27,12 +27,12 @@ from pathlib import Path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 
-# Piper 配置
+# Piper 配置（源码目录下的 models）
 PIPER_SRC_DIR = "/opt/piper-src"
 PIPER_BUILD_DIR = os.path.join(PIPER_SRC_DIR, "build")
 PIPER_LIB = os.path.join(PIPER_BUILD_DIR, "libpiper_tts.so")
-MODEL_PATH = os.path.join(PROJECT_DIR, "models", "piper", "zh_CN-huayan-medium.onnx")
-MODEL_CONFIG_PATH = os.path.join(PROJECT_DIR, "models", "piper", "zh_CN-huayan-medium.onnx.json")
+MODEL_PATH = os.path.join(PIPER_SRC_DIR, "models", "zh_CN-huayan-medium.onnx")
+MODEL_CONFIG_PATH = os.path.join(PIPER_SRC_DIR, "models", "zh_CN-huayan-medium.onnx.json")
 ESPEAK_DATA_PATH = os.path.join(PIPER_BUILD_DIR, "pi", "share", "espeak-ng-data")
 
 # ctypes 接口
