@@ -23,6 +23,8 @@ sys.path.insert(0, SCRIPT_DIR)
 import dingtalk_stream
 from dingtalk_stream import Credential, ChatbotHandler, AckMessage
 from config import Config
+import voice_recognition
+import dingtalk
 
 LOG_FILE = os.path.join(SCRIPT_DIR, "run.log")
 logger = logging.getLogger(__name__)
@@ -146,24 +148,62 @@ class AutoBotHandler(ChatbotHandler):
             return AckMessage.STATUS_OK, 'OK'
         
         # ==================== 语音消息 ====================
+        text = ""
         if msg_type == "voice":
             content = data.get("content", {})
             download_code = content.get("downloadCode")
             robot_code = data.get("robotCode")
             if download_code:
-                self._reply_text("收到语音消息，正在识别...", msg)
-                result = self.dispatch_task("ai_analyze", {
-                    "download_code": download_code,
-                    "robot_code": robot_code,
-                    "prompt": "转写这段语音内容"
-                }, timeout=120)
-                result_text = result.get('stdout', '语音已识别')
-                if result_text:
-                    self._reply_text(f"语音内容:\n{result_text[:500]}", msg)
-            return AckMessage.STATUS_OK, 'OK'
+                self._reply_text("🎤 收到语音，正在本地识别...", msg)
+                try:
+                    # 1. 下载语音文件
+                    dt = dingtalk.get_dingtalk()
+                    download_url = dt.download_file(download_code, robot_code)
+                    if download_url:
+                        # 2. 下载到本地临时文件
+                        import tempfile
+                        temp_dir = "/tmp/autobot_voice"
+                        os.makedirs(temp_dir, exist_ok=True)
+                        temp_path = os.path.join(temp_dir, f"voice_{int(time.time())}.amr")
+
+                        resp = requests.get(download_url, timeout=60)
+                        if resp.status_code == 200:
+                            with open(temp_path, "wb") as f:
+                                f.write(resp.content)
+                            logger.info(f"语音文件已下载: {temp_path}, {len(resp.content)} bytes")
+
+                            # 3. 本地 SenseVoice 识别
+                            recognized_text = voice_recognition.recognize_audio(temp_path)
+
+                            # 4. 清理临时文件
+                            try:
+                                os.unlink(temp_path)
+                            except Exception:
+                                pass
+
+                            if recognized_text:
+                                text = recognized_text
+                                self._reply_text(f"📝 识别结果: {text[:200]}", msg)
+                                logger.info(f"[Voice] 识别成功: {text[:100]}")
+                            else:
+                                self._reply_text("⚠️ 语音识别失败，请尝试发送文字消息", msg)
+                                return AckMessage.STATUS_OK, 'OK'
+                        else:
+                            self._reply_text("⚠️ 语音下载失败", msg)
+                            return AckMessage.STATUS_OK, 'OK'
+                    else:
+                        self._reply_text("⚠️ 获取语音下载链接失败", msg)
+                        return AckMessage.STATUS_OK, 'OK'
+                except Exception as e:
+                    logger.error(f"语音处理异常: {e}")
+                    self._reply_text("⚠️ 语音处理异常，请尝试发送文字消息", msg)
+                    return AckMessage.STATUS_OK, 'OK'
+            else:
+                return AckMessage.STATUS_OK, 'OK'
         
         # ==================== 文本/Markdown 消息 ====================
-        text = self._extract_text(msg, data)
+        if not text:
+            text = self._extract_text(msg, data)
         if not text:
             return AckMessage.STATUS_OK, 'OK'
         
