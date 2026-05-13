@@ -188,11 +188,11 @@ class AutoBotHandler(ChatbotHandler):
                 logger.info(f"[DEBUG] session_webhook={session_webhook}, directive={directive_name}")
                 result = self.dispatch_task(directive_name, {"raw": text}, session_webhook=session_webhook, timeout=120)
                 
-                # 检查 Worker 是否已发送图片（如 #img 指令）
+                # 检查 Worker 是否已发送图片（如 #img 指令）或 Markdown 消息（如 #agent 指令）
                 logger.info(f"[DEBUG] result={json.dumps(result, ensure_ascii=False)[:500]}")
                 exec_responses = result.get('exec_responses', '')
-                if exec_responses and '__MEDIA_ID__' in exec_responses:
-                    # Worker 已发送图片，不再发送文本回复
+                if exec_responses and ('__MEDIA_ID__' in exec_responses or '__MARKDOWN_SENT__' in exec_responses):
+                    # Worker 已发送图片/Markdown，不再发送文本回复
                     return AckMessage.STATUS_OK, 'OK'
                 
                 # 否则回复文本结果

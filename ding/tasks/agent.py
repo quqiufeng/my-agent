@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tasks.base import BaseTask, TaskResult
 from logger import task_logger as logger
+import dingtalk
 
 
 MASTER_PORT = 4097
@@ -58,7 +59,7 @@ class AgentTask(BaseTask):
                 return TaskResult.err(f"Agent '{agent_name}' 启动后未响应").to_dict()
         
         # 发送指令
-        return self._send_instruction(agent_name, agent_url, instruction)
+        return self._send_instruction(agent_name, agent_url, instruction, session_webhook)
     
     def _parse_args(self, args_str: str) -> tuple:
         """
@@ -139,7 +140,7 @@ class AgentTask(BaseTask):
             time.sleep(1)
         return False
     
-    def _send_instruction(self, agent_name: str, agent_url: str, instruction: str) -> dict:
+    def _send_instruction(self, agent_name: str, agent_url: str, instruction: str, session_webhook=None) -> dict:
         """发送指令到 Agent"""
         try:
             # 1. 发送提示词
@@ -163,10 +164,30 @@ class AgentTask(BaseTask):
             
             logger.info(f"[AgentTask] 指令已发送到 {agent_name}")
             
-            return TaskResult.ok(
-                f"✓ 指令已发送给 {agent_name}\n"
-                f"  查看执行: tmux attach -t {agent_name}\n"
-                f"  端口: {agent_url}"
+            # 3. 构建 Markdown 回复内容
+            markdown_content = (
+                f"### Agent 指令已发送\n\n"
+                f"**目标 Agent:** `{agent_name}`\n"
+                f"**服务地址:** `{agent_url}`\n"
+                f"**指令内容:**\n```\n{instruction}\n```\n\n"
+                f"**查看执行:** `tmux attach -t {agent_name}`"
+            )
+            
+            exec_responses = ""
+            # 如果提供了 session_webhook，直接发送 Markdown 消息
+            if session_webhook:
+                try:
+                    dt = dingtalk.get_dingtalk()
+                    dt.send_markdown(session_webhook, "Agent 指令", markdown_content)
+                    exec_responses = "__MARKDOWN_SENT__"
+                    logger.info(f"[AgentTask] Markdown 消息已发送到钉钉")
+                except Exception as e:
+                    logger.error(f"[AgentTask] 发送 Markdown 消息失败: {e}")
+            
+            return TaskResult(
+                success=True,
+                stdout=markdown_content,
+                exec_responses=exec_responses
             ).to_dict()
             
         except requests.exceptions.ConnectionError:
