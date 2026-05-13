@@ -8,7 +8,6 @@ import ctypes
 import os
 import re
 import subprocess
-import sys
 import tempfile
 
 from logger import app_logger as logger

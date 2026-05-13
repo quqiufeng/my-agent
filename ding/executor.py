@@ -1,4 +1,5 @@
 import subprocess
+import shlex
 import re
 import os
 import sys
@@ -22,10 +23,6 @@ class Executor:
     def __init__(
         self, forbidden_patterns=None, work_dir=None, timeout=None, sandbox_dir=None
     ):
-        self.forbidden = forbidden_patterns or Config.FORBIDDEN_PATTERNS
-        self.work_dir = work_dir or Config.WORK_DIR
-        self.timeout = timeout or Config.TIMEOUT
-        self.sandbox_dir = sandbox_dir or Config.SANDBOX_DIR
         self.forbidden = forbidden_patterns or Config.FORBIDDEN_PATTERNS
         self.work_dir = work_dir or Config.WORK_DIR
         self.timeout = timeout or Config.TIMEOUT
@@ -90,9 +87,11 @@ class Executor:
 
         # 执行命令
         try:
+            # 安全执行：将命令字符串拆分为列表，避免 shell 注入
+            cmd_list = shlex.split(command) if isinstance(command, str) else command
             result = subprocess.run(
-                command,
-                shell=True,
+                cmd_list,
+                shell=False,
                 cwd=cwd,
                 capture_output=True,
                 text=True,
@@ -214,34 +213,6 @@ class Executor:
         finally:
             sys.stdout = old_stdout
             sys.stderr = old_stderr
-
-    def execute_python_subprocess(self, code, timeout=60):
-        """通过 subprocess 执行 Python 代码"""
-        try:
-            result = subprocess.run(
-                [sys.executable, "-c", code],
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
-
-            output = result.stdout + result.stderr
-
-            return {
-                "success": result.returncode == 0,
-                "returncode": result.returncode,
-                "stdout": output,
-                "stderr": "",
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                "success": False,
-                "error": f"OpenCode 执行超时 ({timeout}秒)",
-                "stdout": "",
-                "stderr": f"超时 {timeout} 秒",
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e), "stdout": "", "stderr": str(e)}
 
     def execute_python_subprocess(self, code, api_key=None, model=None):
         """通过 subprocess 执行 Python 代码（更安全）"""
@@ -413,7 +384,6 @@ shutil.rmtree = _no_rmtree
 
     def check_safety(self, command):
         """安全检查 - 黑名单模式：只检查禁止模式，其他都允许"""
-        import re
 
         cmd = command.strip()
 
@@ -548,7 +518,6 @@ shutil.rmtree = _no_rmtree
 
     def _extract_commands(self, text):
         """从文本中提取 #shell 或 #code 或 #download 包裹的内容"""
-        import re
 
         # 提取 #download ... #end
         download_match = re.search(

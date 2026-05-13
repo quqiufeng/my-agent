@@ -13,10 +13,7 @@ AutoBot Logger - 统一日志模块
 import os
 import sys
 import logging
-import traceback
-from datetime import datetime
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 

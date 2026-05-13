@@ -15,6 +15,7 @@ from tasks.base import BaseTask, TaskResult
 from ai import AI
 from executor import Executor
 from dingtalk import DingTalk
+import dingtalk as dingtalk_module
 from logger import task_logger as logger
 
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -47,7 +48,7 @@ class AIImageTask(BaseTask):
         prompt = content.get("prompt", "描述这张图片的内容")
         
         try:
-            dt = dingtalk.get_dingtalk()
+            dt = dingtalk_module.get_dingtalk()
             image_url = dt.download_file(download_code, robot_code)
         except Exception as e:
             logger.error(f"图片下载失败: {e}")
@@ -146,7 +147,7 @@ class AIImageTask(BaseTask):
                         try:
                             from tasks import load_all_tasks
                             load_all_tasks()
-                            responses.append(f"🔄 已重新加载任务")
+                            responses.append("🔄 已重新加载任务")
                         except Exception as e:
                             logger.error(f"重新加载任务失败: {e}")
                     except Exception as e:
@@ -176,7 +177,7 @@ class AIImageTask(BaseTask):
                 
                 # 添加执行结果提示
                 if stdout:
-                    responses.append(f"📥 代码执行结果:\n")
+                    responses.append("📥 代码执行结果:\n")
                 if stderr:
                     responses.append(f"❌ 错误:\n{stderr[:300]}")
                 

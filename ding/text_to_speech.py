@@ -20,8 +20,6 @@
 """
 import ctypes
 import os
-import sys
-from pathlib import Path
 
 # 动态获取项目目录
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -140,7 +138,7 @@ def text_to_speech(text: str, output_path: str = None) -> str:
     )
 
     if result != 0:
-        raise RuntimeError(f"语音合成失败")
+        raise RuntimeError("语音合成失败")
 
     if os.path.exists(output_path):
         return output_path

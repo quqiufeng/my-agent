@@ -6,14 +6,11 @@
 """
 import os
 import sys
-import json
-import time
 import re
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
-from config import Config
 from logger import task_logger as logger
 from tasks import load_all_tasks, get_task, list_tasks
 import dingtalk

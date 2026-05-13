@@ -25,7 +25,7 @@ import json
 import os
 import struct
 import time
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from logger import app_logger as logger
 
@@ -99,7 +99,7 @@ class TaskServer:
                 if self.client_conn:
                     try:
                         self.client_conn.close()
-                    except:
+                    except Exception:
                         pass
                     self.client_conn = None
                 
@@ -126,12 +126,12 @@ class TaskServer:
         if self.client_conn:
             try:
                 self.client_conn.close()
-            except:
+            except Exception:
                 pass
         if self.server_socket:
             try:
                 self.server_socket.close()
-            except:
+            except Exception:
                 pass
         self._cleanup_socket()
         logger.info("[TaskServer] 已停止")
@@ -193,7 +193,7 @@ class TaskClient:
             if self.socket:
                 try:
                     self.socket.close()
-                except:
+                except Exception:
                     pass
             
             self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -255,7 +255,7 @@ class TaskClient:
                     "task_id": task_id,
                     "type": task_type,
                     "success": False,
-                    "error": f"接收结果失败或 Worker 断开",
+                    "error": "接收结果失败或 Worker 断开",
                     "stdout": ""
                 }
             
@@ -276,7 +276,7 @@ class TaskClient:
             # 连接可能断开，下次重连
             try:
                 self.socket.close()
-            except:
+            except Exception:
                 pass
             self.socket = None
             
@@ -293,7 +293,7 @@ class TaskClient:
         if self.socket:
             try:
                 self.socket.close()
-            except:
+            except Exception:
                 pass
             self.socket = None
             logger.info("[TaskClient] 已关闭连接")

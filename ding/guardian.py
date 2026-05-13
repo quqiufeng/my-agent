@@ -11,7 +11,6 @@ AutoBot 守护进程
 import os
 import sys
 import time
-import json
 import signal
 import subprocess
 import requests
@@ -107,8 +106,16 @@ class Guardian:
     def _start_process(self, script_name):
         """启动进程"""
         try:
-            cmd = f"cd {AUTOBOT_DIR} && nohup python3 {script_name} >> {AUTOBOT_DIR}/{script_name.replace('.py', '.log')} 2>&1 &"
-            subprocess.run(cmd, shell=True, timeout=10)
+            log_file = f"{AUTOBOT_DIR}/{script_name.replace('.py', '.log')}"
+            with open(log_file, "a") as log:
+                import subprocess as sp
+                process = sp.Popen(
+                    ["python3", script_name],
+                    cwd=AUTOBOT_DIR,
+                    stdout=log,
+                    stderr=sp.STDOUT,
+                    start_new_session=True,
+                )
             time.sleep(3)
             
             pid = self._is_process_running(script_name)

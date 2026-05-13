@@ -180,7 +180,7 @@ class AgentTask(BaseTask):
                     dt = dingtalk.get_dingtalk()
                     dt.send_markdown(session_webhook, "Agent 指令", markdown_content)
                     exec_responses = "__MARKDOWN_SENT__"
-                    logger.info(f"[AgentTask] Markdown 消息已发送到钉钉")
+                    logger.info("[AgentTask] Markdown 消息已发送到钉钉")
                 except Exception as e:
                     logger.error(f"[AgentTask] 发送 Markdown 消息失败: {e}")
             

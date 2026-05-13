@@ -6,12 +6,10 @@ import os
 import sys
 import re
 import json
-import tempfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
-from tasks.base import BaseTask, TaskResult
 from executor import Executor
 
 # ========== 1. 测试标签解析 ==========
@@ -194,7 +192,7 @@ if os.path.exists(TASK_FILE):
     
     # 模拟执行
     os.remove(TASK_FILE)
-    print(f"✓ Worker 删除任务文件")
+    print("✓ Worker 删除任务文件")
     
     # 写入结果
     result = {
@@ -215,7 +213,7 @@ if os.path.exists(RESULT_FILE):
         received_result = json.load(f)
     print(f"✓ 主进程读取结果: success={received_result['success']}, stdout={received_result['stdout']}")
     os.remove(RESULT_FILE)
-    print(f"✓ 主进程删除结果文件")
+    print("✓ 主进程删除结果文件")
 
 print()
 print("=" * 60)
