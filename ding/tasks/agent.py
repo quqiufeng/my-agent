@@ -111,27 +111,48 @@ class AgentTask(BaseTask):
             return False
     
     def _start_agent(self, agent_name: str, port: int) -> dict:
-        """启动 Agent（创建 tmux session）"""
+        """启动 Agent（复用 agent.sh，确保心跳守护和 HEARTBEAT.md）"""
         try:
-            # 创建工作目录
-            work_dir = os.path.expanduser(f"~/agents/{agent_name}")
-            os.makedirs(work_dir, exist_ok=True)
+            # 获取 agent.sh 路径（与 tasks/agent.py 同级目录的上级）
+            agent_sh = os.path.join(SCRIPT_DIR, "..", "agent.sh")
+            agent_sh = os.path.abspath(agent_sh)
             
-            # 创建 tmux session 启动 opencode serve
-            cmd = [
-                "tmux", "new-session", "-d", "-s", agent_name,
-                f"cd '{work_dir}' && opencode serve --port {port}"
-            ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            
-            if result.returncode != 0:
-                error = result.stderr or "未知错误"
-                logger.error(f"[AgentTask] 启动 {agent_name} 失败: {error}")
-                return {"success": False, "error": error}
-            
-            logger.info(f"[AgentTask] Agent '{agent_name}' 已启动 (port {port})")
-            return {"success": True}
+            if os.path.exists(agent_sh):
+                # 使用 agent.sh 启动，自动包含心跳守护和 HEARTBEAT.md
+                result = subprocess.run(
+                    [agent_sh, "start", agent_name, "--port", str(port)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                if result.returncode != 0:
+                    error = result.stderr or "未知错误"
+                    logger.error(f"[AgentTask] agent.sh 启动 {agent_name} 失败: {error}")
+                    return {"success": False, "error": error}
+                
+                logger.info(f"[AgentTask] Agent '{agent_name}' 已通过 agent.sh 启动 (port {port})")
+                return {"success": True}
+            else:
+                # 降级方案：直接创建 tmux session（无心跳守护）
+                logger.warning(f"[AgentTask] agent.sh 不存在，使用降级方案启动 {agent_name}")
+                work_dir = os.path.expanduser(f"~/agents/{agent_name}")
+                os.makedirs(work_dir, exist_ok=True)
+                
+                cmd = [
+                    "tmux", "new-session", "-d", "-s", agent_name,
+                    f"cd '{work_dir}' && opencode serve --port {port}"
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                
+                if result.returncode != 0:
+                    error = result.stderr or "未知错误"
+                    logger.error(f"[AgentTask] 启动 {agent_name} 失败: {error}")
+                    return {"success": False, "error": error}
+                
+                logger.info(f"[AgentTask] Agent '{agent_name}' 已启动 (port {port}, 无心跳守护)")
+                return {"success": True}
             
         except Exception as e:
             logger.error(f"[AgentTask] 启动异常: {e}")
