@@ -22,6 +22,16 @@ import dingtalk
 MASTER_PORT = 4097
 AGENT_BASE_URL = "http://localhost"
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+
+
+def _load_agents_md() -> str:
+    """加载 AGENTS.md 文档内容"""
+    md_path = os.path.join(PROJECT_DIR, "AGENTS.md")
+    if os.path.exists(md_path):
+        with open(md_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
 
 
 class AgentTask(BaseTask):
@@ -35,8 +45,9 @@ class AgentTask(BaseTask):
         if not args_str:
             return TaskResult.err(
                 "请提供指令，例如:\n"
-                "#agent 查看当前目录\n"
-                "#agent coder 写一个爬虫"
+                "#agent 帮我写一个爬虫 → 发给 Master 自动分配\n"
+                "#agent master 列出所有 Slave\n"
+                "#agent coder 写一个 Python 脚本 → 直接发给 coder"
             ).to_dict()
         
         # 解析：第一个词可能是 agent_name，也可能是指令的一部分
@@ -143,6 +154,32 @@ class AgentTask(BaseTask):
     def _send_instruction(self, agent_name: str, agent_url: str, instruction: str, session_webhook=None) -> dict:
         """发送指令到 Agent"""
         try:
+            # 如果是发给 Master，先发送 AGENTS.md 作为系统提示
+            if agent_name == "master":
+                agents_md = _load_agents_md()
+                if agents_md:
+                    system_prompt = f"""你是 Master Agent，负责管理 Slave Agent 集群。
+
+请阅读以下文档，了解如何创建和管理 Slave Agent：
+
+{agents_md}
+
+重要规则：
+1. 收到用户任务后，先分析需要什么类型的 Slave（coder/reviewer/ops/data 等）
+2. 如果 Slave 不存在，使用命令创建：./agent.sh start <slave_name>
+3. 分配任务给合适的 Slave：./agent.sh send <slave_name> "<任务>"
+4. 收集 Slave 的结果并汇总返回
+5. 对于复杂任务，可以拆解为多个子任务分配给不同 Slave
+
+现在开始处理用户请求："""
+                    
+                    # 发送系统提示
+                    requests.post(
+                        f"{agent_url}/tui/append-prompt",
+                        json={"text": system_prompt},
+                        timeout=10
+                    )
+            
             # 1. 发送提示词
             resp_append = requests.post(
                 f"{agent_url}/tui/append-prompt",
