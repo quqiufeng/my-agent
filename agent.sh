@@ -19,6 +19,7 @@ set -euo pipefail
 DEFAULT_MASTER_PORT=4097
 DEFAULT_BASE_DIR="${HOME}/agents"
 AGENT_BASE_URL="http://localhost"
+MASTER_URL="http://localhost:${DEFAULT_MASTER_PORT}"
 
 # 颜色输出（使用 printf 避免转义问题）
 RED='\033[0;31m'
@@ -58,35 +59,129 @@ get_heartbeat_pid_file() {
     echo "/tmp/agent_heartbeat_${name}.pid"
 }
 
+# 获取 Agent 启动时间戳文件
+get_agent_start_file() {
+    local name="$1"
+    echo "/tmp/agent_start_${name}"
+}
+
+# 生成 Agent 向 Master 汇报的 curl 命令
+get_report_curl_cmd() {
+    local name="$1"
+    local port="$2"
+    local master_port="$3"
+    
+    cat << EOF
+#!/usr/bin/env bash
+# Agent '$name' 向 Master 汇报状态的 curl 命令
+# 用法: 直接执行此脚本，或复制下面的 curl 命令
+
+MASTER_URL="http://localhost:${master_port}"
+
+curl -X POST "\${MASTER_URL}/tui/append-prompt" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "[Agent心跳] Agent: ${name} (port: ${port}) 汇报: 我还活着，运行正常。请检查是否有需要我处理的任务。"}'
+
+curl -X POST "\${MASTER_URL}/tui/submit-prompt"
+EOF
+}
+
+# 创建 Agent 心跳说明文件（放在工作目录供 Agent 参考）
+create_heartbeat_info() {
+    local name="$1"
+    local port="$2"
+    local workdir="$3"
+    
+    if [ "$name" = "master" ]; then
+        return 0
+    fi
+    
+    local master_port=$(get_agent_port "master")
+    local report_cmd=$(get_report_curl_cmd "$name" "$port" "$master_port")
+    
+    cat > "${workdir}/HEARTBEAT.md" << EOF
+# Agent 心跳说明
+
+## 自动心跳
+本 Agent 已配置自动心跳守护进程，会定期执行以下操作：
+
+### 1. 自身健康检查
+每 15 分钟检查一次 /global/health，确保服务正常。
+连续 3 次失败会自动重启 Agent。
+
+### 2. 向 Master 汇报状态
+每 15 分钟向 Master (port: ${master_port}) 汇报一次状态。
+
+## 手动汇报命令
+如需手动向 Master 汇报，请执行：
+
+\`\`\`bash
+${report_cmd}
+\`\`\`
+
+## Master 地址
+- Master URL: http://localhost:${master_port}
+- 本 Agent URL: http://localhost:${port}
+EOF
+}
+
 # ============================================
-# 心跳守护进程 - 防止 Agent 无故停止
+# 心跳守护进程 - 双心跳机制
+# 
+# Master 心跳（每 5 分钟）:
+#   1. 检查自身健康 (/global/health)
+#   2. 给自己发 keepalive 消息，防止无故停机
+# 
+# Worker 心跳（每 15 分钟）:
+#   1. 检查自身健康 (/global/health)
+#   2. 向 Master 汇报状态 (curl /tui/append-prompt)
+#   3. 连续 3 次失败会自动重启 Agent
 # ============================================
 start_heartbeat() {
     local name="$1"
     local port="$2"
     local pid_file=$(get_heartbeat_pid_file "$name")
+    local start_file=$(get_agent_start_file "$name")
+    
+    # 记录启动时间
+    date +%s > "$start_file"
     
     # 如果已有心跳进程在运行，先停止
     stop_heartbeat "$name" 2>/dev/null || true
     
+    # 确定心跳间隔
+    local heartbeat_interval
+    local is_master=false
+    if [ "$name" = "master" ]; then
+        heartbeat_interval=300   # Master: 5 分钟
+        is_master=true
+    else
+        heartbeat_interval=900   # Worker: 15 分钟
+    fi
+    
     # 启动后台心跳进程
     (
         local agent_url="${AGENT_BASE_URL}:${port}"
+        local master_url="${AGENT_BASE_URL}:${DEFAULT_MASTER_PORT}"
         local fail_count=0
         local max_fail=3
+        local cycle_count=0
         
         while true; do
-            sleep 30
+            sleep "$heartbeat_interval"
+            cycle_count=$((cycle_count + 1))
             
             # 检查 tmux session 是否存在
             if ! tmux has-session -t "$name" 2>/dev/null; then
-                # Agent 已停止，退出心跳
+                echo "[Heartbeat] Agent '$name' session 已消失，退出心跳守护" >&2
                 break
             fi
             
-            # 发送健康检查请求
+            # 步骤 1: 发送健康检查请求
             if ! curl -s "${agent_url}/global/health" > /dev/null 2>&1; then
                 fail_count=$((fail_count + 1))
+                echo "[Heartbeat] Agent '$name' 健康检查失败 ($fail_count/$max_fail) ($(date '+%Y-%m-%d %H:%M:%S'))" >&2
+                
                 if [ $fail_count -ge $max_fail ]; then
                     # 连续失败 3 次，尝试重启 Agent
                     echo "[Heartbeat] Agent '$name' 无响应，正在重启..." >&2
@@ -95,16 +190,66 @@ start_heartbeat() {
                     tmux new-session -d -s "$name" -n serve \
                         "cd '$(get_work_dir "$name")' && opencode serve --port $port" 2>/dev/null || true
                     fail_count=0
+                    cycle_count=0
+                    echo "[Heartbeat] Agent '$name' 已重启 ($(date '+%Y-%m-%d %H:%M:%S'))" >&2
                 fi
+                continue
             else
                 fail_count=0
             fi
+            
+            # 步骤 2: 发送心跳消息
+            if [ "$is_master" = true ]; then
+                # ============================================
+                # Master 心跳: 给自己发 keepalive，防止无故停机
+                # ============================================
+                local keepalive_text="心跳检测：请检查是否有待处理的任务。如果当前没有任务或所有子 Agent 的任务已完成，无需响应，保持待机即可。"
+                
+                curl -s -X POST \
+                    "${agent_url}/tui/append-prompt" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"text\": \"$keepalive_text\"}" > /dev/null 2>&1 || true
+                
+                curl -s -X POST \
+                    "${agent_url}/tui/submit-prompt" > /dev/null 2>&1 || true
+                
+                echo "[Heartbeat] Master keepalive sent #${cycle_count} ($(date '+%Y-%m-%d %H:%M:%S'))" >&2
+            else
+                # ============================================
+                # Worker 心跳: 向 Master 汇报状态
+                # ============================================
+                local report_text="[Agent心跳] Agent: '${name}' (port: ${port}) 状态汇报: 运行正常。请 Master 检查是否有需要分配给我的新任务。"
+                
+                curl -s -X POST \
+                    "${master_url}/tui/append-prompt" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"text\": \"$report_text\"}" > /dev/null 2>&1 || true
+                
+                curl -s -X POST \
+                    "${master_url}/tui/submit-prompt" > /dev/null 2>&1 || true
+                
+                echo "[Heartbeat] Agent '$name' reported to Master #${cycle_count} ($(date '+%Y-%m-%d %H:%M:%S'))" >&2
+            fi
         done
+        
+        # 清理启动时间文件
+        rm -f "$start_file"
     ) &
     
     # 保存 PID
     echo $! > "$pid_file"
     echo -e "  ${GREEN}心跳守护已启动 (PID: $!)${NC}"
+    
+    if [ "$is_master" = true ]; then
+        echo -e "  ${BLUE}类型: Master 自心跳${NC}"
+        echo -e "  ${BLUE}间隔: 5 分钟${NC}"
+        echo -e "  ${BLUE}功能: 防止 Master 无故停机${NC}"
+    else
+        echo -e "  ${BLUE}类型: Worker 状态汇报${NC}"
+        echo -e "  ${BLUE}间隔: 15 分钟${NC}"
+        echo -e "  ${BLUE}目标: Master (port: ${DEFAULT_MASTER_PORT})${NC}"
+        echo -e "  ${BLUE}功能: 定期向 Master 汇报状态${NC}"
+    fi
 }
 
 # 停止心跳守护进程
@@ -177,6 +322,9 @@ cmd_start() {
     # 创建工作目录
     mkdir -p "$workdir"
     echo -e "${BLUE}工作目录: $workdir${NC}"
+    
+    # 创建心跳说明文件（供 Agent 参考）
+    create_heartbeat_info "$name" "$port" "$workdir"
     
     # 创建 tmux session 启动 opencode serve
     echo -e "${BLUE}启动 Agent '$name' (port: $port)...${NC}"
@@ -480,15 +628,25 @@ Agent 管理脚本 - CLI 版
   # 销毁 Agent（删除工作目录）
   ./agent.sh destroy coder
 
-心跳守护:
-  - 启动 Agent 时自动启动心跳守护进程
-  - 每 30 秒检查一次 Agent 健康状态
-  - 连续 3 次无响应会自动重启 Agent
-  - 停止 Agent 时自动停止心跳守护
+双心跳机制:
+  Master 自心跳 (每 5 分钟):
+    - 检查自身健康 (/global/health)
+    - 给自己发 keepalive 消息，防止无故停机
+    - 消息: "请检查是否有待处理的任务，如无则保持待机"
+
+  Worker 状态汇报 (每 15 分钟):
+    - 检查自身健康 (/global/health)
+    - 向 Master 汇报状态 (curl /tui/append-prompt)
+    - 消息: "Agent 'xxx' 运行正常，请检查是否有新任务"
+    - 连续 3 次无响应会自动重启 Agent
+
+  停止 Agent 时自动停止心跳守护
+  Worker Agent 工作目录会生成 HEARTBEAT.md 说明文件
 
 注意事项:
   - Agent 默认工作目录: ~/agents/<name>
   - Agent 默认端口: 4097(master), 其他通过 hash 计算
+  - Master 地址: http://localhost:4097
   - 需要提前安装 tmux 和 opencode
 
 EOF
