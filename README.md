@@ -525,7 +525,7 @@ export LD_LIBRARY_PATH=/opt/piper-src/build/pi/lib:$LD_LIBRARY_PATH
 ### 5.5 文件架构
 
 ```
-# 项目目录（轻量，只含代码）
+# 项目目录（轻量，只含代码 + wrapper 源码备份）
 my-agent/
 ├── ding/
 │   ├── voice_recognition.py      # ASR Python 封装
@@ -535,6 +535,10 @@ my-agent/
 │   └── libsensevoice.so          # SenseVoice 共享库
 ├── sense-voice-wrapper/
 │   └── sensevoice_wrapper.cpp    # SenseVoice C wrapper 源码备份
+├── piper-wrapper/
+│   ├── piper_wrapper.cpp         # Piper C wrapper 源码备份
+│   ├── CMakeLists.txt.patched    # 修改后的 CMakeLists（添加共享库目标）
+│   └── VERSION                   # Piper 版本号
 └── README.md
 
 # SenseVoice 源码目录（含模型）
