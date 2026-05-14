@@ -187,9 +187,9 @@ autobot_dingtalk.py:234  收到结果
 返回 AckMessage.STATUS_OK
 ```
 
-#### B. 自然语言指令执行流程
+#### B. 自然语言指令执行流程（智能分配模式）
 
-用户发送自然语言，如 "生成一张喵咪图片"、"帮我写个爬虫"
+用户发送自然语言，如 "帮我写个爬虫"，AI 识别意图后自动转为 #agent 指令
 
 ```
 用户: 帮我写个爬虫
@@ -208,7 +208,9 @@ tasks/ai_image.py:67     _handle_text()
   ├─ ai.analyze("帮我写个爬虫") → 调用本地 OpenCode API
   │     ↓
   │   prompt.py:24        system prompt 意图识别规则
-  │   "如果用户消息是写代码...返回 #agent 指令"
+  │   "判断用户意图..."
+  │     ↓
+  │   OpenCode 判断: "这是需要写代码的任务 → 应该由 Agent 处理"
   │     ↓
   │   OpenCode 返回: "#agent master 帮我写一个爬虫"
   │     ↓
@@ -218,7 +220,16 @@ tasks/ai_image.py:67     _handle_text()
   │     ↓
   │   （进入 A2 流程，从 AgentTask 开始执行）
   │     ↓
-  │   Master 分析任务 → 创建 coder Slave → 分配任务
+  │   tasks/agent.py:53    解析参数 → agent_name="master", instruction="帮我写一个爬虫"
+  │     ↓
+  │   tasks/agent.py:89    自动加载 AGENTS.md 作为系统提示
+  │     ↓
+  │   tasks/agent.py:101   发送指令给 Master
+  │     ↓
+  │   Master 阅读 AGENTS.md → 分析任务 → 判断意图
+  │   "用户要我写爬虫 → 需要 coder Slave"
+  │     ↓
+  │   Master 创建 coder Slave → 分配任务
   │     ↓
   │   coder 执行 → 返回结果 → Master 汇总
   │     ↓
@@ -240,15 +251,15 @@ autobot_dingtalk.py:266  收到结果
 | 类型 | 触发方式 | 意图识别 | 执行路径 |
 |------|---------|---------|---------|
 | **#标签指令** | 用户直接发送 `#xxx` | 主进程正则匹配 | 直接分发到对应任务 |
-| **#agent 指令** | 用户直接发送 `#agent` | 主进程正则匹配 | 发给 Master，由 Master 智能分配 Slave |
-| **自然语言指令** | 用户发送普通文本 | OpenCode AI 分析意图 | 先走 ai_image 意图识别，再分发（可能转为 #agent） |
+| **自然语言指令** | 用户发送普通文本 | OpenCode AI 分析意图 → 判断为 Agent 任务 | AI 自动转为 #agent 指令 → 发给 Master → Master 判断意图并分配 Slave |
 
-**#agent 指令的两种模式：**
+**Agent 任务执行方式：**
 
-| 模式 | 示例 | 执行方式 |
-|------|------|---------|
-| **智能分配** | `#agent 帮我写个爬虫` | 发给 Master，Master 自动创建 Slave 并分配任务 |
-| **直接发送** | `#agent coder 写个脚本` | 直接发给 coder Slave，如未运行则自动启动 |
+| 模式 | 示例 | 意图识别 | 执行方式 |
+|------|------|---------|---------|
+| **智能分配** | `帮我写个爬虫` | AI 分析意图 → "这是写代码任务 → 需要 Agent" | 自动发给 Master，Master 判断需要 coder Slave → 创建并分配任务 |
+| **显式分配** | `#agent 帮我写个爬虫` | 主进程正则匹配 → #agent 标签 | 发给 Master，Master 判断需要 coder Slave → 创建并分配任务 |
+| **直接发送** | `#agent coder 写个脚本` | 主进程正则匹配 → 指定 coder | 直接发给 coder Slave，如未运行则自动启动 |
 
 **通信机制（Unix Domain Socket）：**
 
@@ -921,7 +932,24 @@ mkdir -p agents
 启动以下 3 个进程：
 - **bot** (`autobot_dingtalk.py`) - 钉钉消息接收，日志 `/tmp/autobot_bot.log`
 - **worker** (`task_worker.py`) - 任务执行，日志 `/tmp/autobot_worker.log`
-- **master** (opencode serve) - Agent 管理，运行在 tmux session 中
+- **master** (`opencode serve`) - Master Agent，运行在 tmux session 中
+
+**启动流程：**
+```
+start.sh start
+  ├─ 启动 bot (autobot_dingtalk.py)  → 接收钉钉消息
+  ├─ 启动 worker (task_worker.py)     → 执行任务分发
+  └─ 启动 master (opencode serve)     → Master Agent，管理 Slave 集群
+       ├─ 创建 tmux session: master
+       ├─ 运行: opencode serve --port 4097
+       └─ 创建 tui 窗口: opencode attach http://localhost:4097
+```
+
+**说明：**
+- `start.sh` 启动时会**自动启动 Master Agent**（port: 4097）
+- Master 启动后会等待任务，无需手动启动
+- 当用户发送 `#agent 任务` 时，AgentTask 直接连接已启动的 Master
+- Master 根据 AGENTS.md 的指引，自主创建 Slave 并分配任务
 
 **停止所有服务：**
 ```bash
