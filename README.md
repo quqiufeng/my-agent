@@ -800,7 +800,6 @@ my-agent/
 │   ├── prompt.py                  # 系统提示词
 │   ├── guardian.py                # 守护进程
 │   ├── logger.py                  # 日志模块
-│   ├── nano_banana.py             # 图像生成
 │   ├── master.py                  # Master Agent 管理
 │   ├── agent.md                   # Agent 使用指南（钉钉入口）
 │   ├── AGENTS.md                  # Master-Slave 架构指南（CLI 入口）
