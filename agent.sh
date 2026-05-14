@@ -100,28 +100,45 @@ create_heartbeat_info() {
     local report_cmd=$(get_report_curl_cmd "$name" "$port" "$master_port")
     
     cat > "${workdir}/HEARTBEAT.md" << EOF
-# Agent 心跳说明
+# Agent 工作指南
 
-## 自动心跳
-本 Agent 已配置自动心跳守护进程，会定期执行以下操作：
+## 重要提示
 
-### 1. 自身健康检查
-每 15 分钟检查一次 /global/health，确保服务正常。
-连续 3 次失败会自动重启 Agent。
+### 1. 忽略心跳消息
+你会每 15 分钟收到一次系统自动发送的消息，内容类似：
+"[Agent心跳] Agent: '${name}' 状态汇报: 运行正常..."
 
-### 2. 向 Master 汇报状态
-每 15 分钟向 Master (port: ${master_port}) 汇报一次状态。
+**请忽略这些消息，无需回复。**
+这是心跳守护进程为了防止系统停机而发送的，不是你的任务。
 
-## 手动汇报命令
-如需手动向 Master 汇报，请执行：
+### 2. 你的职责
+- 等待 Master 分配任务
+- 收到任务后认真执行
+- 执行完成后向 Master 汇报结果
+
+### 3. 如何接收任务
+Master 会通过以下方式给你发送任务：
+- 通过 HTTP API 发送指令
+- 你会收到类似 "请帮我写一个 Python 爬虫" 的消息
+- 这才是真正的任务，需要认真执行
+
+## 手动汇报（可选）
+
+如果你想主动向 Master 汇报状态，请执行：
 
 \`\`\`bash
 ${report_cmd}
 \`\`\`
 
-## Master 地址
+## 地址信息
 - Master URL: http://localhost:${master_port}
 - 本 Agent URL: http://localhost:${port}
+- 本 Agent 名称: ${name}
+
+## 总结
+1. 忽略每 15 分钟的心跳消息
+2. 等待 Master 分配真正的工作任务
+3. 认真执行任务并汇报结果
 EOF
 }
 
@@ -153,10 +170,10 @@ start_heartbeat() {
     local heartbeat_interval
     local is_master=false
     if [ "$name" = "master" ]; then
-        heartbeat_interval=300   # Master: 5 分钟
+        heartbeat_interval=1500   # Master: 25 分钟
         is_master=true
     else
-        heartbeat_interval=900   # Worker: 15 分钟
+        heartbeat_interval=900    # Worker: 15 分钟
     fi
     
     # 启动后台心跳进程
@@ -348,6 +365,27 @@ cmd_start() {
             
             # 启动心跳守护（防止 Agent 无故停止）
             start_heartbeat "$name" "$port"
+            
+            # 如果是 Worker Agent，发送初始化指令让它阅读 HEARTBEAT.md
+            if [ "$name" != "master" ]; then
+                echo -e "  ${BLUE}发送初始化指令...${NC}"
+                sleep 2
+                
+                local init_msg="请阅读工作目录下的 HEARTBEAT.md 文件，了解以下内容：
+1. 你会每 15 分钟收到一次心跳消息（来自心跳守护进程），请忽略这些消息，无需回复。
+2. 如需手动向 Master 汇报状态，请使用 HEARTBEAT.md 中提供的 curl 命令。
+3. 你的主要职责是等待并执行 Master 分配的任务。
+
+请阅读完后回复：'已了解心跳机制，准备就绪。'"
+                
+                curl -s -X POST \
+                    "${agent_url}/tui/append-prompt" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"text\": \"$init_msg\"}" > /dev/null 2>&1 || true
+                
+                curl -s -X POST \
+                    "${agent_url}/tui/submit-prompt" > /dev/null 2>&1 || true
+            fi
             
             return 0
         fi
