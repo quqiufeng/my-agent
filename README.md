@@ -103,7 +103,9 @@
 
 #### A. #标签指令执行流程
 
-用户发送以 `#` 开头的指令，如 `#img 一只猫`、`#shell ls -la`
+用户发送以 `#` 开头的指令，如 `#img 一只猫`、`#shell ls -la`、`#agent 帮我写个爬虫`
+
+**A1. 普通 #标签指令（如 #img、#shell）**
 
 ```
 用户: #img 一只可爱的猫
@@ -139,16 +141,62 @@ autobot_dingtalk.py:234  检测到 __MEDIA_ID__
 返回 AckMessage.STATUS_OK
 ```
 
+**A2. #agent 指令 - Master-Slave 任务执行**
+
+```
+用户: #agent 帮我写一个爬虫
+  ↓
+autobot_dingtalk.py:182  正则匹配 #(\w+) → directive_name="agent"
+  ↓
+autobot_dingtalk.py:189  dispatch_task("agent", {"raw": "#agent 帮我写一个爬虫"})
+  ↓
+TaskClient 通过 Unix Domain Socket 发送任务
+  ↓
+task_worker.py (TaskServer) 实时接收任务
+  ↓
+do_task() → get_task("agent") → AgentTask()
+  ↓
+tasks/agent.py:41        execute()
+  ↓
+tasks/agent.py:53        解析参数 → agent_name="master", instruction="帮我写一个爬虫"
+  ↓
+tasks/agent.py:68        检查 Master 是否运行（通过 tmux）
+  ↓
+tasks/agent.py:72        如果未运行，自动启动 Master Agent
+  ↓
+tasks/agent.py:89        自动加载 AGENTS.md 作为系统提示
+  ↓
+tasks/agent.py:101       发送指令给 Master
+  ↓
+Master 阅读 AGENTS.md → 分析任务 → 决策
+  ├─ "这是一个 Python 爬虫任务"
+  ├─ "需要创建 coder Slave"
+  │     ↓
+  │   ./agent.sh start coder
+  │     ↓
+  │   ./agent.sh send coder "帮我写一个爬虫"
+  │     ↓
+  └─ coder Slave 执行 → 生成代码 → 返回结果给 Master
+    ↓
+Master 汇总结果 → 返回给用户
+  ↓
+autobot_dingtalk.py:234  收到结果
+  ↓
+发送文本给用户
+  ↓
+返回 AckMessage.STATUS_OK
+```
+
 #### B. 自然语言指令执行流程
 
 用户发送自然语言，如 "生成一张喵咪图片"、"帮我写个爬虫"
 
 ```
-用户: 生成一张喵咪图片
+用户: 帮我写个爬虫
   ↓
 autobot_dingtalk.py:243  检测无 #标签 → 走 ai_image 任务
   ↓
-autobot_dingtalk.py:244  dispatch_task("ai_image", {"user_input": "生成一张喵咪图片"})
+autobot_dingtalk.py:244  dispatch_task("ai_image", {"user_input": "帮我写个爬虫"})
   ↓
 TaskClient 通过 Unix Domain Socket 发送任务
   ↓
@@ -157,28 +205,32 @@ task_worker.py (TaskServer) 实时接收任务
 do_task() → get_task("ai_image") → AIImageTask()
   ↓
 tasks/ai_image.py:67     _handle_text()
-  ├─ ai.analyze("生成一张喵咪图片") → 调用本地 OpenCode API
+  ├─ ai.analyze("帮我写个爬虫") → 调用本地 OpenCode API
   │     ↓
   │   prompt.py:24        system prompt 意图识别规则
-  │   "如果用户消息是生成图片...返回 #img 指令"
+  │   "如果用户消息是写代码...返回 #agent 指令"
   │     ↓
-  │   OpenCode 返回: "#img a cute fluffy cat, big eyes..."
+  │   OpenCode 返回: "#agent master 帮我写一个爬虫"
   │     ↓
-  ├─ ai_image.py:72      正则匹配 #img → 提取提示词
+  ├─ ai_image.py:72      正则匹配 #agent → 提取指令
   │     ↓
-  ├─ ai_image.py:86      调用 ImgTask.execute({"raw": "#img ..."})
+  ├─ ai_image.py:86      调用 AgentTask.execute({"raw": "#agent master 帮我写个爬虫"})
   │     ↓
-  │   （进入 A 流程，从 ImgTask 开始执行）
+  │   （进入 A2 流程，从 AgentTask 开始执行）
   │     ↓
-  └─ 返回 TaskResult(exec_responses="__MEDIA_ID__: xxx")
+  │   Master 分析任务 → 创建 coder Slave → 分配任务
+  │     ↓
+  │   coder 执行 → 返回结果 → Master 汇总
+  │     ↓
+  └─ 返回 TaskResult(exec_responses="代码已生成...")
     ↓
 TaskServer 通过 Socket 返回结果
   ↓
 TaskClient 收到结果
   ↓
-autobot_dingtalk.py:266  检测到 __MEDIA_ID__
+autobot_dingtalk.py:266  收到结果
   ↓
-不发送文本（图片已发送）
+发送文本给用户
   ↓
 返回 AckMessage.STATUS_OK
 ```
@@ -188,7 +240,15 @@ autobot_dingtalk.py:266  检测到 __MEDIA_ID__
 | 类型 | 触发方式 | 意图识别 | 执行路径 |
 |------|---------|---------|---------|
 | **#标签指令** | 用户直接发送 `#xxx` | 主进程正则匹配 | 直接分发到对应任务 |
-| **自然语言指令** | 用户发送普通文本 | OpenCode AI 分析意图 | 先走 ai_image 意图识别，再分发 |
+| **#agent 指令** | 用户直接发送 `#agent` | 主进程正则匹配 | 发给 Master，由 Master 智能分配 Slave |
+| **自然语言指令** | 用户发送普通文本 | OpenCode AI 分析意图 | 先走 ai_image 意图识别，再分发（可能转为 #agent） |
+
+**#agent 指令的两种模式：**
+
+| 模式 | 示例 | 执行方式 |
+|------|------|---------|
+| **智能分配** | `#agent 帮我写个爬虫` | 发给 Master，Master 自动创建 Slave 并分配任务 |
+| **直接发送** | `#agent coder 写个脚本` | 直接发给 coder Slave，如未运行则自动启动 |
 
 **通信机制（Unix Domain Socket）：**
 
