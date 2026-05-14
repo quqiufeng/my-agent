@@ -485,18 +485,26 @@ tmux new-session -d -s agent-coder "opencode serve --port 4098 --work-dir ~/agen
 
 ---
 
-## 5. 语音功能集成
+## 5. 多模态功能集成
 
-系统支持**语音转文本（ASR）**和**文本转语音（TTS）**功能，基于 SenseVoice 和 Piper 两个开源项目源码集成。
+系统支持**语音**和**视觉**功能，全部基于本地开源模型：
+
+| 功能 | 技术方案 | 模型大小 | 运行方式 |
+|------|---------|---------|---------|
+| **语音转文本 (ASR)** | SenseVoice (C++) | ~230MB | `libsensevoice.so` + ctypes |
+| **文本转语音 (TTS)** | Piper (C++) | ~63MB | `libpiper_tts.so` + ctypes |
+| **图片分析 (Vision)** | JoyCaption2 (llama.cpp) | ~2.3GB | `llama-mtmd-cli` 子进程 |
 
 ### 5.1 模型文件位置
 
-所有模型文件存放在**源码目录下的 `models/` 中**，不放入项目目录，保持项目轻量：
+所有模型文件存放在**源码目录下**，不放入项目目录：
 
 | 功能 | 模型路径 | 大小 |
 |------|---------|------|
 | **ASR (SenseVoice)** | `/home/dministrator/SenseVoice.cpp/models/sense-voice-small-q6_k.gguf` | ~230MB |
 | **TTS (Piper)** | `/opt/piper-src/models/zh_CN-huayan-medium.onnx` | ~63MB |
+| **Vision (JoyCaption)** | `~/joycaption/Llama-Joycaption-Beta-One-Hf-Llava-Q4_K.gguf` | ~2GB |
+| **Vision MMPROJ** | `~/joycaption/llama-joycaption-beta-one-llava-mmproj-model-f16.gguf` | ~300MB |
 
 > 注意：模型文件通过 `.gitignore` 排除，不会提交到 git。部署新机器时需手动下载或复制。
 
@@ -508,7 +516,9 @@ tmux new-session -d -s agent-coder "opencode serve --port 4098 --work-dir ~/agen
 |------|------|------|
 | `ding/voice_recognition.py` | ASR Python 封装（ctypes） | 项目目录 |
 | `ding/text_to_speech.py` | TTS Python 封装（ctypes） | 项目目录 |
+| `ding/image_analyzer.py` | Vision Python 封装（调用 CLI） | 项目目录 |
 | `sense-voice-wrapper/sensevoice_wrapper.cpp` | SenseVoice C wrapper | 项目目录（备份） |
+| `joycaption-wrapper/joycaption_wrapper.cpp` | JoyCaption C wrapper（框架） | 项目目录（备份） |
 | `libs/libsensevoice.so` | SenseVoice 共享库 | 项目目录（编译产物） |
 | `src/cpp/piper_wrapper.cpp` | Piper C wrapper | `/opt/piper-src/src/cpp/` |
 | `libpiper_tts.so` | Piper 共享库 | `/opt/piper-src/build/` |
@@ -652,7 +662,88 @@ export LD_LIBRARY_PATH=/opt/piper-src/build/pi/lib:$LD_LIBRARY_PATH
 
 ---
 
-### 5.5 文件架构
+### 5.5 图片分析（Vision）- JoyCaption2
+
+#### 架构
+
+```
+用户图片 → image_analyzer.py → llama-mtmd-cli → llama.cpp + JoyCaption 模型 → 详细描述
+```
+
+**说明**：
+- 使用 **CLI 调用方案**（Python subprocess 调用 llama-mtmd-cli）
+- **按需加载**：每次推理时加载模型，推理后自动释放（不常驻内存）
+- C wrapper 已备份：`joycaption-wrapper/joycaption_wrapper.cpp` + `libs/libjoycaption.so`
+- 如需常驻内存（高频场景），可切换到 ctypes + `libjoycaption.so` 方案
+
+**特点**：
+- **本地运行**，无需云端 API
+- **按需加载**：2.3GB 模型不占常驻内存
+- 基于 llama.cpp 多模态框架（LLaVA 架构）
+- 输出**自然语言描述**（非标签列表）
+- 支持 GPU 加速（RTX 3080）
+
+#### 模型准备
+
+```bash
+# 创建模型目录
+mkdir -p ~/joycaption
+
+# 下载模型（使用代理）
+curl -x http://192.168.1.10:7897 -L -o ~/joycaption/Llama-Joycaption-Beta-One-Hf-Llava-Q4_K.gguf \
+  "https://huggingface.co/concedo/llama-joycaption-beta-one-hf-llava-mmproj-gguf/resolve/main/Llama-Joycaption-Beta-One-Hf-Llava-Q4_K.gguf"
+
+curl -x http://192.168.1.10:7897 -L -o ~/joycaption/llama-joycaption-beta-one-llava-mmproj-model-f16.gguf \
+  "https://huggingface.co/concedo/llama-joycaption-beta-one-hf-llava-mmproj-gguf/resolve/main/llama-joycaption-beta-one-llava-mmproj-model-f16.gguf"
+```
+
+#### 编译 llama.cpp
+
+使用现有编译脚本（已包含多模态支持）：
+
+```bash
+cd ~/my-shell/3080/build
+bash build_llama_cpp.sh
+```
+
+编译选项已更新：
+- `-DLLAMA_BUILD_EXAMPLES=ON`：编译 llama-mtmd-cli
+- `-DLLAMA_BUILD_SERVER=ON`：编译 llama-server
+
+#### 使用示例
+
+```python
+from ding.image_analyzer import analyze_image
+
+# 分析图片（生成详细描述）
+description = analyze_image("/path/to/image.jpg")
+print(description)
+
+# 生成 SD 提示词
+prompt = analyze_image_for_sd("/path/to/image.jpg")
+print(prompt)
+```
+
+#### 性能
+
+| 指标 | 数值 |
+|------|------|
+| 模型加载 | ~2.4s |
+| 图片编码 | ~300-400ms |
+| 文本生成 | ~10-100ms/token（取决于长度）|
+| 显存占用 | ~2.5GB（GPU）|
+| 模型大小 | ~2.3GB（LLM + MMPROJ）|
+
+#### 环境要求
+
+```bash
+# llama-mtmd-cli 路径
+export PATH="$HOME/llama.cpp/build/bin:$PATH"
+```
+
+---
+
+### 5.6 文件架构
 
 ```
 # 项目目录（轻量，只含代码 + wrapper 源码备份）
@@ -669,6 +760,8 @@ my-agent/
 │   ├── piper_wrapper.cpp         # Piper C wrapper 源码备份
 │   ├── CMakeLists.txt.patched    # 修改后的 CMakeLists（添加共享库目标）
 │   └── VERSION                   # Piper 版本号
+├── joycaption-wrapper/
+│   └── joycaption_wrapper.cpp    # JoyCaption C wrapper 源码备份（框架）
 └── README.md
 
 # SenseVoice 源码目录（含模型）
@@ -692,6 +785,11 @@ my-agent/
 │       └── libonnxruntime.so          # 运行时依赖
 └── src/cpp/
     └── piper_wrapper.cpp              # C wrapper（新增）
+
+# JoyCaption 模型目录
+~/joycaption/
+├── Llama-Joycaption-Beta-One-Hf-Llava-Q4_K.gguf           # LLM 模型 (~2GB)
+└── llama-joycaption-beta-one-llava-mmproj-model-f16.gguf  # 视觉投影器 (~300MB)
 ```
 
 ---
@@ -711,8 +809,17 @@ my-agent/
 | 问题 | 原因 | 解决 |
 |------|------|------|
 | `libonnxruntime.so: cannot open` | 未设置 LD_LIBRARY_PATH | `export LD_LIBRARY_PATH=/opt/piper-src/build/pi/lib:$LD_LIBRARY_PATH` |
-| `piper_initialize: undefined symbol` | 共享库未正确导出 | 确保 C wrapper 中使用 `__attribute__((visibility("default")))` |
+| `piper_initialize: undefined symbol` | 共享库未正确导出 | 确保 C wrapper 中使用 `__attribute__((visibility("default"))` |
 | 模型加载失败 | 模型路径错误 | 检查 `/opt/piper-src/models/` 下是否有模型文件 |
+
+#### Vision (JoyCaption)
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `llama-mtmd-cli: command not found` | llama.cpp 未编译或路径不对 | 检查 `~/llama.cpp/build/bin/llama-mtmd-cli` 是否存在 |
+| 显存不足 | 模型需要 ~2.5GB 显存 | 关闭其他 GPU 程序，或添加 `-ngl 20` 减少 GPU 层数 |
+| 模型加载失败 | 模型路径错误 | 检查 `~/joycaption/` 下是否有模型文件 |
+| 推理超时 | 生成文本太长 | 减少 `-n` 参数值（默认 200） |
 
 ---
 
