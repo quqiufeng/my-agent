@@ -51,22 +51,23 @@
      └─────────────┘ └──────────┘ └───┬────┘
                                       │
 ┌─────────────────────────────────────▼───────────────────────┐
-│                    Agent 管理层                              │
+│                    Agent 管理层 (Master-Slave)              │
+│                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │              Master Agent (中央控制器)                │   │
 │  │  tmux session: master  port: 4097                   │   │
-│  │  - Agent 生命周期管理（创建/停止/监控）               │   │
-│  │  - 指令路由与分发                                     │   │
-│  │  - 状态聚合与汇报                                     │   │
+│  │  - 任务分配、Slave 管理、状态监控                     │   │
 │  └──────────────────────┬──────────────────────────────┘   │
 │                         │ HTTP API                         │
 │         ┌───────────────┼───────────────┐                  │
 │         │               │               │                  │
 │  ┌──────▼─────┐  ┌─────▼──────┐  ┌─────▼──────┐          │
-│  │ Worker-1   │  │ Worker-2   │  │ Worker-N   │          │
+│  │ Slave-1    │  │ Slave-2    │  │ Slave-N    │          │
 │  │ 代码专家   │  │ 系统运维   │  │ 数据分析   │          │
 │  │ port:4098  │  │ port:4099  │  │ port:4100  │          │
 │  └────────────┘  └────────────┘  └────────────┘          │
+│                                                             │
+│  **核心原则**: Slave 只负责执行，不直接通信，所有协调通过 Master  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -76,15 +77,24 @@
 |------|------|------|
 | **主进程** (autobot_dingtalk) | 接收钉钉消息、维持长连接、文件下载 | 永不崩溃，轻量级 |
 | **Worker进程** (task_worker) | 执行插件任务、管理本地资源 | 可重启，不影响主进程 |
-| **Master Agent** (tmux:master) | Agent 管理中枢、指令路由 | 常驻，自动恢复 |
-| **Worker Agent** (tmux:agent-*) | 具体任务执行、代码编写 | 动态创建，独立环境 |
+| **Master** (tmux:master) | 任务分配、Slave 管理、状态监控 | 常驻，自动恢复 |
+| **Slave** (tmux:slave-*) | 接收任务、执行工作、汇报结果 | 动态创建，独立环境 |
+
+**核心原则**：
+- **Master 统一管理**：所有任务由 Master 统一分配
+- **Slave 只负责执行**：Slave 之间不直接通信
+- **心跳监控**：Master 通过心跳机制监控 Slave 状态
 
 ### 2.3 数据流
 
 ```
-用户消息 → 钉钉 → 主进程 → Worker进程 → Agent插件
+用户消息 → 钉钉 → 主进程 → Worker进程 → Master Agent
                                               ↓
-                         结果 ← 主进程 ← Master Agent ← Worker Agent
+                                    任务分配给 Slave
+                                              ↓
+                                    Slave 执行工作
+                                              ↓
+                          结果 ← 主进程 ← Master Agent
 ```
 
 ### 2.4 指令执行流程
@@ -194,7 +204,7 @@ autobot_dingtalk.py:266  检测到 __MEDIA_ID__
 
 | 标签 | 功能 | 典型场景 |
 |------|------|---------|
-| `#agent` | 智能任务执行 | 写代码、创建插件、复杂任务 |
+| `#agent` | Master-Slave 任务执行 | 写代码、创建 Slave、复杂任务 |
 | `#img` | 本地图片生成 | 画画、生成图片、做图 |
 | `#shell` | 执行 Shell 命令 | 查看文件、系统操作 |
 | `#code` / `#python` | 执行 Python 代码 | 计算、测试代码 |
@@ -206,35 +216,45 @@ autobot_dingtalk.py:266  检测到 __MEDIA_ID__
 
 ## 3. 核心概念
 
-### 3.1 Agent 定义
+### 3.1 Master-Slave 架构
 
-Agent 是一个**独立的 OpenCode 实例**，运行在独立的 tmux session 中，通过 HTTP API 接受指令并执行。
+本系统采用 **Master-Slave** 架构，一个 Master 管理多个 Slave：
 
-每个 Agent 具有：
-- **唯一标识**：如 `master`, `coder`, `ops`, `data`
-- **独立端口**：如 4097, 4098, 4099...
-- **独立工作目录**：如 `~/agents/coder/`
-- **独立上下文**：记忆、历史、环境变量
+**Master**：
+- 统一入口，接收所有任务
+- 任务分配，选择合适的 Slave
+- 状态监控，通过心跳检测 Slave 健康
+- 结果汇总，返回给用户
 
-### 3.2 Master Agent
+**Slave**：
+- 只负责执行，不直接通信
+- 接收 Master 分配的任务
+- 执行完成后汇报结果给 Master
+- 定期向 Master 发送心跳
 
-Master 是特殊的 Agent，职责：
-1. **注册中心**：维护所有 Agent 的清单和状态
-2. **路由网关**：根据指令内容分发给合适的 Worker Agent
-3. **生命周期管理**：创建、停止、重启 Worker Agent
-4. **状态监控**：心跳检测、日志聚合、异常恢复
+### 3.2 角色定义
+
+| 角色 | 名称 | 端口 | 职责 |
+|------|------|------|------|
+| **Master** | master | 4097 | 任务分配、Slave 管理、状态监控 |
+| **Slave** | coder, reviewer... | 4098+ | 接收任务、执行工作、汇报结果 |
+
+**核心原则**：
+- 所有任务由 **Master** 统一分配
+- **Slave** 只负责执行，不直接通信
+- Master 通过心跳监控所有 Slave 状态
 
 ### 3.3 指令格式
 
 ```
-#agent <agent_name> <指令内容>
+#agent <slave_name> <指令内容>
 ```
 
 示例：
-- `#agent master 创建一个叫 coder 的 Agent，专门写 Python`
+- `#agent master 创建一个叫 coder 的 Slave，专门写 Python`
 - `#agent coder 帮我写一个爬取豆瓣电影的脚本`
 - `#agent ops 查看服务器内存使用情况`
-- `#agent master 列出所有 Agent 状态`
+- `#agent master 列出所有 Slave 状态`
 
 ---
 
@@ -709,22 +729,23 @@ Content-Type: application/json
 >
 > 你可以运行 `#agent coder 执行这个脚本` 来测试"
 
-### 场景 2：多 Agent 协作
+### 场景 2：Master 分配任务给 Slave
 
 **用户**：
 > `#agent master 创建数据分析团队，分析服务器日志`
 
 **系统处理**：
 1. Master 解析指令
-2. 创建多个 Agent：
+2. 创建多个 Slave：
    - `data-collector`：负责收集日志
    - `data-parser`：负责解析和清洗
    - `data-analyzer`：负责分析和生成报告
-3. Master 协调任务顺序：
+3. Master 按顺序分配任务：
    - 先让 collector 收集日志
    - 然后 parser 解析
    - 最后 analyzer 生成报告
-4. 汇总结果返回用户
+4. 所有结果汇总给 Master
+5. Master 返回最终报告给用户
 
 ### 场景 3：服务器运维
 
@@ -732,26 +753,33 @@ Content-Type: application/json
 > `#agent ops 查看服务器状态，如果有异常就重启 Nginx`
 
 **系统处理**：
-1. 指令路由到 ops Agent
-2. ops Agent 执行：
+1. 指令路由到 Master
+2. Master 分配给 ops Slave
+3. ops Slave 执行：
    - `df -h` 检查磁盘
    - `free -m` 检查内存
    - `systemctl status nginx` 检查服务
-3. 发现 Nginx 异常
-4. 执行 `sudo systemctl restart nginx`
-5. 返回操作结果
+4. 发现 Nginx 异常
+5. 执行 `sudo systemctl restart nginx`
+6. 返回结果给 Master
+7. Master 汇总返回用户
 
 ### 场景 4：Agent 管理
 
 **用户**：
-> `#agent master 列出所有 Agent`
+> `#agent master 列出所有 Slave`
 
 **回复**：
-> "当前运行的 Agent：
+> "当前运行的 Slave：
 > - 🤖 master (端口 4097) - 运行中 - 管理中枢
 > - 💻 coder (端口 4098) - 运行中 - 已完成 12 个任务
 > - 🔧 ops (端口 4099) - 已停止 - 上次运行 2 小时前
 > - 📊 data (端口 4100) - 运行中 - 正在执行数据分析"
+
+**核心原则**：
+- 所有任务由 **Master** 统一分配
+- **Slave** 只负责执行，不直接通信
+- Master 通过心跳监控所有 Slave 状态
 
 ---
 
@@ -774,7 +802,8 @@ my-agent/
 │   ├── logger.py                  # 日志模块
 │   ├── nano_banana.py             # 图像生成
 │   ├── master.py                  # Master Agent 管理
-│   ├── agent.md                   # Agent 使用指南
+│   ├── agent.md                   # Agent 使用指南（钉钉入口）
+│   ├── AGENTS.md                  # Master-Slave 架构指南（CLI 入口）
 │   ├── tasks/                     # 插件目录
 │   │   ├── __init__.py
 │   │   ├── base.py                # 任务基类
