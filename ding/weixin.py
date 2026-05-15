@@ -234,15 +234,26 @@ class WeixinBot:
         if img_content:
             img_path = "/tmp/weixin_qrcode.png"
             try:
-                with open(img_path, "wb") as f:
-                    f.write(base64.b64decode(img_content))
-                logger.info(f"[WeixinBot] 二维码已保存到: {img_path}")
+                import qrcode
+                # 生成二维码图片（内容可以是 URL 或纯文本）
+                qr = qrcode.QRCode(version=1, box_size=10, border=2)
+                qr.add_data(img_content)
+                qr.make(fit=True)
+                img = qr.make_image(fill_color="black", back_color="white")
+                img.save(img_path)
+                logger.info(f"[WeixinBot] 二维码已生成: {img_path}")
                 print(f"\n📱 请用微信扫码登录: {img_path}\n")
+                print(f"   或访问链接: {img_content}\n")
+            except ImportError:
+                logger.warning("[WeixinBot] 未安装 qrcode 库，跳过生成图片")
+                print(f"\n📱 请用微信扫码访问: {img_content}\n")
             except Exception as e:
-                logger.error(f"[WeixinBot] 保存二维码图片失败: {e}")
+                logger.error(f"[WeixinBot] 生成二维码图片失败: {e}")
+                print(f"\n📱 请用微信扫码访问: {img_content}\n")
         
         print(f"⏳ 等待扫码登录...（最长 {timeout} 秒）")
         start_time = time.time()
+        last_qrcode_time = start_time
         
         while time.time() - start_time < timeout:
             result = self.check_qrcode_status(qrcode)
@@ -253,11 +264,27 @@ class WeixinBot:
                 return True
             elif status == "scanned":
                 print("👀 已扫码，等待确认...")
-            elif status == "expired":
-                print("❌ 二维码已过期，请重新启动")
-                return False
+            elif status == "wait":
+                # 继续等待，不输出避免刷屏
+                pass
+            elif status in ("expired", "timeout"):
+                # 二维码过期，重新获取
+                elapsed = int(time.time() - start_time)
+                remaining = timeout - elapsed
+                if remaining > 30:
+                    print(f"🔄 二维码已过期，正在重新获取...（还剩 {remaining} 秒）")
+                    qrcode, img_content = self.get_qrcode()
+                    if qrcode:
+                        print(f"📱 新二维码已生成，请重新扫码")
+                        last_qrcode_time = time.time()
+                    else:
+                        print("❌ 重新获取二维码失败")
+                        return False
+                else:
+                    print("❌ 二维码已过期且即将超时")
+                    return False
             
-            time.sleep(2)
+            time.sleep(1)
         
         print("⏰ 登录超时，请重新启动")
         return False
