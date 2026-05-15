@@ -145,6 +145,13 @@ def get_model_id():
     return MODELS["deepseek-v3.2"]["id"]
 
 
+# ============ 微信 Bot 配置 ============
+WEIXIN_BOT_TYPE = os.getenv("WEIXIN_BOT_TYPE", "3")  # bot_type=3（个人账号）
+WEIXIN_TOKEN_FILE = os.getenv("WEIXIN_TOKEN_FILE", os.path.join(os.path.expanduser("~"), ".weixin_bot_token.json"))
+WEIXIN_BASE_URL = os.getenv("WEIXIN_BASE_URL", "https://ilinkai.weixin.qq.com")
+WEIXIN_CDN_URL = os.getenv("WEIXIN_CDN_URL", "https://novac2c.cdn.weixin.qq.com/c2c")
+
+
 # ============ 兼容旧版 Config 类 ============
 class Config:
     DINGTALK_CLIENT_ID = DINGTALK_CLIENT_ID
@@ -162,6 +169,11 @@ class Config:
     ALLOWED_COMMANDS = []  # 废弃，使用黑名单模式
     MODELS = MODELS
     MODELS = MODELS
+    # 微信配置
+    WEIXIN_BOT_TYPE = WEIXIN_BOT_TYPE
+    WEIXIN_TOKEN_FILE = WEIXIN_TOKEN_FILE
+    WEIXIN_BASE_URL = WEIXIN_BASE_URL
+    WEIXIN_CDN_URL = WEIXIN_CDN_URL
 
     @staticmethod
     def get_model_id():
