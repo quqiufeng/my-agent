@@ -99,26 +99,73 @@ local convert_cmds = {}
 local unread_count = 0
 
 -- 检查每行头像右下角是否有红点
--- 红点位置：文字左侧约 5px（头像右侧边缘），行底部向上约 12px
-local BADGE_R_OFFSET = 5     -- 红点右边缘到文字左边界的距离
-local BADGE_B_OFFSET = 12    -- 红点下边缘到行底部的距离
-local BADGE_SIZE_CHECK = 12  -- 检测区域大小
+-- 用连通分量分析找头像区域的红色小点（红点和数字）
+-- 先生成整个窗口的红色掩码，再用连通分量找小区域
+local red_mask = "/tmp/_red_mask.png"
+os.execute(string.format(
+    "convert '%s' +repage -fx '(r>g*2.2&&r>b*2.2&&r>0.7&&g<0.5)?1:0' '%s' 2>/dev/null",
+    screen_shot, red_mask))
 
+-- 连通分量分析
+local pipe_cc = io.popen(string.format(
+    "convert '%s' -define connected-components:verbose=true -connected-components 4 '%s' 2>/dev/null | grep -v 'bgcolor\\|id:\\|0:'",
+    red_mask, "/dev/null"))
+local cc_output = pipe_cc:read("*a"); pipe_cc:close()
+
+-- 解析每个连通分量，找到位于聊天条目区域的红色小点
+local red_dots = {}
+for line in cc_output:gmatch("[^\n]+") do
+    local id, w, h, x, y, pixels = line:match("(%d+):%s*(%d+)x(%d+)%+(%d+)%+(%d+)%s+[%d.]+,[%d.]+%s+(%d+)")
+    if w and h and x and y and pixels then
+        local nw, nh, nx, ny, np = tonumber(w), tonumber(h), tonumber(x), tonumber(y), tonumber(pixels)
+        -- 小红点：5~20px，左侧（x<200），有效像素数 >= 20
+        if nw >= 5 and nh >= 5 and nw <= 20 and nh <= 20 and nx < 200 and np >= 20 then
+            table.insert(red_dots, {x = nx, y = ny, w = nw, h = nh, px = np})
+        end
+    end
+end
+
+-- 匹配红点到聊天条目
+for _, dot in ipairs(red_dots) do
+    local dot_cy = dot.y + dot.h / 2
+    for _, entry in ipairs(entries) do
+        -- 红点必须在条目垂直范围内（允许上方 30px 偏差）
+        if dot_cy >= entry.ry - 30 and dot_cy <= entry.ry + entry.h + 10 then
+            -- 红点必须在头像右侧区域（离文字左侧 5~30px），排除左侧误判
+            local dist_to_text = entry.rx - dot.x
+            if dist_to_text >= 5 and dist_to_text <= 35 then
+                if not entry.found then
+                    entry.found = true
+                    entry.dot_x = dot.x
+                    entry.dot_y = dot.y
+                end
+                break
+            end
+        end
+    end
+end
+
+-- 未匹配的红点不计数（日志输出）
+for _, dot in ipairs(red_dots) do
+    local matched = false
+    for _, entry in ipairs(entries) do if entry.found and entry.dot_x == dot.x then matched = true; break end end
+    if not matched then
+        io.write(string.format("  忽略: 未匹配红点 (%d,%d) %dx%d\n", dot.x, dot.y, dot.w, dot.h))
+    end
+end
+
+-- 处理匹配到条目的红点（仅这些计入未读）
 for _, entry in ipairs(entries) do
-    local badge_x = entry.rx - BADGE_R_OFFSET - BADGE_SIZE_CHECK
-    local badge_y = entry.ry + entry.h - BADGE_B_OFFSET
-
-    local cmd = string.format(
-        "convert '%s' +repage -crop %dx%d+%d+%d -format '%%[fx:mean.r],%%[fx:mean.g],%%[fx:mean.b]' info: 2>/dev/null",
-        screen_shot, BADGE_SIZE_CHECK, BADGE_SIZE_CHECK, badge_x, badge_y)
-    local pipe = io.popen(cmd)
-    local info = pipe:read("*a"); pipe:close()
-    local r, g, b = info:match("([%d.]+),([%d.]+),([%d.]+)")
-
-    -- R明显高于G表示红色
-    if r and tonumber(r) > 0.5 and tonumber(r) > tonumber(g) * 1.8 then
+    if entry.found then
         unread_count = unread_count + 1
-        io.write(string.format("  #%d 🔴 (%d,%d) R=%.2f\n", entry.idx, badge_x, badge_y, tonumber(r)))
+        io.write(string.format("  #%d 🔴 (%d,%d)\n", entry.idx, entry.dot_x, entry.dot_y))
+        -- 标注整个文字块（红框 + 编号）
+        table.insert(convert_cmds, string.format(
+            '-fill none -stroke red -strokewidth 2 -draw "rectangle %d,%d %d,%d"',
+            entry.rx, entry.ry, entry.rx + entry.w, entry.ry + entry.h))
+        table.insert(convert_cmds, string.format(
+            '-fill red -pointsize 14 -annotate +%d+%d "#%d 🔴"',
+            entry.rx + 2, entry.ry - 4, entry.idx))
     end
 end
 
