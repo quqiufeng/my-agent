@@ -26,9 +26,11 @@ ffi.C.usleep(500000)
 os.execute("xdotool getactivewindow getwindowgeometry > /tmp/av_win.txt 2>/dev/null")
 local f = io.open("/tmp/av_win.txt")
 local geo = f:read("*a"); f:close()
+local _, _, wx = geo:find("Position: (%d+)")
+local _, _, wy = geo:find(",(%d+)")
 local _, _, ww = geo:find("Geometry: (%d+)")
 local _, _, wh = geo:find("x(%d+)")
-ww, wh = tonumber(ww), tonumber(wh)
+wx, wy, ww, wh = tonumber(wx), tonumber(wy), tonumber(ww), tonumber(wh)
 io.write(string.format("窗口: %dx%d\n", ww, wh)); io.flush()
 
 -- OCR检测
@@ -75,9 +77,13 @@ lib.ocr_destroy(e)
 -- 出图标注（截微信窗口）
 os.execute("import -window $(xdotool search --name 微信 | head -1) /tmp/av_full.png 2>/dev/null")
 
-local out = {}
-for _, a in ipairs(avatars) do table.insert(out, a) end
+local out = {avatars=avatars, win_x=wx, win_y=wy}
+-- 修正为图片相对坐标
+for _, a in ipairs(avatars) do
+    a.x = a.x - wx
+    a.y = a.y - wy
+end
 local f = io.open("/tmp/av_data.json","w")
-f:write(cjson.encode({avatars=out})); f:close()
+f:write(cjson.encode({avatars=avatars})); f:close()
 
 os.execute("/data/venv/bin/python3 tests/mark_avatars.py 2>/dev/null")
