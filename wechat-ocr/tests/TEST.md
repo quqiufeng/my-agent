@@ -114,7 +114,7 @@ luajit tests/test_first_column.lua
 
 ---
 
-### 9. test_unread_detect.lua — 未读消息检测
+### 9. test_unread_detect.lua — 未读消息检测（旧版）
 
 检测第二列中红色背景的数字（未读标记）。
 
@@ -125,6 +125,67 @@ luajit tests/test_unread_detect.lua
 检测方法: OCR全窗口 → 找数字 → 检查像素颜色（R>160, R-G>50）
 
 ---
+
+### 10. test_two_lines.lua — 第二列聊天条目检测 + 自动点击
+
+检测第二列聊天列表条目，等距标注，并依次点击/悬停。
+
+```bash
+luajit tests/test_two_lines.lua
+```
+
+| 输出 | 说明 |
+|------|------|
+| 控制台 | 行位置、服务号标记 |
+| ~/wechat_two_lines_annotated.png | 标注图 |
+
+---
+
+### 11. test_avatar_badges.lua — 头像红点/未读标记检测
+
+检测聊天列表头像上的红色未读标记（小红点和数字）。
+
+```bash
+luajit tests/test_avatar_badges.lua
+```
+
+| 输出 | 说明 |
+|------|------|
+| 控制台 | 红点位置、匹配条目编号 |
+| ~/wechat_avatar_badges.png | 标注图（红框标记有未读的条目） |
+
+**检测方法**: ImageMagick 连通分量分析 → 严格红色阈值（R>G*2.2, G<0.5）→ 位置匹配 → 跳过公众号/服务号
+
+---
+
+### 12. test_ai_search.lua — Chrome AI 搜索
+
+Chrome 新标签 → 地址栏输入 → Tab → 回车（AI 模式），支持自定义问题。
+
+```bash
+luajit tests/test_ai_search.lua "问题"
+luajit tests/test_ai_search.lua "马斯克最新身价多少"
+```
+
+**获取结果**: Ctrl+A → Ctrl+C 复制页面内容后读取剪贴板。
+
+---
+
+### 13. ai_to_wechat.lua — AI 搜索 → 微信发送
+
+Chrome AI 搜索 → OCR 读结果 → 微信搜索文件传输助手 → 粘贴发送。
+
+```bash
+luajit tests/ai_to_wechat.lua
+```
+
+---
+
+### 14. test_open_chrome.lua — 打开 Chrome
+
+```bash
+luajit tests/test_open_chrome.lua
+```
 
 ## 统一API
 
@@ -150,18 +211,23 @@ robot.set_record(true)  -- 开启录像
 
 ```
 tests/
-├── TEST.md
-├── test_3columns.lua       三列结构检测
-├── test_icons.lua          全窗口图标
-├── test_third_icons.lua    第三列图标
-├── test_send_file.lua      发送文件
-├── test_screenshot.lua     截图发送
-├── test_search.lua         搜索联系人
+├── TEST.md                  本文档
+├── test_3columns.lua        三列结构检测
+├── test_icons.lua           全窗口图标
+├── test_third_icons.lua     第三列图标
+├── test_send_file.lua       发送文件
+├── test_screenshot.lua      截图发送
+├── test_search.lua          搜索联系人
 ├── test_contacts_search.lua 通讯录搜索
-├── test_first_column.lua   第一列图标
-├── test_unread_detect.lua  未读检测
-├── mark_columns.py         标注图生成
-├── find_icons.py           图标检测
-├── find_third_icons.py     第三列图标
-└── find_red_badges.py      红色检测
+├── test_first_column.lua    第一列图标
+├── test_unread_detect.lua   未读检测（旧版）
+├── test_two_lines.lua       第二列条目检测+自动点击
+├── test_avatar_badges.lua   头像红点检测
+├── test_ai_search.lua       Chrome AI 搜索
+├── test_open_chrome.lua     打开 Chrome
+├── ai_to_wechat.lua         AI→微信发送
+├── mark_columns.py          标注图生成
+├── find_icons.py            图标检测
+├── find_third_icons.py      第三列图标
+└── find_red_badges.py       红色检测
 ```
