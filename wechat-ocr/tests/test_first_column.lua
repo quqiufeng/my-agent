@@ -25,7 +25,7 @@ if not wx then io.write("❌ 获取窗口失败\n"); os.exit(1) end
 -- 第一列图标位置
 local icon_x = wx + 40        -- 靠左边40px
 local start_y = wy + 110      -- 顶部往下110px
-local gap = 50                -- 每次往下移动50px
+local gap = 60                -- 每次往下移动60px
 
 -- 图标标签（仅供显示）
 local labels = {"1:聊天", "2:通讯录", "3:收藏", "4:朋友圈", "5:小程序", "6:更多"}
