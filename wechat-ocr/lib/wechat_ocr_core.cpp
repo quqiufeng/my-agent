@@ -144,54 +144,56 @@ char* ocr_capture(ocr_engine_t* engine) {
             return nullptr;
         }
 
-        // Crop to chat messages area (third region, exclude icon+list+title+input)
-        // 用列平均亮度找侧边栏/内容区分界
-        // 侧边栏平均暗(~50-100)，内容区平均亮(~235-247)
-        int sb_width = panel.cols / 4;
-        {
-            cv::Mat gg;
-            if (panel.channels() == 3) cv::cvtColor(panel, gg, cv::COLOR_BGR2GRAY);
-            else gg = panel.clone();
-            int hh = gg.rows;
-            int samp_top = hh / 6, samp_bot = hh * 5 / 6;
-            for (int x = 80; x < panel.cols * 2 / 3; x += 5) {
-                cv::Scalar m;
-                cv::meanStdDev(gg.col(x).rowRange(samp_top, samp_bot), m, m);
-                if (m[0] > 200) {
-                    // 确认接下来几列也是亮的（排除白字干扰）
-                    int bright_run = 0;
-                    for (int x2 = x; x2 < x + 30 && x2 < panel.cols; x2 += 3) {
-                        cv::Scalar m2;
-                        cv::meanStdDev(gg.col(x2).rowRange(samp_top, samp_bot), m2, m2);
-                        if (m2[0] > 200) bright_run++;
-                        else break;
-                    }
-                    if (bright_run > 3) { sb_width = x; break; }
-                }
-            }
-        }
-        int crop_x = std::max(100, std::min(sb_width, panel.cols * 3 / 5));
+        // 全图OCR，用时间戳定位第三列边界
         int crop_y = 35;
-        int crop_w = panel.cols - crop_x - 10;
         int crop_h = panel.rows - 40 - 180;
-        if (crop_w < 100 || crop_h < 100) {
-            crop_x = 0; crop_y = 0;
-            crop_w = panel.cols; crop_h = panel.rows;
-        }
+        if (crop_h < 100) { crop_y = 0; crop_h = panel.rows; }
 
-        cv::Rect chat_roi(crop_x, crop_y, crop_w, crop_h);
+        cv::Rect chat_roi(0, crop_y, panel.cols, crop_h);
         cv::Mat chat = panel(chat_roi);
 
         auto boxes = engine->ocr->run(chat);
 
-        int abs_x = panel_abs_x + crop_x;
-        int abs_y = panel_abs_y + crop_y;
-
-        if (boxes.empty()) {
-            return make_empty_json(abs_x, abs_y, crop_w, crop_h);
+        // 从OCR结果中找时间戳（NN:NN格式或"昨天"/"今天"）
+        int boundary = panel.cols * 3 / 10; // 保底30%
+        std::vector<int> ts_positions;
+        for (auto &b : boxes) {
+            bool is_ts = false;
+            if (b.text.size() >= 4 && b.text.size() <= 6) {
+                if (std::isdigit(b.text[0]) && b.text.find(':') != std::string::npos)
+                    is_ts = true;
+            }
+            if (b.text.find("昨天") != std::string::npos ||
+                b.text.find("今天") != std::string::npos)
+                is_ts = true;
+            if (is_ts) {
+                ts_positions.push_back(b.bbox.x + b.bbox.width / 2);
+            }
+        }
+        if (!ts_positions.empty()) {
+            std::sort(ts_positions.begin(), ts_positions.end());
+            boundary = ts_positions[ts_positions.size() / 2] + 20;
         }
 
-        return build_json_result(boxes, abs_x, abs_y, crop_w, crop_h);
+        // 过滤：只保留第三列（boundary右侧）的文字框
+        std::vector<TextBox> filtered;
+        for (auto &b : boxes) {
+            int cx = b.bbox.x + b.bbox.width / 2;
+            if (cx >= boundary) {
+                filtered.push_back(b);
+                filtered.back().bbox.x -= boundary;
+            }
+        }
+
+        int abs_x = panel_abs_x + boundary;
+        int abs_y = panel_abs_y + crop_y;
+
+        if (filtered.empty()) {
+            return make_empty_json(abs_x, abs_y, panel.cols - boundary, crop_h);
+        }
+
+        return build_json_result(filtered, abs_x, abs_y,
+                                  panel.cols - boundary, crop_h);
 
     } catch (const std::exception& e) {
         engine->last_error = e.what();
