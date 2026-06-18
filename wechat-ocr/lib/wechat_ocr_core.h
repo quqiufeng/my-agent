@@ -72,6 +72,15 @@ char* ocr_capture_all(ocr_engine_t* engine);
  */
 char* ocr_detect_avatars(ocr_engine_t* engine);
 
+/*
+ * OCR from a saved image file instead of live capture.
+ * image_path: path to PNG file
+ * ox, oy: screen offset of the image origin (for coordinate mapping)
+ * Returns same JSON as ocr_capture_all.
+ * Caller must free with ocr_free_string().
+ */
+char* ocr_capture_file(ocr_engine_t* engine, const char* image_path, int ox, int oy);
+
 #ifdef __cplusplus
 }
 #endif

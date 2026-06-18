@@ -4,6 +4,7 @@
 > - [Agent 管理脚本使用指南](AGENTS.md) - CLI 版 Agent 管理、心跳守护、多 Agent 协作方案
 > - [钉钉 Agent 集成说明](ding/agent.md) - 钉钉入口的 Agent 任务执行流程
 > - [微信 Bot API 接入指南](weixin.md) - 基于腾讯 iLink 协议的微信 Bot 接入方案
+> - [Chrome DevTools MCP 配置](chrome.md) - Chrome 官方 MCP 服务器集成
 
 ## 1. 项目概述
 
@@ -1242,5 +1243,11 @@ class MyTask(BaseTask):
 
 ---
 
-*文档版本: 1.0*
-*更新日期: 2026-05-12*
+## 9. Chrome DevTools MCP 集成
+
+详见 [chrome.md](chrome.md) — Chrome 官方 MCP 服务器的安装、配置、可用工具及示例。
+
+---
+
+*文档版本: 1.1*
+*更新日期: 2026-06-18*

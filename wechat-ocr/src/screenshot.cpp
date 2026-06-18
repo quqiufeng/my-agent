@@ -5,6 +5,8 @@
 #include <cstring>
 #include <regex>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <cstdlib>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
@@ -78,13 +80,25 @@ WindowRect find_wechat_window() {
 cv::Mat capture_screen(const WindowRect &rect) {
     if (!rect.valid) return cv::Mat();
 
+    // Use ImageMagick import as primary method (more reliable with GPU windows)
+    {
+        std::string cmd = "import -window root -crop "
+            + std::to_string(rect.width) + "x" + std::to_string(rect.height)
+            + "+" + std::to_string(rect.x) + "+" + std::to_string(rect.y)
+            + " /tmp/wechat_import.png 2>/dev/null";
+        if (system(cmd.c_str()) == 0) {
+            cv::Mat img = cv::imread("/tmp/wechat_import.png");
+            if (!img.empty()) return img;
+        }
+    }
+
+    // Fallback: XShm
     Display *display = XOpenDisplay(nullptr);
     if (!display) return cv::Mat();
 
     Window root = DefaultRootWindow(display);
     Screen *screen = DefaultScreenOfDisplay(display);
 
-    // Try XShm first (faster)
     XShmSegmentInfo shm_info;
     XImage *img = XShmCreateImage(display, DefaultVisualOfScreen(screen),
                                    DefaultDepthOfScreen(screen), ZPixmap,
@@ -99,7 +113,6 @@ cv::Mat capture_screen(const WindowRect &rect) {
                 shm_info.readOnly = False;
                 if (XShmAttach(display, &shm_info) &&
                     XShmGetImage(display, root, img, rect.x, rect.y, AllPlanes)) {
-                    // Success - create OpenCV Mat from the XImage
                     cv::Mat mat(rect.height, rect.width, CV_8UC4);
                     memcpy(mat.data, img->data, img->bytes_per_line * img->height);
                     XShmDetach(display, &shm_info);
@@ -107,8 +120,6 @@ cv::Mat capture_screen(const WindowRect &rect) {
                     shmdt(shm_info.shmaddr);
                     shmctl(shm_info.shmid, IPC_RMID, nullptr);
                     XCloseDisplay(display);
-
-                    // Convert RGBA to BGR
                     cv::Mat bgr;
                     cv::cvtColor(mat, bgr, cv::COLOR_RGBA2BGR);
                     return bgr;
@@ -119,20 +130,6 @@ cv::Mat capture_screen(const WindowRect &rect) {
             shmctl(shm_info.shmid, IPC_RMID, nullptr);
         }
         XDestroyImage(img);
-    }
-
-    // Fallback: regular XGetImage
-    img = XGetImage(display, root, rect.x, rect.y, rect.width, rect.height,
-                    AllPlanes, ZPixmap);
-    if (img) {
-        cv::Mat mat(rect.height, rect.width, CV_8UC4);
-        memcpy(mat.data, img->data, img->bytes_per_line * img->height);
-        XDestroyImage(img);
-        XCloseDisplay(display);
-
-        cv::Mat bgr;
-        cv::cvtColor(mat, bgr, cv::COLOR_RGBA2BGR);
-        return bgr;
     }
 
     XCloseDisplay(display);

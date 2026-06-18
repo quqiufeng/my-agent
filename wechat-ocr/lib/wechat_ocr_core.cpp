@@ -9,6 +9,7 @@
 #include <memory>
 #include <unistd.h>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 // Forward declarations
 static bool detect_panel(cv::Mat &out_panel, int &out_x, int &out_y,
@@ -256,6 +257,26 @@ char* ocr_capture_all(ocr_engine_t* engine) {
 
         if (boxes.empty()) return make_empty_json(px, py + 35, panel.cols, roi.height);
         return build_json_result(boxes, px, py + 35, panel.cols, roi.height);
+    } catch (const std::exception& e) {
+        if (engine) engine->last_error = e.what();
+        return nullptr;
+    }
+}
+
+// OCR from saved image file (more reliable than live XShm capture)
+char* ocr_capture_file(ocr_engine_t* engine, const char* image_path, int ox, int oy) {
+    if (!engine || !engine->ocr || !image_path) return nullptr;
+    try {
+        cv::Mat img = cv::imread(image_path);
+        if (img.empty()) {
+            if (engine) engine->last_error = "cannot read image file";
+            return nullptr;
+        }
+        cv::Rect roi(0, 35, img.cols, img.rows - 220);
+        if (roi.height < 100) { roi.y = 0; roi.height = img.rows; }
+        auto boxes = engine->ocr->run(img(roi));
+        if (boxes.empty()) return make_empty_json(ox, oy + 35, img.cols, roi.height);
+        return build_json_result(boxes, ox, oy + 35, img.cols, roi.height);
     } catch (const std::exception& e) {
         if (engine) engine->last_error = e.what();
         return nullptr;
