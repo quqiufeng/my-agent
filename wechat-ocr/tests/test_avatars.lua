@@ -50,7 +50,7 @@ if #cur > 15 then table.insert(groups, cur) end
 local avatars = {}
 for i, g in ipairs(groups) do
     local mid = g[math.floor(#g/2)]
-    table.insert(avatars, {x=65, y=mid-37, w=75, h=75})
+    table.insert(avatars, {x=90, y=mid-50, w=60, h=100})
 end
 
 io.write(string.format("头像: %d 个\n", #avatars))
