@@ -40,6 +40,16 @@ chrome.open("https://www.google.com")
 chrome.search("chrome 有什么好玩的玩法")
 ```
 
+### `chrome.ai_search(keyword)`
+
+**Google AI 模式搜索** — 地址栏输入问题 → Tab → 回车，触发 Google AI 回答。
+
+```lua
+chrome.ai_search("chrome mcp 有什么好玩的玩法")
+```
+
+内部流程：`Ctrl+T` → 粘贴问题 → `Tab`（移到 AI 模式选项）→ `Return`
+
 ### `chrome.screenshot(path)`
 
 截图当前标签页，保存到文件。

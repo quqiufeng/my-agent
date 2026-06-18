@@ -7,8 +7,19 @@
 
 ```lua
 local chrome = require("wechat_ocr.chrome")
-chrome.new_tab()          -- ✅ 新开空白标签
-chrome.open("网址")        -- ✅ 新标签打开网址
-chrome.search("关键词")    -- ✅ 新标签 Google 搜索
-chrome.screenshot()       -- ✅ 截图
+chrome.new_tab()              -- ✅ 新开空白标签
+chrome.open("网址")            -- ✅ 新标签打开网址
+chrome.search("关键词")        -- ✅ 新标签 Google 搜索
+chrome.ai_search("问题")       -- ✅ AI 模式搜索（地址栏→Tab→回车）
+chrome.screenshot()           -- ✅ 截图
 ```
+
+## AI 搜索（Google AI 模式）
+
+**地址栏输入问题 → Tab → 回车** 触发 Google AI 回答：
+
+```lua
+chrome.ai_search("chrome mcp 有什么好玩的玩法")
+```
+
+内部流程：`Ctrl+T` → 粘贴问题 → `Tab`（移到 AI 模式选项）→ `Return`（回车）
