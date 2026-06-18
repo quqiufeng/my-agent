@@ -125,25 +125,12 @@ for line in cc_output:gmatch("[^\n]+") do
     end
 end
 
--- 标记公众号/服务号（不检测红点）
-for _, entry in ipairs(entries) do
-    for _, b in ipairs(col2) do
-        if b.ry >= entry.ry and b.ry <= entry.ry + entry.h and
-           (b.text:match("公众号") or b.text:match("服务号")) then
-            entry.skip = true
-            io.write(string.format("  #%d 跳过: %s\n", entry.idx, b.text))
-            break
-        end
-    end
-end
-
 -- 匹配红点到聊天条目
 for _, dot in ipairs(red_dots) do
     local dot_cy = dot.y + dot.h / 2
     for _, entry in ipairs(entries) do
-        if entry.skip then  end
         -- 红点必须在条目垂直范围内（允许上方 30px 偏差）
-        if not entry.skip and dot_cy >= entry.ry - 30 and dot_cy <= entry.ry + entry.h + 10 then
+        if dot_cy >= entry.ry - 30 and dot_cy <= entry.ry + entry.h + 10 then
             -- 红点必须在头像右侧区域（离文字左侧 5~30px），排除左侧误判
             local dist_to_text = entry.rx - dot.x
             if dist_to_text >= 5 and dist_to_text <= 35 then
