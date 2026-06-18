@@ -2,6 +2,10 @@
 -- 基于测试验证的微信自动化操作库
 -- 用法: local robot = require("wechat_robot")
 -- 依赖: wechat_ocr + xdotool + xclip
+--
+-- 录像功能: 默认关闭，M.set_record(true) 开启
+--           M.set_record(false) 关闭
+--           M.set_record_output("path.mp4") 指定输出文件
 
 local ffi = require("ffi")
 ffi.cdef[[void usleep(unsigned int);]]
@@ -10,6 +14,44 @@ local ocr = require("wechat_ocr")
 local dir = "/opt/my-agent/wechat-ocr"
 
 local M = {}
+local _recording_pid = nil
+local _record_enabled = false
+local _record_output = "/tmp/wx_robot_record.mp4"
+
+-- === 录像控制 ===
+
+function M.set_record(on)
+    _record_enabled = on
+end
+
+function M.set_record_output(path)
+    _record_output = path
+end
+
+function M.get_record()
+    return _record_enabled
+end
+
+local function start_recording()
+    if not _record_enabled then return end
+    local cmd = string.format(
+        "ffmpeg -y -f x11grab -r 10 -s 2560x1440 -i :0.0 "
+        .. "-vcodec libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "
+        .. "'%s' & echo $!", _record_output)
+    local f = io.popen(cmd, "r")
+    if f then
+        local pid = f:read("*a"); f:close()
+        _recording_pid = pid:match("%d+")
+        ffi.C.usleep(1000000)
+    end
+end
+
+local function stop_recording()
+    if _recording_pid then
+        os.execute("kill " .. _recording_pid .. " 2>/dev/null")
+        _recording_pid = nil
+    end
+end
 
 -- 初始化（加载OCR模型）
 function M.init()
@@ -17,11 +59,15 @@ function M.init()
         dir.."/models/ch_PP-OCRv4_det_infer.onnx",
         dir.."/models/ch_PP-OCRv4_rec_infer.onnx",
         dir.."/ppocr_keys_v1.txt")
+    if ok and _record_enabled then
+        start_recording()
+    end
     return ok, err
 end
 
 -- 销毁
 function M.destroy()
+    if _record_enabled then stop_recording() end
     ocr.destroy()
 end
 
@@ -172,28 +218,50 @@ end
 -- ======== 监控 ========
 
 function M.monitor(opts)
-    return ocr.monitor(opts)
+    opts = opts or {}
+    -- 如果开启录像且monitor未特别关闭录像
+    if _record_enabled and opts.record ~= false then
+        start_recording()
+    end
+    local function wrapped_on_msg(text, cycle)
+        if opts.on_message then opts.on_message(text, cycle) end
+    end
+    local function wrapped_on_init(text)
+        if opts.on_initial then opts.on_initial(text) end
+    end
+    local ok, err = pcall(ocr.monitor, {
+        interval_ms = opts.interval_ms or 3000,
+        on_message = wrapped_on_msg,
+        on_initial = wrapped_on_init,
+        on_error = opts.on_error,
+    })
+    if _record_enabled then stop_recording() end
+    if not ok then error(err) end
 end
 
--- ======== 录屏 ========
-
-local recording_pid = nil
+-- ======== 手动录屏 ========
 
 function M.start_recording(output, duration)
-    output = output or "/tmp/wx_record.mp4"; duration = duration or 15
+    if _record_enabled then
+        -- 使用_set_record模式，不额外录
+        return _recording_pid
+    end
+    local out = output or "/tmp/wx_record.mp4"
     local cmd = string.format(
         "ffmpeg -y -f x11grab -r 10 -s 2560x1440 -i :0.0 "
         .. "-vcodec libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "
-        .. "-t %d '%s' & echo $!", duration, output)
+        .. "-t %d '%s' & echo $!", duration or 15, out)
     local f = io.popen(cmd, "r")
-    local pid = f:read("*a"); f:close()
-    recording_pid = pid:match("%d+")
-    ffi.C.usleep(1000000)
-    return recording_pid
+    if f then
+        local pid = f:read("*a"); f:close()
+        _recording_pid = pid:match("%d+")
+        ffi.C.usleep(1000000)
+    end
+    return _recording_pid
 end
 
 function M.stop_recording()
-    if recording_pid then os.execute("kill " .. recording_pid .. " 2>/dev/null"); recording_pid = nil end
+    stop_recording()
 end
 
 return M
