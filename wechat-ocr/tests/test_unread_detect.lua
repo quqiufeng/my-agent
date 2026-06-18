@@ -11,6 +11,7 @@ local lib = ffi.load("libwechat_ocr_core.so")
 ffi.cdef[[
     typedef struct ocr_engine_t ocr_engine_t;
     ocr_engine_t* ocr_create(const char*,const char*,const char*);
+    char* ocr_capture(ocr_engine_t*);
     char* ocr_capture_all(ocr_engine_t*);
     void ocr_free_string(char*);
     void ocr_destroy(ocr_engine_t*);
@@ -27,6 +28,15 @@ local e = lib.ocr_create(dir.."/models/ch_PP-OCRv4_det_infer.onnx",
                           dir.."/ppocr_keys_v1.txt")
 if not e or e == ffi.NULL then io.write("❌ OCR失败\n"); os.exit(1) end
 
+-- 先跑一次 ocr_capture 获取真实第三列边界
+local s0 = lib.ocr_capture(e)
+local col3_x = 0
+if s0 and s0 ~= ffi.NULL then
+    col3_x = cjson.decode(ffi.string(s0)).win.x
+    lib.ocr_free_string(s0)
+end
+
+-- 再跑全窗口获取文字
 local s = lib.ocr_capture_all(e)
 if not s or s == ffi.NULL then io.write("❌ 捕获失败\n"); os.exit(1) end
 
@@ -35,8 +45,9 @@ lib.ocr_free_string(s)
 
 local win = d.win
 local boxes = d.boxes or {}
--- 第三列约从40%开始，第二列在 4%~40% 之间
-local col3_x = win.x + math.floor(win.w * 0.40)
+if col3_x == 0 then
+    col3_x = win.x + math.floor(win.w * 0.40)
+end
 
 io.write(string.format("全窗口 %d 个文字框\n", #boxes))
 io.write(string.format("第三列约从 x=%d\n\n", col3_x)); io.flush()
