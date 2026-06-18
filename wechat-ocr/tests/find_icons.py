@@ -19,21 +19,31 @@ gray = cv2.cvtColor(img, cv2.COLOR_RGBA2GRAY)
 
 # 第三列全部区域
 roi = gray[20:wh-20, col3_x-wx:]
-_, thresh = cv2.threshold(roi, 200, 255, cv2.THRESH_BINARY_INV)
-contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-# 过滤出方形小块
+# 多个阈值试（图标可能是深灰~160，文字是黑~50）
 blobs = []
-for c in contours:
-    x, y, w, h = cv2.boundingRect(c)
-    area = w * h
-    ratio = w / h if h > 0 else 0
-    if 60 < area < 5000 and h > 8 and 0.4 < ratio < 2.5:
-        blobs.append((col3_x+x, 20+y, w, h))
+for thr in [160, 140, 120, 100]:
+    _, t = cv2.threshold(roi, thr, 255, cv2.THRESH_BINARY_INV)
+    cs, _ = cv2.findContours(t, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for c in cs:
+        x, y, w, h = cv2.boundingRect(c)
+        area = w * h
+        ratio = w / h if h > 0 else 0
+        if 50 < area < 4000 and h > 6 and 0.3 < ratio < 3.0:
+            blobs.append((col3_x+x, 20+y, w, h, thr))
+
+# 去重（x差<10视为同一blob）
+unique = []
+for bx, by, bw, bh, bt in blobs:
+    dup = False
+    for ux, uy, uw, uh in unique:
+        if abs(bx-ux) < 10 and abs(by-uy) < 10:
+            dup = True; break
+    if not dup:
+        unique.append((bx, by, bw, bh))
 
 # 按Y分组
 rows = {}
-for x, y, w, h in blobs:
+for x, y, w, h in unique:
     key = round(y, -1)
     if key not in rows: rows[key] = []
     rows[key].append((x, y, w, h))
