@@ -72,8 +72,8 @@ if s and s ~= ffi.NULL then
 end
 lib.ocr_destroy(e)
 
--- 出图标注
-os.execute(string.format("import -window root -crop %dx%d+%d+%d /tmp/av_full.png 2>/dev/null", ww, wh, 0, 0))
+-- 出图标注（截微信窗口）
+os.execute("import -window $(xdotool search --name 微信 | head -1) /tmp/av_full.png 2>/dev/null")
 
 local out = {}
 for _, a in ipairs(avatars) do table.insert(out, a) end
