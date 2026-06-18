@@ -1,102 +1,59 @@
 #!/usr/bin/env python3
-"""WeChat OCR - 第三列小图标检测
-用法: python3 find_icons.py <第三列起始X> <窗口X> <窗口Y> <窗口W> <窗口H>
-功能: 截图 → 第三列底部找小图标 → 标注 → 保存
+"""WeChat OCR - 全窗口小图标检测
+扫描整个微信窗口，找出所有小方形暗色块（过滤文字），标注输出
+用法: python3 find_icons.py <窗口X> <窗口Y> <窗口W> <窗口H>
 """
-import cv2, numpy as np, subprocess, re, mss, os, sys
+import cv2, numpy as np, mss, os, sys
 from PIL import Image, ImageDraw, ImageFont
 
-col3_x = int(sys.argv[1])
-wx = int(sys.argv[2])
-wy = int(sys.argv[3])
-ww = int(sys.argv[4])
-wh = int(sys.argv[5])
+wx = int(sys.argv[1]); wy = int(sys.argv[2])
+ww = int(sys.argv[3]); wh = int(sys.argv[4])
 
 with mss.mss() as sct:
     img = np.array(sct.grab({"left":wx,"top":wy,"width":ww,"height":wh}))
 
 gray = cv2.cvtColor(img, cv2.COLOR_RGBA2GRAY)
+roi = gray[10:wh-10, 10:ww-10]
 
-# 第三列全部区域
-roi = gray[20:wh-20, col3_x-wx:]
-# 多个阈值试（图标可能是深灰~160，文字是黑~50）
-blobs = []
-for thr in [160, 140, 120, 100]:
+# 多阈值合并
+all_blobs = []
+for thr in range(180, 60, -20):
     _, t = cv2.threshold(roi, thr, 255, cv2.THRESH_BINARY_INV)
     cs, _ = cv2.findContours(t, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for c in cs:
         x, y, w, h = cv2.boundingRect(c)
-        area = w * h
         ratio = w / h if h > 0 else 0
-        if 50 < area < 4000 and h > 6 and 0.3 < ratio < 3.0:
-            blobs.append((col3_x+x, 20+y, w, h, thr))
+        if h < 14 or w < 12: continue       # 过滤文字（文字一般<14px）
+        if ratio > 1.8 or ratio < 0.5: continue  # 图标近似方形
+        if w*h < 150 or w*h > 3000: continue
+        all_blobs.append((10+x, 10+y, w, h, thr))
 
-# 去重（x差<10视为同一blob）
-unique = []
-for bx, by, bw, bh, bt in blobs:
-    dup = False
-    for ux, uy, uw, uh in unique:
-        if abs(bx-ux) < 10 and abs(by-uy) < 10:
-            dup = True; break
-    if not dup:
-        unique.append((bx, by, bw, bh))
+# 去重
+unique = {}
+for bx, by, bw, bh, bt in all_blobs:
+    key = (bx//6, by//6)
+    if key not in unique:
+        unique[key] = (bx, by, bw, bh)
 
-# 按Y分组
-rows = {}
-for x, y, w, h in unique:
-    key = round(y, -1)
-    if key not in rows: rows[key] = []
-    rows[key].append((x, y, w, h))
+blobs = sorted(unique.values(), key=lambda b: (b[1], b[0]))
 
-# 找到有4-8个成员的组
-vis = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
-pil_img = Image.fromarray(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB))
+# 标注
+pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_RGBA2RGB))
 draw = ImageDraw.Draw(pil_img)
-
-# 字体
-font_paths = ["/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-              "/usr/share/fonts/opencore/noto/NotoSansCJK-Regular.ttc",
-              "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-              "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
 font = None
-for fp in font_paths:
+for fp in ["/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+           "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+           "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"]:
     if os.path.exists(fp):
-        font = ImageFont.truetype(fp, 18)
+        font = ImageFont.truetype(fp, 14)
         break
-if font is None:
-    font = ImageFont.load_default()
 
-# 画分界线
-draw.line([(col3_x-wx,0),(col3_x-wx,wh)], fill=(255,0,0), width=2)
+draw.text((10, 10), f"全窗口 {len(blobs)} 个小图标", fill=(0,255,0), font=font or ImageFont.load_default())
 
-found = False
-for y_key in sorted(rows.keys()):
-    g = rows[y_key]
-    g.sort(key=lambda i: i[0])
-    if 4 <= len(g) <= 8:
-        gaps = [g[i+1][0]-g[i][0] for i in range(len(g)-1)]
-        avg_gap = np.mean(gaps) if gaps else 0
-        if 30 < avg_gap < 80:
-            found = True
-            draw.text((10, y_key-wy-20), f"y={y_key} {len(g)}个 间距{avg_gap:.0f}px", fill=(0,255,0), font=font)
-            for i, (x, y, w, h) in enumerate(g):
-                color = (0,255,0) if i == 2 else (255,255,0)
-                draw.rectangle([(x-wx,y-wy),(x-wx+w,y-wy+h)], outline=color, width=2)
-                draw.text((x-wx, y-wy-14), str(i+1), fill=color, font=font)
-                if i == 2:
-                    draw.text((x-wx, y-wy+h+2), "📎文件", fill=(0,0,255), font=font)
+for i, (bx, by, bw, bh) in enumerate(blobs):
+    draw.rectangle([(bx,by),(bx+bw,by+bh)], outline=(0,255,0), width=1)
+    draw.text((bx, by-10), str(i+1), fill=(0,255,0), font=font or ImageFont.load_default())
 
-if not found:
-    draw.text((10, 10), "未找到5~8个等距图标的行", fill=(255,0,0), font=font)
-    # 标出所有blob
-    for x, y, w, h in blobs:
-        draw.rectangle([(x-wx,y-wy),(x-wx+w,y-wy+h)], outline=(0,255,0), width=1)
-
-out = os.path.expanduser("~/wechat_icons_test.png")
-vis = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-cv2.imwrite(out, vis)
-print(f"标记图: {out}")
-if found:
-    print("✅ 找到图标行")
-else:
-    print(f"❌ 未找到图标行 (共{len(blobs)}个候选)")
+out = os.path.expanduser("~/wechat_icons.png")
+cv2.imwrite(out, cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR))
+print(f"标记图: {out}\n找到 {len(blobs)} 个小图标")
