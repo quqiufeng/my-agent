@@ -247,6 +247,25 @@ static bool detect_panel(cv::Mat &out_panel, int &out_x, int &out_y,
     return false;
 }
 
+// 全窗口OCR，不经过滤，返回所有文字框
+char* ocr_capture_all(ocr_engine_t* engine) {
+    if (!engine || !engine->ocr) return nullptr;
+    try {
+        cv::Mat panel; int px = 0, py = 0;
+        if (!detect_panel(panel, px, py, engine)) return nullptr;
+
+        cv::Rect roi(0, 35, panel.cols, panel.rows - 220);
+        if (roi.height < 100) { roi.y = 0; roi.height = panel.rows; }
+        auto boxes = engine->ocr->run(panel(roi));
+
+        if (boxes.empty()) return make_empty_json(px, py + 35, panel.cols, roi.height);
+        return build_json_result(boxes, px, py + 35, panel.cols, roi.height);
+    } catch (const std::exception& e) {
+        if (engine) engine->last_error = e.what();
+        return nullptr;
+    }
+}
+
 char* ocr_get_input_box(ocr_engine_t* engine) {
     if (!engine) return nullptr;
     cv::Mat panel;

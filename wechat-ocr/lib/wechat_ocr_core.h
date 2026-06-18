@@ -57,6 +57,13 @@ char* ocr_find_taskbar_icon(ocr_engine_t* engine);
  */
 char* ocr_get_file_icon(ocr_engine_t* engine);
 
+/*
+ * Full window OCR, no timestamp filtering.
+ * Returns all text boxes in the full window (including sidebar).
+ * Caller must free with ocr_free_string().
+ */
+char* ocr_capture_all(ocr_engine_t* engine);
+
 #ifdef __cplusplus
 }
 #endif
