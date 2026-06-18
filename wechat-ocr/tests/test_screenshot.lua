@@ -51,12 +51,20 @@ ffi.C.usleep(500000)
 
 -- 从 (0,0) 拖到 (2560,1440) 选全屏
 io.write("框选全屏\n"); io.flush()
-os.execute("xdotool mousemove 0 0 mousedown 1 mousemove 2560 1440 mouseup 1 2>/dev/null")
-ffi.C.usleep(500000)
+os.execute("xdotool mousemove 0 0 2>/dev/null")
+ffi.C.usleep(100000)
+os.execute("xdotool mousedown 1 2>/dev/null")
+ffi.C.usleep(100000)
+os.execute("xdotool mousemove 2560 1440 2>/dev/null")
+ffi.C.usleep(300000)
+os.execute("xdotool mouseup 1 2>/dev/null")
+ffi.C.usleep(300000)
 
 -- 双击确认
 io.write("双击确认\n"); io.flush()
-os.execute("xdotool click --repeat 2 1 2>/dev/null")
+os.execute("xdotool click 1 2>/dev/null")
+ffi.C.usleep(200000)
+os.execute("xdotool click 1 2>/dev/null")
 ffi.C.usleep(1000000)
 
 -- 回车发送
