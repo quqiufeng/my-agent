@@ -96,6 +96,24 @@ luajit tests/test_screenshot.lua
 
 ---
 
+### 6. test_search.lua — 搜索联系人
+
+点击第二列顶部搜索框 → 输入关键词 → 回车。
+
+```bash
+luajit tests/test_search.lua [搜索词]
+
+# 默认搜索 "小王"
+luajit tests/test_search.lua "张三"
+```
+
+流程：
+1. 获取微信窗口位置
+2. 搜索框在 (窗口x+180, 窗口y+50)
+3. 点击搜索框 → 粘贴关键词 → 回车搜索
+
+---
+
 ## 文件说明
 
 ```
@@ -106,6 +124,7 @@ tests/
 ├── test_third_icons.lua    ← 第三列图标测试
 ├── test_send_file.lua      ← 发送文件测试
 ├── test_screenshot.lua     ← 截图发送测试
+├── test_search.lua         ← 搜索联系人测试
 ├── mark_columns.py         ← 三列标注图生成
 ├── find_icons.py           ← 全窗口图标检测
 └── find_third_icons.py     ← 第三列图标检测
