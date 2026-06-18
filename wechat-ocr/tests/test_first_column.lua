@@ -22,10 +22,10 @@ local _, _, ww = geo:find("Geometry: (%d+)")
 wx, wy = tonumber(wx), tonumber(wy)
 if not wx then io.write("❌ 获取窗口失败\n"); os.exit(1) end
 
--- 第一列图标位置（窗口左上角 + 偏移）
-local icon_x = wx + 38       -- 列中心+10px
-local start_y = wy + 90       -- 第一个图标Y
-local gap = 60                -- 图标间距
+-- 第一列图标位置
+local icon_x = wx + 40        -- 靠左边40px
+local start_y = wy + 110      -- 顶部往下110px
+local gap = 50                -- 每次往下移动50px
 
 -- 图标标签（仅供显示）
 local labels = {"1:聊天", "2:通讯录", "3:收藏", "4:朋友圈", "5:小程序", "6:更多"}
