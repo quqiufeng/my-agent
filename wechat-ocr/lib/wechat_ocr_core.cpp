@@ -262,6 +262,83 @@ char* ocr_capture_all(ocr_engine_t* engine) {
     }
 }
 
+// 灰度转JSON
+static char* make_av_json(const std::vector<cv::Rect> &avs, int ox, int oy) {
+    std::string j = R"({"avatars":[)";
+    for (size_t i = 0; i < avs.size(); ++i) {
+        if (i > 0) j += ",";
+        j += R"({"x":)" + std::to_string(ox + avs[i].x)
+            + R"(,"y":)" + std::to_string(oy + avs[i].y)
+            + R"(,"w":)" + std::to_string(avs[i].width)
+            + R"(,"h":)" + std::to_string(avs[i].height) + R"(})";
+    }
+    j += "]}";
+    char* r = (char*)malloc(j.size() + 1);
+    if (r) memcpy(r, j.c_str(), j.size() + 1);
+    return r;
+}
+
+char* ocr_detect_avatars(ocr_engine_t*) {
+    try {
+        WindowRect wr = find_wechat_window();
+        if (!wr.valid) return nullptr;
+        cv::Mat full = capture_screen(wr);
+        if (full.empty()) return nullptr;
+
+        // 第二列左侧80px（头像区域）
+        int avatar_w = 80;
+        cv::Mat left = full(cv::Rect(0, 60, avatar_w, full.rows - 120));
+
+        // 转灰度
+        cv::Mat gray;
+        cv::cvtColor(left, gray, cv::COLOR_BGR2GRAY);
+
+        // 边缘检测
+        cv::Mat edges;
+        cv::Canny(gray, edges, 30, 100, 3);
+
+        // 找轮廓
+        std::vector<std::vector<cv::Point>> contours;
+        cv::findContours(edges, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+        std::vector<cv::Rect> avatars;
+        for (auto &c : contours) {
+            cv::Rect r = cv::boundingRect(c);
+            double area = r.area();
+            double ratio = (double)r.width / r.height;
+            if (area > 600 && area < 6000 && ratio > 0.6 && ratio < 1.6 && r.height > 20) {
+                // 检查颜色：取区域中心5x5像素
+                int cx = r.x + r.width / 2;
+                int cy = r.y + r.height / 2;
+                cv::Mat patch = left(cv::Rect(
+                    std::max(0,cx-3), std::max(0,cy-3),
+                    std::min(6, left.cols-cx+3), std::min(6, left.rows-cy+3)));
+                cv::Scalar m, s;
+                cv::meanStdDev(patch, m, s);
+                // 有颜色：RGB通道的标准差大（不是纯灰）
+                double color_var = std::abs(s[0]) + std::abs(s[1]) + std::abs(s[2]);
+                if (color_var > 15) {
+                    avatars.push_back(r);
+                }
+            }
+        }
+
+        // 去重合并
+        std::vector<cv::Rect> unique;
+        for (auto &r : avatars) {
+            bool dup = false;
+            for (auto &u : unique) {
+                if (std::abs(r.x - u.x) < 10 && std::abs(r.y - u.y) < 10) {
+                    dup = true; break;
+                }
+            }
+            if (!dup) unique.push_back(r);
+        }
+
+        return make_av_json(unique, wr.x, wr.y + 60);
+    } catch (...) { return nullptr; }
+}
+
 char* ocr_get_input_box(ocr_engine_t* engine) {
     if (!engine) return nullptr;
     cv::Mat panel;

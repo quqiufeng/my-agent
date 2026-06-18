@@ -64,6 +64,14 @@ char* ocr_get_file_icon(ocr_engine_t* engine);
  */
 char* ocr_capture_all(ocr_engine_t* engine);
 
+/*
+ * Detect avatars in the second column (chat list).
+ * Scans for colored square regions (avatars) in the left portion.
+ * Returns JSON: {"avatars":[{"x":int,"y":int,"w":int,"h":int},...]}
+ * Caller must free with ocr_free_string().
+ */
+char* ocr_detect_avatars(ocr_engine_t* engine);
+
 #ifdef __cplusplus
 }
 #endif
