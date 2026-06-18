@@ -144,7 +144,7 @@ char* ocr_capture(ocr_engine_t* engine) {
         }
 
         // Crop to chat messages area (third region, exclude icon+list+title+input)
-        int crop_x = static_cast<int>(panel.cols * 0.41);
+        int crop_x = static_cast<int>(panel.cols * 0.40);
         int crop_y = 35;
         int crop_w = panel.cols - crop_x - 10;
         int crop_h = panel.rows - 40 - 180;
@@ -226,7 +226,7 @@ char* ocr_get_input_box(ocr_engine_t* engine) {
     if (!detect_panel(panel, px, py, engine)) return nullptr;
 
     // Input box is at bottom of the third region
-    int crop_x = static_cast<int>(panel.cols * 0.41);
+    int crop_x = static_cast<int>(panel.cols * 0.40);
     int ib_x = px + crop_x + 10;
     int ib_y = py + panel.rows - 175;
     int ib_w = panel.cols - crop_x - 30;
