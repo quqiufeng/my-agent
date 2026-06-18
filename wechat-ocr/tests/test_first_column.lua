@@ -23,7 +23,7 @@ wx, wy = tonumber(wx), tonumber(wy)
 if not wx then io.write("❌ 获取窗口失败\n"); os.exit(1) end
 
 -- 第一列图标位置（窗口左上角 + 偏移）
-local icon_x = wx + 28       -- 列中心
+local icon_x = wx + 38       -- 列中心+10px
 local start_y = wy + 90       -- 第一个图标Y
 local gap = 60                -- 图标间距
 
