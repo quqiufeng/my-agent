@@ -61,14 +61,22 @@ local path = chrome.screenshot("/tmp/page.png")
 -- 不传路径默认保存到 /tmp/chrome_ss.png
 ```
 
+## 当前 API
+
+```lua
+chrome.open(url)      -- 新建标签页打开 URL
+chrome.search(keyword) -- Google 搜索
+chrome.screenshot(path) -- 截图保存到文件
+```
+
 ## 与 MCP 的关系
 
-| 方式 | 适用场景 | 优点 | 缺点 |
-|------|---------|------|------|
-| `chrome.lua`（xdotool） | Lua 脚本、微信监控 | 纯 Lua，无依赖，无需守护进程 | 只能做基本操作 |
-| Chrome DevTools MCP | opencode AI 代理 | 完整 DevTools 能力 | 需要 opencode 集成 |
+| 方式 | 适用场景 | 原理 |
+|------|---------|------|
+| `chrome.lua` | Lua 脚本、微信监控 | `google-chrome <url>` 命令行 |
+| Chrome DevTools MCP | opencode AI 代理 | 完整 DevTools 调试能力 |
 
-两者互补：Lua 脚本用 `chrome.lua` 做简单操作，opencode 内用 MCP 做高级调试。
+两者互补：Lua 脚本用 `chrome.lua` 打开网页/搜索/截图，opencode 内用 MCP 做页面调试和自动化操作。
 
 ---
 
