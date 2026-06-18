@@ -1,6 +1,7 @@
 #!/usr/bin/env luajit
 -- WeChat OCR - 第二列头像检测
--- OCR找聊天名称 → 头像在名称左边75px
+-- 方法1: OCR方形文字框（群聊头像有首字）
+-- 方法2: OCR聊天名称文本（个人聊天用名称位置推算）
 -- 用法: luajit tests/test_avatars.lua
 
 local ffi = require("ffi")
@@ -22,15 +23,14 @@ io.write("=== 第二列头像检测 ===\n\n"); io.flush()
 os.execute("xdotool search --name 微信 windowactivate 2>/dev/null")
 ffi.C.usleep(500000)
 
-os.execute("xdotool getactivewindow getwindowgeometry > /tmp/av8.txt 2>/dev/null")
-local f = io.open("/tmp/av8.txt")
+os.execute("xdotool getactivewindow getwindowgeometry > /tmp/av9.txt 2>/dev/null")
+local f = io.open("/tmp/av9.txt")
 local geo = f:read("*a"); f:close()
 local _, _, ww = geo:find("Geometry: (%d+)")
 local _, _, wh = geo:find("x(%d+)")
 ww, wh = tonumber(ww), tonumber(wh)
-io.write(string.format("窗口: %dx%d\n\n", ww, wh)); io.flush()
+io.write(string.format("窗口: %dx%d\n", ww, wh)); io.flush()
 
--- OCR全窗口
 local e = lib.ocr_create(dir.."/models/ch_PP-OCRv4_det_infer.onnx",
                           dir.."/models/ch_PP-OCRv4_rec_infer.onnx",
                           dir.."/ppocr_keys_v1.txt")
@@ -42,39 +42,48 @@ if s and s ~= ffi.NULL then
     local win = d.win
     local boxes = d.boxes or {}
 
-    -- 第二列中的文字（x < 40%窗口宽度）
+    -- 收集第二列所有文字
     local items = {}
     for _, b in ipairs(boxes) do
-        local cx = b.x + b.w / 2
-        if cx < win.w * 0.40 and #b.text > 1 then
-            table.insert(items, {cy=b.y+b.h/2, y=b.y, text=b.text})
+        if b.x < win.w * 0.40 and #b.text > 0 then
+            local ratio = b.w / b.h
+            table.insert(items, {bx=b.x, by=b.y, bw=b.w, bh=b.h, text=b.text, ratio=ratio})
         end
     end
 
     -- 按Y分组
-    table.sort(items, function(a,b) return a.cy < b.cy end)
+    table.sort(items, function(a,b) return a.by < b.by end)
     local groups, cur_y, cur_g = {}, 0, {}
     for _, t in ipairs(items) do
-        if #cur_g == 0 or math.abs(t.cy - cur_y) < 30 then
-            table.insert(cur_g, t); cur_y = t.cy
+        if #cur_g == 0 or math.abs(t.by - cur_y) < 30 then
+            table.insert(cur_g, t); cur_y = t.by
         else
-            table.insert(groups, cur_g); cur_g = {t}; cur_y = t.cy
+            table.insert(groups, cur_g); cur_g = {t}; cur_y = t.by
         end
     end
     if #cur_g > 0 then table.insert(groups, cur_g) end
 
-    -- 每组取第一个文字，头像在左边75px
+    -- 每组判断是头像有字（方形）还是需要推算
     for _, g in ipairs(groups) do
-        local name = g[1]
-        local ax = win.x + name.y  -- 用y作为x的占位，不对
-        local ay = win.y + name.y
-        -- 正确：头像x = 文字x - 75
-        -- 但b.x是相对于win的坐标，文字x = win.x + b.x
-        -- 头像x = win.x + b.x - 75 (相对于窗口)
-        -- 在图片中：头像x = b.x - 75 (相对于图片)
-        local img_ax = 30  -- 头像通常在左侧30-50px处
-        local img_ay = name.y - 10
-        table.insert(avatars, {x=img_ax, y=img_ay, w=75, h=75, text=name.text})
+        local has_square = false
+        local first = g[1]
+        for _, t in ipairs(g) do
+            if t.ratio > 0.7 and t.ratio < 1.5 and t.bh > 18 then
+                -- 方形框：是群聊头像上的字，直接用它
+                local ax = t.bx - 25
+                local ay = t.by - 25
+                table.insert(avatars, {x=ax, y=ay, w=75, h=75, text="["..t.text.."]"})
+                has_square = true
+                break
+            end
+        end
+        if not has_square then
+            -- 没有方形框：用聊天名称推算（名称在头像右边）
+            local name = first
+            local ax = name.bx - 50
+            local ay = name.by - 15
+            table.insert(avatars, {x=ax, y=ay, w=75, h=75, text=name.text:sub(1,6)})
+        end
     end
 end
 lib.ocr_destroy(e)
@@ -82,8 +91,8 @@ lib.ocr_destroy(e)
 io.write(string.format("头像: %d 个\n", #avatars))
 
 -- 出图
-os.execute("import -window $(xdotool search --name 微信 | head -1) /tmp/av_win2.png 2>/dev/null")
-local f3 = io.open("/tmp/av_data4.json","w")
+os.execute("import -window $(xdotool search --name 微信 | head -1) /tmp/av_win3.png 2>/dev/null")
+local f3 = io.open("/tmp/av_data5.json","w")
 f3:write("{\"avatars\":[")
 for i, a in ipairs(avatars) do
     if i > 1 then f3:write(",") end

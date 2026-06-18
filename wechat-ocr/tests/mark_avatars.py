@@ -3,10 +3,10 @@
 import cv2, json, os, numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-with open("/tmp/av_data4.json") as f:
+with open("/tmp/av_data5.json") as f:
     data = json.load(f)
 
-img = cv2.imread("/tmp/av_win2.png")
+img = cv2.imread("/tmp/av_win3.png")
 pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 draw = ImageDraw.Draw(pil_img)
 font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc", 14)
