@@ -154,25 +154,21 @@ char* ocr_capture(ocr_engine_t* engine) {
 
         auto boxes = engine->ocr->run(chat);
 
-        // 从OCR结果中找时间戳（NN:NN格式或"昨天"/"今天"）
+        // 找第二列右侧的文字（时间戳或短文本）定位边界
         int boundary = panel.cols * 3 / 10; // 保底30%
-        std::vector<int> ts_positions;
+        std::vector<int> right_items;
         for (auto &b : boxes) {
-            bool is_ts = false;
-            if (b.text.size() >= 4 && b.text.size() <= 6) {
-                if (std::isdigit(b.text[0]) && b.text.find(':') != std::string::npos)
-                    is_ts = true;
-            }
-            if (b.text.find("昨天") != std::string::npos ||
-                b.text.find("今天") != std::string::npos)
-                is_ts = true;
-            if (is_ts) {
-                ts_positions.push_back(b.bbox.x + b.bbox.width / 2);
+            int cx = b.bbox.x + b.bbox.width / 2;
+            // 在第二列右侧的文字：x在15%~45%之间，长度4-8字符
+            if (cx > panel.cols * 0.15 && cx < panel.cols * 0.45) {
+                if (b.text.size() >= 3 && b.text.size() <= 8) {
+                    right_items.push_back(cx);
+                }
             }
         }
-        if (!ts_positions.empty()) {
-            std::sort(ts_positions.begin(), ts_positions.end());
-            boundary = ts_positions[ts_positions.size() / 2] + 40;
+        if (!right_items.empty()) {
+            std::sort(right_items.begin(), right_items.end());
+            boundary = right_items[right_items.size() / 2] + 40;
         }
 
         // 过滤：只保留第三列（boundary右侧）的文字框
