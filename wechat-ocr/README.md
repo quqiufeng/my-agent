@@ -19,6 +19,10 @@
 | 异常重连 | ❌ 待做 | 微信崩溃自动重启 |
 | 日志系统 | ❌ 待做 | 操作记录 + 消息存档 |
 | 配置文件 | ❌ 待做 | 回复规则/AI 接口配置 |
+| 功能键识别 | ❌ 待做 | 😊表情 📎文件 🎤语音 💰红包等 |
+| - 📎 传文件 | ❌ 待做 | 第三个图标，输入框上方功能栏 |
+| - 📺 截图  | ❌ 待做 | 第四个图标 |
+| - 功能键识别方法 | ❌ 待做 | 灰色图标(RGB~180-200)在浅灰底(RGB~237)，需模板匹配 |
 
 ## 概述
 
@@ -153,10 +157,33 @@ ocr.start_recording()
   → 只录微信区域，不录全屏
 ```
 
+## 部署
+
+```bash
+# 打包所有必要文件（.so + Lua脚本 + 模型 + 字典）
+bash deploy.sh
+
+# 输出: /tmp/wechat-ocr-deploy.tar.gz (14MB)
+# 解压后拷贝到目标机器即可
+```
+
+**目标机器额外需求：**
+```bash
+# 系统包
+apt install luajit xdotool xclip ffmpeg vlc
+
+# ONNX Runtime GPU (200MB，不包含在包内)
+# 将 onnxruntime-linux-x64-gpu-1.26.0 放到 /data/venv/ 或修改 run.sh 路径
+
+# Lua 模块
+# 将 lualib/wechat_ocr/ 拷贝到 /usr/local/lualib/wechat_ocr/
+```
+
 ## 项目文件结构
 
 ```
 wechat-ocr/
+├── deploy.sh                    ← 部署打包脚本（打包 .so + 模型 + 脚本）
 ├── wechat_send_and_record.sh   ← 一键发送+录屏脚本
 ├── README.md                   ← 本文件
 ├── WECHAT_OCR.md               ← 技术架构文档

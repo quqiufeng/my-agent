@@ -144,7 +144,7 @@ char* ocr_capture(ocr_engine_t* engine) {
         }
 
         // Crop to chat messages area (third region, exclude icon+list+title+input)
-        int crop_x = static_cast<int>(panel.cols * 0.28);
+        int crop_x = static_cast<int>(panel.cols * 0.41);
         int crop_y = 35;
         int crop_w = panel.cols - crop_x - 10;
         int crop_h = panel.rows - 40 - 180;
@@ -177,7 +177,16 @@ char* ocr_capture(ocr_engine_t* engine) {
 // Returns (panel image, panel_abs_x, panel_abs_y) or (empty, 0, 0) on failure
 static bool detect_panel(cv::Mat &out_panel, int &out_x, int &out_y,
                           ocr_engine_t *engine) {
-    // Path A: White detection on current desktop
+    // Always use xdotool first for consistent full-window capture
+    {
+        WindowRect wr = find_wechat_window();
+        if (wr.valid) {
+            out_panel = capture_screen(wr);
+            out_x = wr.x; out_y = wr.y;
+            return true;
+        }
+    }
+    // Fallback: white detection
     {
         cv::Mat fs = capture_full_screen();
         if (!fs.empty()) {
@@ -189,7 +198,7 @@ static bool detect_panel(cv::Mat &out_panel, int &out_x, int &out_y,
             }
         }
     }
-    // Path B: Cross-desktop switching
+    // Last resort: cross-desktop
     {
         unsigned long xid = find_wechat_xid();
         if (xid) {
@@ -198,24 +207,12 @@ static bool detect_panel(cv::Mat &out_panel, int &out_x, int &out_y,
             exec_cmd(("xdotool set_desktop_for_window "
                 + std::to_string(xid) + " " + cur + " 2>/dev/null").c_str());
             usleep(200000);
-            cv::Mat fs2 = capture_full_screen();
-            if (!fs2.empty()) {
-                WindowRect wr2 = find_white_window(fs2);
-                if (wr2.valid) {
-                    out_panel = capture_screen(wr2);
-                    out_x = wr2.x; out_y = wr2.y;
-                    return true;
-                }
+            WindowRect wr = find_wechat_window();
+            if (wr.valid) {
+                out_panel = capture_screen(wr);
+                out_x = wr.x; out_y = wr.y;
+                return true;
             }
-        }
-    }
-    // Path C: xdotool geometry
-    {
-        WindowRect wr3 = find_wechat_window();
-        if (wr3.valid) {
-            out_panel = capture_screen(wr3);
-            out_x = wr3.x; out_y = wr3.y;
-            return true;
         }
     }
     if (engine) engine->last_error = "WeChat window not found on any desktop";
@@ -229,7 +226,7 @@ char* ocr_get_input_box(ocr_engine_t* engine) {
     if (!detect_panel(panel, px, py, engine)) return nullptr;
 
     // Input box is at bottom of the third region
-    int crop_x = static_cast<int>(panel.cols * 0.28);
+    int crop_x = static_cast<int>(panel.cols * 0.41);
     int ib_x = px + crop_x + 10;
     int ib_y = py + panel.rows - 175;
     int ib_w = panel.cols - crop_x - 30;
@@ -242,6 +239,21 @@ char* ocr_get_input_box(ocr_engine_t* engine) {
     char* r = (char*)malloc(s.size() + 1);
     if (r) memcpy(r, s.c_str(), s.size() + 1);
     return r;
+}
+
+char* ocr_get_file_icon(ocr_engine_t*) {
+    try {
+        WindowRect win = find_wechat_window();
+        if (!win.valid) return nullptr;
+        // 第三列底部，文件图标相对位置约 (w*0.53, h*0.65)
+        int fx = win.x + static_cast<int>(win.width * 0.53);
+        int fy = win.y + static_cast<int>(win.height * 0.65);
+        std::string s = R"({"x":)" + std::to_string(fx)
+            + R"(,"y":)" + std::to_string(fy) + R"(})";
+        char* r = (char*)malloc(s.size() + 1);
+        if (r) memcpy(r, s.c_str(), s.size() + 1);
+        return r;
+    } catch (...) { return nullptr; }
 }
 
 char* ocr_find_taskbar_icon(ocr_engine_t*) {

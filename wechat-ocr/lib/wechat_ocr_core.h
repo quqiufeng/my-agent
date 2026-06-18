@@ -50,6 +50,13 @@ char* ocr_get_input_box(ocr_engine_t* engine);
  */
 char* ocr_find_taskbar_icon(ocr_engine_t* engine);
 
+/*
+ * Get the file send icon position (第3个图标, 📎).
+ * Returns JSON: {"x":int,"y":int}
+ * Caller must free with ocr_free_string().
+ */
+char* ocr_get_file_icon(ocr_engine_t* engine);
+
 #ifdef __cplusplus
 }
 #endif
