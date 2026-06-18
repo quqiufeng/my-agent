@@ -1,6 +1,6 @@
 #!/usr/bin/env luajit
 -- WeChat OCR - 第二列头像检测
--- 扫描x=100处颜色差异，定位彩色方块（头像）
+-- 扫描颜色差异定位彩色方块
 -- 用法: luajit tests/test_avatars.lua
 
 local ffi = require("ffi")
@@ -18,18 +18,16 @@ local ww = tonumber(geo:match("Geometry: (%d+)"))
 local wh = tonumber(geo:match("x(%d+)"))
 io.write(string.format("窗口: %dx%d\n\n", ww, wh)); io.flush()
 
--- 点第一列第1个图标回到聊天列表
 os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", wx+40, wy+110))
 ffi.C.usleep(1000000)
 
--- 截微信窗口
-os.execute(string.format("import -window $(xdotool search --name 微信 | head -1) /tmp/av_final.png 2>/dev/null"))
-os.execute(string.format("convert /tmp/av_final.png -crop 250x%d+0+50 /tmp/av_left_final.png 2>/dev/null", wh-60))
+os.execute(string.format("import -window $(xdotool search --name 微信 | head -1) /tmp/av_final2.png 2>/dev/null"))
+os.execute(string.format("convert /tmp/av_final2.png -crop 250x%d+0+50 /tmp/av_left_f2.png 2>/dev/null", wh-60))
 
 -- 扫描x=100处颜色差异
 local rows = {}
 for y = 10, wh-100, 2 do
-    local cmd = string.format("convert /tmp/av_left_final.png -crop 1x1+100+%d -format \"%%[fx:r*255],%%[fx:g*255],%%[fx:b*255]\" info: 2>/dev/null", y)
+    local cmd = string.format("convert /tmp/av_left_f2.png -crop 1x1+100+%d -format \"%%[fx:r*255],%%[fx:g*255],%%[fx:b*255]\" info: 2>/dev/null", y)
     local f2 = io.popen(cmd)
     local rgb = f2:read("*a"); f2:close()
     local r, g, b = rgb:match("([%d.]+),([%d.]+),([%d.]+)")
@@ -50,7 +48,7 @@ end
 if #cur > 15 then table.insert(groups, cur) end
 
 local avatars = {}
-for _, g in ipairs(groups) do
+for i, g in ipairs(groups) do
     local mid = g[math.floor(#g/2)]
     table.insert(avatars, {x=65, y=mid-37, w=75, h=75})
 end
@@ -61,7 +59,7 @@ for i, a in ipairs(avatars) do
 end
 
 -- 出图
-local f3 = io.open("/tmp/av_final.json","w")
+local f3 = io.open("/tmp/av_f2.json","w")
 f3:write("{\"avatars\":[")
 for i, a in ipairs(avatars) do
     if i > 1 then f3:write(",") end
