@@ -1,221 +1,153 @@
-# WeChat OCR — 桌面微信识别 + 操作框架
+# WeChat OCR — 桌面微信自动化操作框架
 
-## ⚠️ 开发状态
+通过 LuaJIT + C++ + ONNX Runtime GPU 实现对桌面微信的识别、操作和录屏。
 
-**当前阶段：基础能力建设，尚未完成机器人级功能。**
+## 已实现功能
 
-| 功能 | 状态 | 说明 |
+### 核心
+
+| 功能 | 实现 | 说明 |
 |------|------|------|
-| 窗口定位 | ✅ 完成 | 白面板检测 + 跨桌面切换 |
-| 文字识别 (OCR) | ✅ 完成 | PaddleOCR PP-OCRv4，GPU 加速 |
-| 区域裁剪 | ✅ 完成 | 跳过图标/列表/标题/输入框，只读内容区 |
-| 点击图标开微信 | ✅ 完成 | 找底部绿色图标 → 点击 |
-| 逐字输入发送 | ✅ 完成 | 剪切板逐字粘贴 + 随机延时 + 回车 |
-| OCR 读取聊天 | ✅ 完成 | 返回纯文本，按 Y 排序 |
-| 录屏 | ✅ 完成 | ffmpeg 自动定位微信区域录制 |
-| 守护进程 | ❌ 待做 | systemd/nohup 后台驻留 |
-| 消息分流（多群） | ❌ 待做 | 识别当前聊天窗口 |
-| AI 回复对接 | ❌ 待做 | 调用 LLM API |
-| 异常重连 | ❌ 待做 | 微信崩溃自动重启 |
-| 日志系统 | ❌ 待做 | 操作记录 + 消息存档 |
-| 配置文件 | ❌ 待做 | 回复规则/AI 接口配置 |
-| 功能键识别 | ❌ 待做 | 😊表情 📎文件 🎤语音 💰红包等 |
-| - 📎 传文件 | ❌ 待做 | 第三个图标，输入框上方功能栏 |
-| - 📺 截图  | ❌ 待做 | 第四个图标 |
-| - 功能键识别方法 | ❌ 待做 | 灰色图标(RGB~180-200)在浅灰底(RGB~237)，需模板匹配 |
+| 窗口定位 | ✅ | xdotool + 白面板检测，跨桌面支持 |
+| 三列结构识别 | ✅ | 时间戳动态定位第三列，自适应窗口大小 |
+| 聊天文字识别 | ✅ | PaddleOCR PP-OCRv4，GPU 加速 |
+| 区域裁剪 | ✅ | 只识别第三列内容区，排除侧边栏噪音 |
+| 逐字输入发送 | ✅ | 剪切板逐字粘贴 + 随机延时 + 回车 |
+| 文件发送 | ✅ | 点文件图标 → 粘贴文件名 → 回车 |
+| 截图发送 | ✅ | 点截图图标 → 框选全屏 → 双击确认 → 发送 |
+| 搜索联系人 | ✅ | 点搜索框 → 粘贴关键词 → 回车 |
+| 通讯录搜索 | ✅ | 通讯录 → 搜索 → 回车 |
+| 侧边栏导航 | ✅ | 点击第一列7个图标（聊天/通讯录/收藏/朋友圈等）|
+| 持续监控 | ✅ | monitor() 轮询检测新消息 |
+| 录屏 | ✅ | ffmpeg 全屏录制，可选开启 |
+| 图标检测 | ✅ | 全窗口/第三列小图标检测标注 |
 
-## 概述
+### 待完善
 
-通过 LuaJIT 调用 C++ OCR 引擎，实现对桌面微信的：
-- **定位** — 全屏截图 → 白面板检测 → 三区域识别 → 锁定内容区
-- **识别** — ONNX Runtime GPU + PaddleOCR → 提取聊天文字
-- **操作** — xdotool 模拟点击 + 剪切板逐字粘贴 + 回车发送
-- **录屏** — 自动获取微信位置 → ffmpeg 定点录制 → VLC 回放
+| 功能 | 说明 |
+|------|------|
+| AI 自动回复 | monitor 回调已就绪，需接 LLM |
+| 后台守护 | 需 systemd/nohup 部署 |
+| 异常重连 | 微信崩溃自动重启 |
+| 消息分流 | 识别当前聊天窗口 |
 
 ## 架构
 
 ```
-┌─ Lua 层 (逻辑) ─────────────────────────────┐
-│  wechat_ocr/init.lua                         │
-│  open() / send() / capture() / monitor()     │
-│  start_recording() / stop_recording()        │
-├─ FFI ───────────────────────────────────────┤
-│  libwechat_ocr_core.so (C++ 动态库)           │
-│  X11截图 + 白面板检测 + ONNX Runtime 推理     │
-├─ 模型 ──────────────────────────────────────┤
-│  PaddleOCR PP-OCRv4 (det+rec) → ONNX 格式    │
-└──────────────────────────────────────────────┘
+┌─ 应用层 ──────────────────────────────┐
+│  wechat_robot.lua   (统一API)          │
+│  init / capture / send / send_file    │
+│  screenshot / search / contacts_search │
+│  click_sidebar / monitor / recording   │
+├───────────────────────────────────────┤
+│  wechat_ocr/init.lua (OCR引擎封装)      │
+│  open / send / capture / monitor       │
+├─ FFI ─────────────────────────────────┤
+│  libwechat_ocr_core.so (C++ 动态库)    │
+│  X11截图+窗口检测+ONNX Runtime推理      │
+├─ 模型 ────────────────────────────────┤
+│  PaddleOCR PP-OCRv4 (det+rec) ONNX    │
+└───────────────────────────────────────┘
 ```
 
-## 完整流程一键脚本
-
-```bash
-cd /opt/my-agent/wechat-ocr
-
-# 发送默认消息，录15秒
-bash wechat_send_and_record.sh
-
-# 发送自定义消息，默认15秒
-bash wechat_send_and_record.sh "你好，在吗？"
-
-# 自定义消息 + 录屏时长
-bash wechat_send_and_record.sh "今天天气不错" 20
-```
-
-脚本执行内容：
-
-```
-[1/5] 开始录屏               ffmpeg 后台录全屏
-[2/5] 加载 OCR 模型          ONNX Runtime + PaddleOCR
-      1. 点微信图标           ocr.open() 找底部绿图标
-      2. 输入消息             ocr.send() 逐字中文+回车
-      3. 读取验证             ocr.capture() OCR 读回
-[3/5] 等待录屏结束           等待 ffmpeg 录完
-[4/5] 播放录像               VLC 打开回放
-[5/5] 完成
-```
-
-## Lua 模块 API
+## 快速开始
 
 ```lua
-local ocr = require("wechat_ocr")
+local robot = require("wechat_robot")
 
--- 初始化
-ocr.init("det_model.onnx", "rec_model.onnx", "dict.txt")
+robot.init()                          -- 加载OCR模型（首次约3-5秒）
+robot.set_record(true)                -- 可选：开启录像（默认关闭）
 
--- 打开微信（找底部绿色图标点击）
-ocr.open(wait_ms)           -- wait_ms: 等待窗口出现(默认2000ms)
+robot.search("小王")                  -- 搜索联系人
+robot.send("端午安康！")               -- 逐字输入发送
+robot.send_file("photo.png")          -- 发文件
+robot.screenshot()                    -- 截图发送
+robot.contacts_search("张三")         -- 通讯录搜索
+robot.click_sidebar(1)                -- 点侧边栏第1个图标
 
--- 发送消息（逐字粘贴+回车，模拟人输入）
-ocr.send("你好")            -- 自动随机延时 80-250ms
+local text = robot.capture()          -- 读取聊天内容
 
--- 读取聊天内容（只读第三区域，跳过图标和侧边栏）
-local text = ocr.capture()  -- 返回字符串，每行一条消息
-
--- 持续监控新消息
-ocr.monitor({
-    on_message = function(text, cycle)
+-- 持续监控
+robot.monitor({
+    interval_ms = 3000,
+    on_message = function(text)
         print("[新消息]", text)
     end
 })
 
--- 录屏（自动定位微信区域）
-ocr.start_recording("output.mp4", 10)   -- 10fps
-ocr.stop_recording()
+robot.destroy()                       -- 释放资源，自动停止录像
 ```
 
-## 手动分步操作
+## 录像功能
 
-```bash
-# 1. 设置环境变量
-export LD_LIBRARY_PATH="/opt/my-agent/wechat-ocr/lib:/data/venv/onnxruntime-linux-x64-gpu-1.26.0/lib"
-export LUA_PATH="/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;;"
-export LUA_CPATH="/usr/local/lualib/?.so;;"
+```lua
+robot.set_record(true)                -- 开启（默认关）
+robot.set_record_output("/tmp/demo.mp4")  -- 指定输出路径
+-- 之后所有操作都会被录下来
+robot.init()
+-- ... 各种操作 ...
+robot.destroy()  -- 自动停止录像
 
-# 2. 运行 Lua 脚本
-cd /opt/my-agent/wechat-ocr
-/usr/local/bin/luajit -e '
-local ocr = require("wechat_ocr")
-ocr.init("models/ch_PP-OCRv4_det_infer.onnx",
-         "models/ch_PP-OCRv4_rec_infer.onnx",
-         "ppocr_keys_v1.txt")
-ocr.open()
-ocr.send("测试消息")
-print(ocr.capture())
-ocr.destroy()
-'
+-- 或手动控制:
+robot.start_recording("out.mp4", 15)  -- 录15秒
+-- ... 操作 ...
+robot.stop_recording()
 ```
 
-## 微信窗口识别原理
+## 测试脚本
 
-```
-全屏截图 → 白面板检测 → 定位微信窗口
-  → 裁剪第三区域（跳过图标栏+侧边栏+标题栏+输入框）
-  → OCR 识别纯聊天内容
+详见 `tests/TEST.md`：
 
-  区域1: 图标功能区     (0-2%)   绿/灰图标
-  区域2: 列表显示区域   (10-28%) 聊天列表/功能列表
-  区域3: 内容展示区     (28-90%) 聊天消息/公众号文章等
-```
+| 脚本 | 功能 |
+|------|------|
+| `test_3columns.lua` | 三列结构检测 |
+| `test_icons.lua` | 全窗口图标检测 |
+| `test_third_icons.lua` | 第三列图标检测 |
+| `test_send_file.lua` | 发送文件 |
+| `test_screenshot.lua` | 截图发送 |
+| `test_search.lua` | 搜索联系人 |
+| `test_contacts_search.lua` | 通讯录搜索 |
+| `test_first_column.lua` | 第一列图标点击 |
+| `wechat_robot.lua` | 统一API库 |
 
-## 发送原理（绕过输入法）
-
-```
-ocr.send("你好")
-  → 逐字遍历 UTF-8 字符
-  → 每字: xclip → Ctrl+V 粘贴（绕过中文输入法）
-  → 随机延时 80-250ms（模拟人输入）
-  → 全部输入完后回车发送
-```
-
-## 录屏原理
-
-```
-ocr.start_recording()
-  → ocr.capture_raw() 获取微信窗口位置 (x,y,w,h)
-  → ffmpeg -f x11grab -s WxH -i :0.0+X+Y ...
-  → 只录微信区域，不录全屏
-```
-
-## 部署
-
-```bash
-# 打包所有必要文件（.so + Lua脚本 + 模型 + 字典）
-bash deploy.sh
-
-# 输出: /tmp/wechat-ocr-deploy.tar.gz (14MB)
-# 解压后拷贝到目标机器即可
-```
-
-**目标机器额外需求：**
-```bash
-# 系统包
-apt install luajit xdotool xclip ffmpeg vlc
-
-# ONNX Runtime GPU (200MB，不包含在包内)
-# 将 onnxruntime-linux-x64-gpu-1.26.0 放到 /data/venv/ 或修改 run.sh 路径
-
-# Lua 模块
-# 将 lualib/wechat_ocr/ 拷贝到 /usr/local/lualib/wechat_ocr/
-```
-
-## 项目文件结构
+## 项目结构
 
 ```
 wechat-ocr/
-├── deploy.sh                    ← 部署打包脚本（打包 .so + 模型 + 脚本）
-├── wechat_send_and_record.sh   ← 一键发送+录屏脚本
-├── README.md                   ← 本文件
-├── WECHAT_OCR.md               ← 技术架构文档
-├── run_ops.lua                 ← 微信操作 Lua 脚本
-│
+├── wechat_robot.lua          ← 统一API库
+├── run.lua                   ← 启动入口
+├── build_final.sh            ← 编译C库
+├── CMakeLists.txt
 ├── lib/
-│   ├── libwechat_ocr_core.so   ← C++ 动态库
-│   ├── wechat_ocr_core.h       ← C API 头文件
-│   └── wechat_ocr_core.cpp     ← C API 实现
-│
+│   ├── libwechat_ocr_core.so ← C++动态库
+│   ├── wechat_ocr_core.h     ← C API
+│   └── wechat_ocr_core.cpp   ← C API实现
 ├── src/
-│   ├── screenshot.cpp/hpp      ← 截图 + 窗口检测
-│   └── ocr.cpp/hpp             ← OCR 推理封装
-│
+│   ├── screenshot.cpp/hpp    ← 截图+窗口检测
+│   └── ocr.cpp/hpp           ← OCR推理封装
+├── lua/
+│   └── wechat_monitor.lua
+├── tests/
+│   ├── TEST.md
+│   ├── test_*.lua            ← 测试脚本
+│   ├── find_*.py             ← 图标检测
+│   └── mark_columns.py       ← 三列标注
 ├── models/
-│   ├── ch_PP-OCRv4_det_infer.onnx  ← 文字检测模型
-│   └── ch_PP-OCRv4_rec_infer.onnx  ← 文字识别模型
-│
-├── ppocr_keys_v1.txt           ← 中文字典 (6623字符)
-│
-└── /usr/local/lualib/wechat_ocr/init.lua  ← Lua 模块
+│   ├── ch_PP-OCRv4_det_infer.onnx
+│   └── ch_PP-OCRv4_rec_infer.onnx
+├── ppocr_keys_v1.txt         ← 中文字典
+└── run.sh                    ← 环境变量配置
 ```
 
 ## 依赖
 
-| 组件 | 用途 | 安装 |
-|------|------|------|
-| LuaJIT | 脚本语言 | `/usr/local/bin/luajit` |
-| ONNX Runtime GPU | 推理引擎 | `/data/venv/onnxruntime-...` |
-| OpenCV | 图像处理 | `apt install libopencv-dev` |
-| X11/XShm | 截图 | 系统自带 |
-| xdotool | 窗口/鼠标/键盘控制 | `apt install xdotool` |
-| xclip | 剪切板操作 | `apt install xclip` |
-| ffmpeg | 录屏 | `apt install ffmpeg` |
-| VLC | 播放录像 | `apt install vlc` |
+| 组件 | 用途 |
+|------|------|
+| LuaJIT | 脚本语言 |
+| ONNX Runtime GPU | 深度学习推理 |
+| OpenCV | 图像处理 |
+| xdotool | 窗口/鼠标/键盘控制 |
+| xclip | 剪贴板操作 |
+| ffmpeg | 录屏 |
+| CUDA 12.x | GPU 加速 |
+| PaddleOCR PP-OCRv4 | 文字检测+识别模型 |
