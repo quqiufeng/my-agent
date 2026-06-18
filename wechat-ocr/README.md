@@ -13,6 +13,10 @@
 | 聊天文字识别 | ✅ | PaddleOCR PP-OCRv4，GPU 加速 |
 | 区域裁剪 | ✅ | 只识别第三列内容区，排除侧边栏噪音 |
 | 逐字输入发送 | ✅ | 剪切板逐字粘贴 + 随机延时 + 回车 |
+| Chrome AI 搜索 | ✅ | 地址栏 → Tab → 回车，触发 Google AI 模式 |
+| AI 结果复制 | ✅ | Ctrl+A → Ctrl+C 获取 AI 回答 |
+| 微信 ↔ AI 互通 | ✅ | 微信发指令 → Chrome AI 搜索 → 结果回微信 |
+| 操作录屏 | ✅ | ffmpeg 录制完整操作过程 |
 | 文件发送 | ✅ | 点文件图标 → 粘贴文件名 → 回车 |
 | 截图发送 | ✅ | 点截图图标 → 框选全屏 → 双击确认 → 发送 |
 | 搜索联系人 | ✅ | 点搜索框 → 粘贴关键词 → 回车 |
@@ -76,6 +80,56 @@ robot.monitor({
 })
 
 robot.destroy()                       -- 释放资源，自动停止录像
+```
+
+## 微信 ↔ Google AI 互通流程
+
+```
+微信收到消息 "马斯克最新身价"
+  ↓
+Lua 脚本检测到新消息
+  ↓
+chrome.ai_search("马斯克最新身价")
+  ├─ Chrome 新标签（Ctrl+T）
+  ├─ 地址栏粘贴问题（xclip）
+  ├─ Tab（移到 AI 模式）
+  └─ Return（触发 AI 回答）
+  ↓
+等待 AI 回答（4 秒）
+  ↓
+Ctrl+A → Ctrl+C 复制页面内容
+  ↓
+xclip -o 读取剪贴板
+  ↓
+微信粘贴结果 → 发送
+```
+
+### 测试脚本
+
+```bash
+# AI 搜索 + 截图保存
+luajit tests/test_ai_search.lua "问题"
+
+# AI 搜索 + 结果发微信
+luajit tests/ai_to_wechat.lua
+
+# 录屏演示
+ffmpeg -f x11grab -s 2560x1440 -i :0.0 -t 30 ~/demo.mp4 -y &
+luajit tests/test_ai_search.lua "问题"
+kill %1
+```
+
+### API
+
+```lua
+local chrome = require("wechat_ocr.chrome")
+chrome.ai_search("问题")     -- AI搜索: 新标签→粘贴→Tab→回车
+chrome.screenshot("/tmp/s.png")  -- 截图
+
+-- 获取 AI 回答（Ctrl+A → Ctrl+C → 读剪贴板）
+os.execute("xdotool key ctrl+a ctrl+c")
+local pipe = io.popen("xclip -selection clipboard -o")
+local answer = pipe:read("*a"); pipe:close()
 ```
 
 ## 录像功能
