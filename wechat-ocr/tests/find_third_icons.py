@@ -54,8 +54,8 @@ draw.line([(col3_x-wx,0),(col3_x-wx,wh)], fill=(255,0,0), width=2)
 draw.text((10, 10), f"第三列 {len(blobs)} 个小图标", fill=(0,255,0), font=font or ImageFont.load_default())
 
 for i, (bx, by, bw, bh) in enumerate(blobs):
-    draw.rectangle([(bx-wx,by-wy),(bx-wx+bw,by-wy+bh)], outline=(0,255,0), width=1)
-    draw.text((bx-wx, by-wy-10), str(i+1), fill=(0,255,0), font=font or ImageFont.load_default())
+    draw.rectangle([(bx-wx,by),(bx-wx+bw,by+bh)], outline=(0,255,0), width=1)
+    draw.text((bx-wx, by-10), str(i+1), fill=(0,255,0), font=font or ImageFont.load_default())
 
 out = os.path.expanduser("~/wechat_third_icons.png")
 cv2.imwrite(out, cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR))
