@@ -60,8 +60,10 @@ ffi.C.usleep(300000)
 os.execute("xdotool mouseup 1 2>/dev/null")
 ffi.C.usleep(300000)
 
--- 双击确认
+-- 移到屏幕中间双击确认
 io.write("双击确认\n"); io.flush()
+os.execute("xdotool mousemove 1280 720 2>/dev/null")
+ffi.C.usleep(200000)
 os.execute("xdotool click 1 2>/dev/null")
 ffi.C.usleep(200000)
 os.execute("xdotool click 1 2>/dev/null")
