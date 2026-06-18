@@ -46,11 +46,16 @@ static int run_cmd(const char *fmt, ...) {
 
 // 检测未读红点，返回红点数（-1 表示失败）
 static int check_unread() {
-    // 1. 激活微信
+    // 1. 点底部面板任务栏微信图标（LXQt 面板 y≈1408~1440）
+    // 系统托盘在右下角，微信图标大概位置
+    run_cmd("xdotool mousemove %d %d click 1 2>/dev/null", 2460, 1424);
+    usleep(300000);
+
+    // 2. 如果上面的点击没激活，用窗口名激活
     run_cmd("xdotool search --name 微信 windowactivate 2>/dev/null");
     usleep(500000);
 
-    // 2. 获取窗口位置
+    // 3. 获取窗口位置
     char geo_file[128];
     snprintf(geo_file, sizeof(geo_file), "%s/geo.txt", TMP_DIR);
     run_cmd("xdotool getactivewindow getwindowgeometry > %s 2>/dev/null", geo_file);
