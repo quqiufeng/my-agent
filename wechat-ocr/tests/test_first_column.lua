@@ -28,16 +28,16 @@ local start_y = wy + 110      -- 顶部往下110px
 local gap = 60                -- 每次往下移动60px
 
 -- 图标标签（仅供显示）
-local labels = {"1:聊天", "2:通讯录", "3:收藏", "4:朋友圈", "5:小程序", "6:更多"}
+local labels = {"1:聊天", "2:通讯录", "3:收藏", "4:朋友圈", "5:小程序", "6:更多", "7:设置"}
 
 io.write(string.format("窗口: (%d,%d)\n", wx, wy))
 io.write(string.format("图标列: x=%d 从y=%d 间距%dpx\n\n", icon_x, start_y, gap)); io.flush()
 
-for i = 1, 6 do
+for i = 1, 7 do
     local iy = start_y + (i - 1) * gap
     local label = labels[i] or ("图标" .. i)
     
-    io.write(string.format("[%d/6] %s (%d,%d)\n", i, label, icon_x, iy)); io.flush()
+    io.write(string.format("[%d/7] %s (%d,%d)\n", i, label, icon_x, iy)); io.flush()
     os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", icon_x, iy))
     ffi.C.usleep(800000)
 end
