@@ -20,8 +20,9 @@ ffi.C.usleep(300000)
 os.execute("xdotool key --window " .. WID .. " ctrl+t 2>/dev/null")
 ffi.C.usleep(500000)
 
--- 输入问题
-os.execute("echo '马斯克最新身价多少' | xclip -selection clipboard 2>/dev/null")
+-- 输入问题（从命令行参数读取）
+local query = arg[1] or "马斯克最新身价多少"
+os.execute("echo '" .. query .. "' | xclip -selection clipboard 2>/dev/null")
 ffi.C.usleep(100000)
 os.execute("xdotool key --window " .. WID .. " ctrl+v 2>/dev/null")
 ffi.C.usleep(300000)
@@ -45,8 +46,9 @@ ffi.C.usleep(500000)
 local pipe = io.popen("xclip -selection clipboard -o 2>/dev/null")
 if pipe then
     local content = pipe:read("*a"); pipe:close()
-    -- 从"马斯克"开始截取到"个网站"
-    local _, s = content:find("马斯克")
+    -- 从查询关键词开始截取到"个网站"
+    local kw = query:sub(1, 4)
+    local _, s = content:find(kw)
     local e, _ = content:find("个网站")
     if s and e then
         io.write("\n=== AI 回答 ===\n")
