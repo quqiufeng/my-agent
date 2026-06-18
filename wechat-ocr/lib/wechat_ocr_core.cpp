@@ -172,7 +172,7 @@ char* ocr_capture(ocr_engine_t* engine) {
         }
         if (!ts_positions.empty()) {
             std::sort(ts_positions.begin(), ts_positions.end());
-            boundary = ts_positions[ts_positions.size() / 2] + 20;
+            boundary = ts_positions[ts_positions.size() / 2] + 40;
         }
 
         // 过滤：只保留第三列（boundary右侧）的文字框
