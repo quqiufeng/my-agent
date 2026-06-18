@@ -49,9 +49,14 @@ io.write(string.format("截图模式: (%d,%d)\n", icon_x, icon_y)); io.flush()
 os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", icon_x, icon_y))
 ffi.C.usleep(500000)
 
--- 双击 (0,0) 截取全屏
-io.write("双击 (0,0) 截全屏\n"); io.flush()
-os.execute("xdotool mousemove 0 0 click --repeat 2 1 2>/dev/null")
+-- 从 (0,0) 拖到 (2560,1440) 选全屏
+io.write("框选全屏\n"); io.flush()
+os.execute("xdotool mousemove 0 0 mousedown 1 mousemove 2560 1440 mouseup 1 2>/dev/null")
+ffi.C.usleep(500000)
+
+-- 双击确认
+io.write("双击确认\n"); io.flush()
+os.execute("xdotool click --repeat 2 1 2>/dev/null")
 ffi.C.usleep(1000000)
 
 -- 回车发送
