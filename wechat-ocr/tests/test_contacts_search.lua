@@ -30,23 +30,22 @@ io.write(string.format("点通讯录: (%d,%d)\n", icon_x, icon_y)); io.flush()
 os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", icon_x, icon_y))
 ffi.C.usleep(800000)
 
--- 搜索框在第二列顶部（同聊天搜索框位置）
-local sx = wx + 180
-local sy = wy + 110
+-- 搜索框位置
+local sx = wx + 160
+local sy = wy + 50
 io.write(string.format("点搜索框: (%d,%d)\n", sx, sy)); io.flush()
 os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", sx, sy))
 ffi.C.usleep(500000)
 
 -- 粘贴关键词
 io.write("搜索: " .. keyword .. "\n"); io.flush()
-local f2 = io.open("/tmp/wechat_search_keyword.txt", "w")
-f2:write(keyword); f2:close()
-os.execute("xclip -selection clipboard < /tmp/wechat_search_keyword.txt 2>/dev/null")
-ffi.C.usleep(100000)
+os.execute(string.format("echo -n '%s' | xclip -selection clipboard 2>/dev/null", keyword))
+ffi.C.usleep(200000)
 os.execute("xdotool key ctrl+v 2>/dev/null")
-ffi.C.usleep(300000)
+ffi.C.usleep(500000)
 
 -- 回车
+io.write("回车\n"); io.flush()
 os.execute("xdotool key Return 2>/dev/null")
 ffi.C.usleep(1000000)
 io.write("✅\n"); io.flush()

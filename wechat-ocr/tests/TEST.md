@@ -107,6 +107,46 @@ luajit tests/test_search.lua [搜索词]
 luajit tests/test_search.lua "张三"
 ```
 
+---
+
+### 7. test_contacts_search.lua — 通讯录搜索
+
+先点第一列第2个图标（通讯录） → 再点搜索框 (wx+160, wy+50) → 输入关键词 → 回车。
+
+```bash
+luajit tests/test_contacts_search.lua [搜索词]
+
+# 默认搜索 "小王"
+luajit tests/test_contacts_search.lua "张三"
+```
+
+### 8. test_first_column.lua — 第一列图标点击
+
+从顶部开始，依次点击第一列7个图标。
+
+```bash
+luajit tests/test_first_column.lua
+```
+
+| 图标 | 位置 |
+|------|------|
+| 聊天 | (wx+40, wy+110) |
+| 通讯录 | +60px |
+| 收藏 | +60px |
+| 朋友圈 | +60px |
+| 小程序 | +60px |
+| 更多 | +60px |
+| 设置 | +60px |
+
+---
+
+```bash
+luajit tests/test_search.lua [搜索词]
+
+# 默认搜索 "小王"
+luajit tests/test_search.lua "张三"
+```
+
 流程：
 1. 获取微信窗口位置
 2. 搜索框在 (窗口x+180, 窗口y+50)
