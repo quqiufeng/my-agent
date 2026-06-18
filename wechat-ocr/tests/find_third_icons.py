@@ -41,7 +41,8 @@ for thr in range(180, 60, -20):
         if h < 14 or w < 12: continue
         if ratio > 1.8 or ratio < 0.5: continue
         if w*h < 150 or w*h > 3000: continue
-        if wy+10+y >= input_box_y: continue   # 只保留输入框上方的图标
+        if wy+10+y >= input_box_y: continue   # 去掉输入框下方的
+        if wy+10+y < input_box_y - 250: continue  # 只保留输入框上方250px内的
         all_blobs.append((col3_x+x, 10+y, w, h, thr))
 
 # 去重
