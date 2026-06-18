@@ -3,15 +3,28 @@
 只扫描第三列区域（时间戳+40px分界），找小方形暗色块
 用法: python3 find_third_icons.py <第三列X> <窗口X> <窗口Y> <窗口W> <窗口H>
 """
-import cv2, numpy as np, mss, os, sys
+import cv2, numpy as np, os, sys, subprocess, re
 from PIL import Image, ImageDraw, ImageFont
 
 col3_x = int(sys.argv[1])
-wx = int(sys.argv[2]); wy = int(sys.argv[3])
-ww = int(sys.argv[4]); wh = int(sys.argv[5])
+input_box_y = int(sys.argv[6]) if len(sys.argv) > 6 else 99999
 
-with mss.mss() as sct:
-    img = np.array(sct.grab({"left":wx,"top":wy,"width":ww,"height":wh}))
+# 获取窗口位置
+geo = subprocess.run(["xdotool","getactivewindow","getwindowgeometry"],capture_output=True,text=True).stdout
+wx = int(re.search(r"Position: (\d+)", geo).group(1))
+wy = int(re.search(r",(\d+)", geo).group(1))
+ww = int(re.search(r"Geometry: (\d+)", geo).group(1))
+wh = int(re.search(r"x(\d+)", geo).group(1))
+
+# 用 import (ImageMagick) 截图
+tmp = "/tmp/wechat_scr.png"
+subprocess.run(["import","-window","root","-crop",f"{ww}x{wh}+{wx}+{wy}",tmp],capture_output=True)
+img = cv2.imread(tmp)
+if img is None:
+    # fallback: mss
+    import mss
+    with mss.mss() as sct:
+        img = cv2.cvtColor(np.array(sct.grab({"left":wx,"top":wy,"width":ww,"height":wh})), cv2.COLOR_RGBA2BGR)
 
 gray = cv2.cvtColor(img, cv2.COLOR_RGBA2GRAY)
 
@@ -28,6 +41,7 @@ for thr in range(180, 60, -20):
         if h < 14 or w < 12: continue
         if ratio > 1.8 or ratio < 0.5: continue
         if w*h < 150 or w*h > 3000: continue
+        if wy+10+y >= input_box_y: continue   # 只保留输入框上方的图标
         all_blobs.append((col3_x+x, 10+y, w, h, thr))
 
 # 去重

@@ -42,9 +42,13 @@ if s and s ~= ffi.NULL then
     local col3 = d.win.x
     io.write(string.format("第三列: x=%d (%dpx)\n", col3, col3-wx))
 
+    -- 输入框大约在面板底部 - 175px
+    local input_y = d.win.y + d.win.h  -- 面板底部
+    io.write(string.format("输入框上方: y<%d\n", input_y - 175))
+
     local cmd = string.format(
-        "/data/venv/bin/python3 tests/find_third_icons.py %d %d %d %d %d 2>/dev/null",
-        col3, wx, wy, ww, wh)
+        "/data/venv/bin/python3 tests/find_third_icons.py %d %d %d %d %d %d 2>/dev/null",
+        col3, wx, wy, ww, wh, input_y - 175)
     os.execute(cmd)
 end
 lib.ocr_destroy(e)
