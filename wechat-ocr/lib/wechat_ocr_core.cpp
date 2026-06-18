@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <memory>
 #include <unistd.h>
+#include <opencv2/imgproc.hpp>
 
 // Forward declarations
 static bool detect_panel(cv::Mat &out_panel, int &out_x, int &out_y,
@@ -144,7 +145,32 @@ char* ocr_capture(ocr_engine_t* engine) {
         }
 
         // Crop to chat messages area (third region, exclude icon+list+title+input)
-        int crop_x = static_cast<int>(panel.cols * 0.30);
+        // 用列平均亮度找侧边栏/内容区分界
+        // 侧边栏平均暗(~50-100)，内容区平均亮(~235-247)
+        int sb_width = panel.cols / 4;
+        {
+            cv::Mat gg;
+            if (panel.channels() == 3) cv::cvtColor(panel, gg, cv::COLOR_BGR2GRAY);
+            else gg = panel.clone();
+            int hh = gg.rows;
+            int samp_top = hh / 6, samp_bot = hh * 5 / 6;
+            for (int x = 80; x < panel.cols * 2 / 3; x += 5) {
+                cv::Scalar m;
+                cv::meanStdDev(gg.col(x).rowRange(samp_top, samp_bot), m, m);
+                if (m[0] > 200) {
+                    // 确认接下来几列也是亮的（排除白字干扰）
+                    int bright_run = 0;
+                    for (int x2 = x; x2 < x + 30 && x2 < panel.cols; x2 += 3) {
+                        cv::Scalar m2;
+                        cv::meanStdDev(gg.col(x2).rowRange(samp_top, samp_bot), m2, m2);
+                        if (m2[0] > 200) bright_run++;
+                        else break;
+                    }
+                    if (bright_run > 3) { sb_width = x; break; }
+                }
+            }
+        }
+        int crop_x = std::max(100, std::min(sb_width, panel.cols * 3 / 5));
         int crop_y = 35;
         int crop_w = panel.cols - crop_x - 10;
         int crop_h = panel.rows - 40 - 180;
