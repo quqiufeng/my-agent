@@ -126,7 +126,7 @@ static char* make_empty_json(int x, int y, int w, int h) {
         + R"(,"y":)" + std::to_string(y)
         + R"(,"w":)" + std::to_string(w)
         + R"(,"h":)" + std::to_string(h)
-        + R"(,"boxes":[]})";
+        + R"(,"boxes":[]}})";
     char* r = (char*)malloc(s.size() + 1);
     if (r) memcpy(r, s.c_str(), s.size() + 1);
     return r;
