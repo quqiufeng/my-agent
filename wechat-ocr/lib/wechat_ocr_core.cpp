@@ -157,45 +157,91 @@ char* ocr_capture(ocr_engine_t* engine) {
 
         auto boxes = engine->ocr->run(chat);
 
-        // 找第二列右侧的边界（时间戳/短文本右侧），用于分隔第二列和第三列
-        int boundary = panel.cols / 5; // 保底20%（第二列约占窗口20%宽度）
-        std::vector<int> right_edges;
+        // 找第二列和第三列之间的分界
+        // 方法：Canny 边缘检测 → 垂直边缘投影 → 找竖线峰值
+        // 微信窗口有两条竖分隔线：
+        //   线1（x≈60）   ：图标列与聊天列表之间
+        //   线2（x≈15-35%）：聊天列表与内容区之间
+        // 我们找第二条竖线作为列分界。
+        int boundary = panel.cols / 5; // 保底20%
+        int panel_w = panel.cols;
 
-        // 优先匹配时间格式 HH:MM（如 "08:44"、"18:30"，兼容全角冒号）
-        std::regex time_pattern(R"(\d{1,2}[:：]\d{2})");
-        // 也匹配 "昨天"、"今天" 等时间词
-        std::regex date_pattern(R"((昨天|今天|星期[一二三四五六日天]))");
+        {
+            // 取一个水平条带避开标题栏和输入框
+            int strip_y = crop_y + 60;
+            int strip_h = chat_roi.height - 120;
+            if (strip_h < 80) { strip_y = crop_y; strip_h = chat_roi.height; }
+            cv::Rect strip_roi(0, strip_y - crop_y, panel_w, strip_h);
+            if (strip_roi.y + strip_roi.height > panel.rows)
+                strip_roi.height = panel.rows - strip_roi.y;
+            if (strip_roi.height < 20) goto fallback_ocr;
 
-        for (auto &b : boxes) {
-            if (std::regex_search(b.text, time_pattern) || std::regex_search(b.text, date_pattern)) {
-                // 时间戳通常在第二列右侧，用文本右边缘定位
-                int right = b.bbox.x + b.bbox.width;
-                right_edges.push_back(right);
+            cv::Mat strip = panel(strip_roi);
+            cv::Mat gray;
+            if (strip.channels() > 1) cv::cvtColor(strip, gray, cv::COLOR_BGR2GRAY);
+            else gray = strip.clone();
+
+            // Canny 边缘检测
+            cv::Mat edges;
+            cv::Canny(gray, edges, 30, 90, 3);
+
+            // 垂直投影：每列统计边缘像素数
+            std::vector<int> col_edges(panel_w, 0);
+            for (int x = 0; x < panel_w; x++)
+                for (int y = 0; y < strip_h; y++)
+                    if (edges.at<uchar>(y, x)) col_edges[x]++;
+
+            // 平滑
+            std::vector<float> smooth(panel_w, 0.0f);
+            for (int x = 3; x < panel_w - 3; x++) {
+                float s = 0;
+                for (int dx = -3; dx <= 3; dx++) s += col_edges[x+dx];
+                smooth[x] = s / 7.0f;
+            }
+
+            // 在 10%~38% 范围找竖线峰值
+            int search_start = panel_w * 10 / 100;
+            int search_end   = panel_w * 38 / 100;
+            float threshold = strip_h * 0.12f;
+
+            int best_x = search_start;
+            float best_peak = 0;
+            for (int x = search_start; x < search_end; x++) {
+                if (smooth[x] > threshold && smooth[x] > smooth[x-1] && smooth[x] > smooth[x+1]) {
+                    if (smooth[x] > best_peak) {
+                        best_peak = smooth[x];
+                        best_x = x;
+                    }
+                }
+            }
+
+            if (best_peak > threshold) {
+                boundary = best_x;
+            } else {
+                goto fallback_ocr;
             }
         }
+        goto after_fallback;
 
-        // 如果没找到时间文本，用第二列所有文本的右边缘聚合定位
-        if (right_edges.empty()) {
+fallback_ocr:
+        {
+            // 回退：用 OCR 文本右边缘 90% 分位值
             std::vector<int> all_rights;
             for (auto &b : boxes) {
-                // 只考虑面板左侧 35% 范围内的文本（第二列区域）
                 int right = b.bbox.x + b.bbox.width;
-                if (right < panel.cols * 0.35 && b.text.size() > 1) {
+                if (right < panel_w * 0.35 && b.text.size() > 2)
                     all_rights.push_back(right);
-                }
             }
             if (!all_rights.empty()) {
                 std::sort(all_rights.begin(), all_rights.end());
-                // 取右边缘的 80% 分位值（排除极长的异常值），+偏移
-                size_t idx = all_rights.size() * 8 / 10;
+                size_t idx = all_rights.size() * 9 / 10;
                 if (idx >= all_rights.size()) idx = all_rights.size() - 1;
-                boundary = all_rights[idx] + 30;
+                boundary = all_rights[idx] + 20;
             }
-        } else {
-            std::sort(right_edges.begin(), right_edges.end());
-            // 取中位数 + 偏移
-            boundary = right_edges[right_edges.size() / 2] + 40;
         }
+
+after_fallback:
+        // boundary 已确定，继续后续处理
 
         // 过滤：只保留第三列（boundary右侧）的文字框
         std::vector<TextBox> filtered;
