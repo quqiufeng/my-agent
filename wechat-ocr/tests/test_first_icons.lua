@@ -126,7 +126,7 @@ local seen = {}
 for _, b in ipairs(all_lines) do
     local ratio = b.w / b.h
     if b.h >= 5 and b.w >= 5 and ratio >= 0.3 and ratio <= 2.5 and b.area >= 25 and b.area <= 4000 then
-        local key = math.floor(b.x/6) * 10000 + math.floor(b.y/6)
+        local key = math.floor(b.x/20) * 10000 + math.floor(b.y/20)
         if not seen[key] then
             seen[key] = true
             table.insert(blobs, b)
