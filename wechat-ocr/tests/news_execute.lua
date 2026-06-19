@@ -15,13 +15,14 @@ local function click_entry(entry, win)
     ffi.C.usleep(1500000)
 end
 
--- 读取消息区域文字
-local function read_messages(win)
-    local msg_x = win.x + math.floor(win.w * 0.40)
-    local msg_y = win.y + 100
-    local msg_w = win.w - math.floor(win.w * 0.40)
-    local msg_h = win.h - 280
-    os.execute(string.format("import -window root -crop %dx%d+%d+%d '/tmp/_ft_read.png' 2>/dev/null", msg_w, msg_h, msg_x, msg_y))
+-- 读取最新一条消息（消息区底部）
+local function read_latest_message(win)
+    -- 只截取消息区底部 120px（最新消息所在位置）
+    local msg_x = win.x + math.floor(win.w * 0.40) + 20
+    local msg_w = win.w - math.floor(win.w * 0.40) - 40
+    local msg_y = win.y + win.h - 400  -- 底部往上 400px 范围
+    local msg_h = 300
+    os.execute(string.format("import -window root -crop %dx%d+%d+%d '/tmp/_ft_latest.png' 2>/dev/null", msg_w, msg_h, msg_x, msg_y))
 
     local lib = ffi.load("libwechat_ocr_core.so")
     ffi.cdef[[
@@ -34,16 +35,22 @@ local function read_messages(win)
     local e = lib.ocr_create("/opt/my-agent/wechat-ocr/models/ch_PP-OCRv4_det_infer.onnx",
                               "/opt/my-agent/wechat-ocr/models/ch_PP-OCRv4_rec_infer.onnx",
                               "/opt/my-agent/wechat-ocr/ppocr_keys_v1.txt")
-    local s = lib.ocr_capture_file(e, "/tmp/_ft_read.png", msg_x, msg_y)
+    local s = lib.ocr_capture_file(e, "/tmp/_ft_latest.png", msg_x, msg_y)
     lib.ocr_destroy(e)
     if not s or s == ffi.NULL then return "" end
     local d = cjson.decode(ffi.string(s))
     lib.ocr_free_string(s)
-    local lines = {}
+
+    -- 从 OCR 结果中找最靠下的文字（最新消息）
+    local latest_box = nil
     for _, b in ipairs(d.boxes or {}) do
-        if #b.text > 2 then table.insert(lines, b.text) end
+        if #b.text > 2 then
+            if not latest_box or b.y + b.h > latest_box.y + latest_box.h then
+                latest_box = b
+            end
+        end
     end
-    return table.concat(lines, "\n")
+    return latest_box and latest_box.text or ""
 end
 
 -- 回复（粘贴+发送）
@@ -90,7 +97,7 @@ os.execute("xdotool key End 2>/dev/null")
 ffi.C.usleep(1000000)
 
 io.write("读取最新消息...\n"); io.flush()
-local msg = read_messages(result.win)
+local msg = read_latest_message(result.win)
 if #msg == 0 then io.write("未能读取消息\n"); os.exit(1) end
 
 io.write("最新消息:\n" .. msg:sub(1, 300) .. "\n\n"); io.flush()
