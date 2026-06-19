@@ -15,31 +15,29 @@ local function click_entry(entry, win)
     ffi.C.usleep(1500000)
 end
 
--- 读取最新一条消息（Ctrl+A → Ctrl+C 复制消息区域）
+-- 读取最新一条消息（右键 → 复制）
 local function read_latest_message(win)
-    -- 点击消息区域激活，然后全选复制
-    local click_x = win.x + math.floor(win.w * 0.70)
-    local click_y = win.y + win.h - 250
-    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", click_x, click_y))
+    -- 点消息区域激活焦点
+    local fx = win.x + math.floor(win.w * 0.65)
+    local fy = win.y + win.h - 300
+    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", fx, fy))
     ffi.C.usleep(300000)
 
-    -- Ctrl+A 全选 → Ctrl+C 复制
-    os.execute("xdotool key ctrl+a 2>/dev/null")
-    ffi.C.usleep(200000)
-    os.execute("xdotool key ctrl+c 2>/dev/null")
+    -- 在最新消息（底部往上约 150px）右键
+    local msg_x = win.x + math.floor(win.w * 0.65)
+    local msg_y = win.y + win.h - 180
+    os.execute(string.format("xdotool mousemove %d %d click 3 2>/dev/null", msg_x, msg_y))
+    ffi.C.usleep(500000)
+
+    -- 回车选第一项"复制"
+    os.execute("xdotool key Return 2>/dev/null")
     ffi.C.usleep(500000)
 
     -- 读剪贴板
     local pipe = io.popen("xclip -selection clipboard -o 2>/dev/null")
     if not pipe then return "" end
     local text = pipe:read("*a"); pipe:close()
-    
-    -- 取最后一段非空文本（最新消息）
-    local lines = {}
-    for line in text:gmatch("[^\n]+") do
-        if #line > 1 then table.insert(lines, line) end
-    end
-    return #lines > 0 and lines[#lines] or text:sub(1, 200)
+    return text:match("^%s*(.-)%s*$") or text
 end
 
 -- 回复（粘贴+发送）
