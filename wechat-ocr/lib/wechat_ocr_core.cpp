@@ -216,7 +216,7 @@ char* ocr_capture(ocr_engine_t* engine) {
             }
             if (!rights.empty()) {
                 std::sort(rights.begin(), rights.end());
-                boundary = rights[rights.size() / 2] + 3;
+                boundary = rights[rights.size() / 2] + 10;
                 found = true;
             }
         }
