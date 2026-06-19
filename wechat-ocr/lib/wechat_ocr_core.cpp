@@ -183,49 +183,62 @@ char* ocr_capture(ocr_engine_t* engine) {
             }
         }
 
-        // --- 方法2: Sobel 全图垂直边缘求和 ---
-        // 分隔线是贯穿窗口全高的细线，每行都有强垂直边缘。
-        // 求和后，分隔线的峰值 = 高度 × 梯度强度，远高于文字边缘。
+        // --- 方法2: 十字交叉检测 ---
+        // 标题栏底部有一条强水平线，分隔线与之垂直相交。
+        // 在交点处，垂直 Sobel 响应最强且不受文字干扰。
+        // 步骤：先找标题栏底部的 Y 位置，再在该 Y 找竖线。
         if (!found && panel.rows > 100) {
             cv::Mat gray;
             if (panel.channels() > 1) cv::cvtColor(panel, gray, cv::COLOR_BGR2GRAY);
             else gray = panel.clone();
 
-            cv::Mat sobel_x;
-            cv::Sobel(gray, sobel_x, CV_32F, 1, 0, 3);
+            // Sobel Y（水平边缘检测）→ 找标题栏底部
+            cv::Mat sobel_y;
+            cv::Sobel(gray, sobel_y, CV_32F, 0, 1, 3);
 
-            // 每列求和（绝对值）
-            std::vector<float> col_sum(panel_w, 0.0f);
-            for (int x = 0; x < panel_w; x++) {
-                double sum = 0.0;
-                for (int y = 0; y < panel.rows; y++)
-                    sum += std::abs(sobel_x.at<float>(y, x));
-                col_sum[x] = sum / panel.rows;  // 归一化到每行平均梯度
+            // 在面板上部找最长的水平线（标题栏底部）
+            // 取 y=20~60 范围，每行求和，找 Sobel 响应最强的行
+            int title_y = 0;
+            float max_horz = 0;
+            for (int y = 20; y < 80 && y < panel.rows; y++) {
+                double sum = 0;
+                for (int x = 0; x < panel_w; x++)
+                    sum += std::abs(sobel_y.at<float>(y, x));
+                float avg = sum / panel_w;
+                if (avg > max_horz) { max_horz = avg; title_y = y; }
             }
 
-            // 找 10%~45% 范围内的最强峰值
-            int s_start = panel_w * 10 / 100, s_end = panel_w * 45 / 100;
-            int best_x = -1;
-            float best_val = 0;
+            if (title_y > 0 && max_horz > 5.0f) {
+                // 在标题栏底部行，做 Sobel X（垂直边缘检测）
+                cv::Mat sobel_x;
+                cv::Sobel(gray, sobel_x, CV_32F, 1, 0, 3);
 
-            for (int x = s_start + 1; x < s_end - 1; x++) {
-                float v = (col_sum[x-1] + col_sum[x] + col_sum[x+1]) / 3.0f;
-                if (v > best_val && v > col_sum[x-1] && v > col_sum[x+1]) {
-                    best_val = v;
-                    best_x = x;
+                // 取 title_y 及上下各 2 行的 Sobel X 均值
+                std::vector<float> col_edge(panel_w, 0.0f);
+                int y_start = std::max(0, title_y - 2);
+                int y_end = std::min(panel.rows - 1, title_y + 2);
+                for (int x = 0; x < panel_w; x++) {
+                    double sum = 0;
+                    for (int y = y_start; y <= y_end; y++)
+                        sum += std::abs(sobel_x.at<float>(y, x));
+                    col_edge[x] = sum / (y_end - y_start + 1);
                 }
-            }
 
-            // 分隔线的平均梯度应该明显高于纯文字区域
-            // 计算整个 10~45% 范围的平均梯度作为基线
-            float baseline = 0;
-            int count = 0;
-            for (int x = s_start; x < s_end; x++) { baseline += col_sum[x]; count++; }
-            baseline /= count;
+                // 从右向左扫描 10%~45%，找竖线峰值
+                int s_start = panel_w * 10 / 100, s_end = panel_w * 45 / 100;
+                float baseline = 0;
+                for (int x = s_start; x < s_end; x++) baseline += col_edge[x];
+                baseline /= (s_end - s_start);
 
-            if (best_x > 0 && best_val > baseline * 2.0f) {
-                boundary = best_x;
-                found = true;
+                int best_x = -1;
+                for (int x = s_end - 2; x >= s_start + 1; x--) {
+                    float v = (col_edge[x-1] + col_edge[x] + col_edge[x+1]) / 3.0f;
+                    if (v > baseline * 2.0f && v > col_edge[x-1] && v > col_edge[x+1]) {
+                        best_x = x;
+                        break;
+                    }
+                }
+                if (best_x > 0) { boundary = best_x; found = true; }
             }
         }
 
