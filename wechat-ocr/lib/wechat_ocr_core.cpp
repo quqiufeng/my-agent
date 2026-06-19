@@ -190,7 +190,7 @@ char* ocr_capture(ocr_engine_t* engine) {
                 }
                 boundary = best_right + 3;
             } else {
-                // 回退1: Canny 找竖线（分隔线特征）
+                // 回退1: Canny 找窄竖线（分隔线 2-6px 宽）
                 {
                     int sy = crop_y + 50, sh = chat_roi.height - 150;
                     if (sh >= 50) {
@@ -201,20 +201,30 @@ char* ocr_capture(ocr_engine_t* engine) {
                         if (strip.channels() > 1) cv::cvtColor(strip, gray, cv::COLOR_BGR2GRAY);
                         else gray = strip.clone();
                         cv::Mat edges;
-                        cv::Canny(gray, edges, 25, 80, 3);
+                        cv::Canny(gray, edges, 20, 60, 3);
                         std::vector<int> col_cnt(panel_w, 0);
                         for (int x = 0; x < panel_w; x++)
                             for (int y = 0; y < sh; y++)
                                 if (edges.at<uchar>(y, x)) col_cnt[x]++;
 
-                        float thr = sh * 0.03f;
-                        int s_start = panel_w * 10 / 100, s_end = panel_w * 45 / 100;
-                        for (int x = s_end - 1; x >= s_start; x--) {
-                            if (col_cnt[x] > thr) { boundary = x; goto boundary_done; }
+                        float thr = sh * 0.02f;
+                        int s_start = panel_w * 8 / 100, s_end = panel_w * 45 / 100;
+                        int best_x = -1;
+                        for (int x = s_start + 2; x < s_end - 2; x++) {
+                            if (col_cnt[x] > thr && col_cnt[x] > col_cnt[x-1] && col_cnt[x] > col_cnt[x+1]) {
+                                // 测量峰值宽度（分隔线 2-6px，UI边缘 > 10px）
+                                int l = x, r = x;
+                                float half = thr * 0.5f;
+                                while (l > s_start && col_cnt[l] > half) l--;
+                                while (r < s_end && col_cnt[r] > half) r++;
+                                int pw = r - l;
+                                if (pw >= 2 && pw <= 8) best_x = x;
+                            }
                         }
+                        if (best_x > 0) { boundary = best_x; goto boundary_done; }
                     }
                 }
-                // 回退2: 聊天名称最右边缘 + 50px
+                // 回退2: 聊天名称最右边缘 + 35px
                 {
                     int max_name = 0;
                     for (auto &b : boxes) {
@@ -223,8 +233,8 @@ char* ocr_capture(ocr_engine_t* engine) {
                             if (right > max_name) max_name = right;
                         }
                     }
-                    if (max_name > 0) boundary = max_name + 50;
-                    else boundary = panel_w * 22 / 100;
+                    if (max_name > 0) boundary = max_name + 35;
+                    else boundary = panel_w * 20 / 100;
                 }
             }
         }
