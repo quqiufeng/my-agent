@@ -149,24 +149,19 @@ char* ocr_capture(ocr_engine_t* engine) {
             return nullptr;
         }
 
-        // 全图OCR，用时间戳定位第三列边界
+        // OCR全面板（含标题栏下方到输入框上方）
         int crop_y = 35;
-        int crop_h = panel.rows - 40 - 180;
+        int crop_h = panel.rows - 220;
         if (crop_h < 100) { crop_y = 0; crop_h = panel.rows; }
-
-        cv::Rect chat_roi(0, crop_y, panel.cols, crop_h);
-        cv::Mat chat = panel(chat_roi);
-
+        cv::Mat chat = panel(cv::Rect(0, crop_y, panel.cols, crop_h));
         auto boxes = engine->ocr->run(chat);
 
-        // 找第二列和第三列之间的分界
-        // 只有时间戳匹配是准的（HH:MM 右对齐于分隔线）
-        // 找不到时间戳就报错，不瞎猜
+        // 只有时间戳匹配，没有时间戳就报错
         int panel_w = panel.cols;
         int boundary = 0;
 
         {
-            std::regex time_pat(R"(\d{1,2}[:：]\d{2})");
+            std::regex time_pat(R"(\d{1,2}[:：]\d{1,2})");
             std::vector<int> rights;
             for (auto &b : boxes) {
                 if ((int)b.text.size() >= 4 && (int)b.text.size() <= 10 &&
@@ -175,7 +170,7 @@ char* ocr_capture(ocr_engine_t* engine) {
                 }
             }
             if (rights.empty()) {
-                engine->last_error = "未检测到时间戳，无法确定第三列边界";
+                engine->last_error = "未检测到时间戳";
                 return nullptr;
             }
             std::sort(rights.begin(), rights.end());

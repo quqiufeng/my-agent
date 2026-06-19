@@ -71,7 +71,7 @@ local function run_test()
     os.execute("xdotool search --name 微信 windowactivate 2>/dev/null")
     ffi.C.usleep(1000000)
 
-    -- 2. 获取窗口位置
+    -- 2. 获取窗口位置 + 截图（OCR之前截，保证有图）
     local geo = io.popen("xdotool getactivewindow getwindowgeometry 2>/dev/null"):read("*a")
     local _, _, wx = geo:find("Position: (%d+)")
     local _, _, wy = geo:find(",(%d+)")
@@ -79,6 +79,11 @@ local function run_test()
     local _, _, wh = geo:find("x(%d+)")
     wx, wy, ww, wh = tonumber(wx), tonumber(wy), tonumber(ww), tonumber(wh)
     io.write(string.format("  窗口: (%d,%d) %dx%d\n\n", wx, wy, ww, wh))
+
+    local ts = os.date("%Y%m%d_%H%M%S")
+    local home = os.getenv("HOME")
+    local outfile = home .. "/wechat_3cols_" .. ts .. ".png"
+    os.execute(string.format("import -window root -crop %dx%d+%d+%d '/tmp/wx_3cols_raw.png' 2>/dev/null", ww, wh, wx, wy))
 
     -- 3. 加载OCR
     io.write("[2/5] 加载OCR模型...\n")
@@ -99,7 +104,10 @@ local function run_test()
     if c_str == nil or c_str == ffi.NULL then
         io.write("❌ 捕获失败: " .. ffi.string(lib.ocr_last_error(engine)) .. "\n")
         lib.ocr_destroy(engine)
-        return false
+        -- 仍然画图（标注横线）
+        draw_cross_image(ww, wh, outfile)
+        hide_wechat()
+        return true
     end
 
     local json_str = ffi.string(c_str)
@@ -109,7 +117,9 @@ local function run_test()
     if not ok then
         io.write("❌ JSON解析失败\n")
         lib.ocr_destroy(engine)
-        return false
+        draw_cross_image(ww, wh, outfile)
+        hide_wechat()
+        return true
     end
 
     local win = data.win
@@ -119,10 +129,7 @@ local function run_test()
     io.write("[4/5] 三列结构:\n\n")
     local col1_px = 4
     local col2_px = win.x - wx
-    local col3_px = ww - (win.x - wx)
-    local col1_pct = col1_px / ww * 100
     local col2_pct = col2_px / ww * 100
-    local col3_pct = col3_px / ww * 100
 
     io.write(string.format("  ┌──────┬──────────────────┬──────────────────────┐\n"))
     io.write(string.format("  │ %-4s │ %-16s │ %-20s │\n", "第一", "第二", "第三"))
@@ -135,61 +142,62 @@ local function run_test()
     io.write(string.format("  第一列(图标):    0~%dpx\n", col1_px))
     io.write(string.format("  第二列(列表+时间): %d~%dpx (%.0f%%)\n", col1_px, col2_px, col2_pct))
     io.write(string.format("  第三列(内容):     %d~%dpx (%.0f%%~100%%)\n", col2_px, ww, col2_pct))
-    io.write(string.format("  分界方式: 时间戳+40px\n\n"))
 
-    -- 6. 输出第三列内容
     io.write("[5/5] 第三列识别结果:\n\n")
     for _, b in ipairs(boxes) do
-        if #b.text > 1 then
-            io.write("  " .. b.text .. "\n")
-        end
+        if #b.text > 1 then io.write("  " .. b.text .. "\n") end
     end
-
-    io.write(string.format("\n共识别 %d 条文字\n", #boxes))
-    io.write("==========================================\n")
-    io.write(" 测试通过 ✅\n")
-    io.write("==========================================\n")
+    io.write(string.format("\n共识别 %d 条文字\n==========================================\n 测试通过 ✅\n==========================================\n", #boxes))
 
     lib.ocr_destroy(engine)
 
-    -- 6. 生成标记图（纯 ImageMagick，无 Python）
-    io.write("\n生成标记图...\n")
-    local ts = os.date("%Y%m%d_%H%M%S")
-    local home = os.getenv("HOME")
-    local outfile = home .. "/wechat_3cols_" .. ts .. ".png"
-    local raw = "/tmp/wx_3cols_raw.png"
+    -- 6. 标注输出
+    draw_col3_image(ww, wh, win.x - wx, outfile)
+    hide_wechat()
+    return true
+end
 
-    -- 截图
-    os.execute(string.format("import -window root -crop %dx%d+%d+%d '%s' 2>/dev/null", ww, wh, wx, wy, raw))
-    -- 标注：第一列线(x=4) + 第三列分界线 + 文字
-    local col2_rel = win.x - wx
-    local pct = math.floor(col2_rel / ww * 100)
+function draw_cross_image(ww, wh, outfile)
+    local cross_y = 85
     local cmds = {
-        '-fill none -stroke "rgb(255,0,0)" -strokewidth 3 -draw "line 4,0 4,%d"',         -- 第一列
-        '-fill none -stroke "rgb(0,0,255)" -strokewidth 3 -draw "line %d,0 %d,%d"',       -- 第三列
+        '-fill none -stroke yellow -strokewidth 2 -draw "line 0,%d %d,%d"',
+        '-fill none -stroke "rgb(255,128,0)" -strokewidth 2 -draw "circle 0,%d 6,0"',
+        '-fill white -pointsize 16 -annotate +10+10 "未检测到时间戳，仅标注横线 y=85"',
+    }
+    local annotate = string.format(table.concat(cmds, " "), cross_y, ww, cross_y, cross_y)
+    os.execute(string.format("convert '/tmp/wx_3cols_raw.png' %s '%s' 2>/dev/null", annotate, outfile))
+    local fh = io.open(outfile, "r")
+    if fh then local sz = fh:seek("end"); fh:close() end
+    io.write(string.format("  标记图: %s\n", outfile))
+end
+
+function draw_col3_image(ww, wh, col2_rel, outfile)
+    local pct = math.floor(col2_rel / ww * 100)
+    local cross_y = 85
+    local cmds = {
+        '-fill none -stroke "rgb(255,0,0)" -strokewidth 3 -draw "line 4,0 4,%d"',
+        '-fill none -stroke "rgb(0,0,255)" -strokewidth 3 -draw "line %d,0 %d,%d"',
+        '-fill none -stroke yellow -strokewidth 2 -draw "line 0,%d %d,%d"',
+        '-fill none -stroke "rgb(255,128,0)" -strokewidth 2 -draw "circle %d,%d 6,0"',
         '-fill "rgb(255,0,0)" -pointsize 20 -annotate +10+35 "第一列 图标"',
         '-fill "rgb(0,255,0)" -pointsize 20 -annotate +30+65 "第二列 列表+时间"',
         '-fill "rgb(0,0,255)" -pointsize 20 -annotate +%d+35 "第三列 内容"',
         '-fill white -pointsize 16 -annotate +10+%d "窗口 %dx%d | 第三列 %dpx (%d%%)"',
     }
     local annotate = string.format(table.concat(cmds, " "),
-        wh,                                    -- 第一列线高度
-        col2_rel, col2_rel, wh,                -- 第三列线
-        col2_rel + 15,                         -- 第三列文字 x
-        wh - 30, ww, wh, col2_rel, pct)        -- 底部信息
-    os.execute(string.format("convert '%s' %s '%s' 2>/dev/null", raw, annotate, outfile))
-
+        wh, col2_rel, col2_rel, wh,
+        cross_y, ww, cross_y,
+        col2_rel, cross_y,
+        col2_rel + 15, wh - 30, ww, wh, col2_rel, pct)
+    os.execute(string.format("convert '/tmp/wx_3cols_raw.png' %s '%s' 2>/dev/null", annotate, outfile))
     local fh = io.open(outfile, "r")
-    if fh then
-        local sz = fh:seek("end"); fh:close()
-        io.write(string.format("  标记图: %s (%d KB)\n", outfile, sz/1024))
-    end
+    if fh then local sz = fh:seek("end"); fh:close()
+        io.write(string.format("  标记图: %s (%d KB)\n", outfile, sz/1024)) end
+end
 
-    -- 7. 隐藏微信窗口（点任务栏图标或最小化）
+function hide_wechat()
     os.execute("xdotool search --name 微信 windowminimize 2>/dev/null")
     io.write("  微信已隐藏\n")
-
-    return true
 end
 
 local ok, err = pcall(run_test)
