@@ -77,7 +77,7 @@ local function parse_components(cmd)
 end
 
 local all_blobs = {}
-for thr = 180, 5, -5 do
+for thr = 180, 3, -3 do
     local pct = thr / 255 * 100
     local cmd = string.format(
         "convert '%s' -colorspace gray -threshold %.1f%%%% -negate " ..
