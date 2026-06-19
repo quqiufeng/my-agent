@@ -38,7 +38,7 @@ luajit tests/test_3columns.lua
 
 ---
 
-### 3. test_third_icons.lua — 第三列小图标检测 ✅✅ 已验证
+### 3. test_third_icons.lua — 第三列小图标检测 (未验证)
 
 **基于三列分割的第三列工具栏图标检测：**
 
@@ -336,7 +336,7 @@ robot.set_record(true)  -- 开启录像
 tests/
 ├── TEST.md                     本文档
 ├── test_3columns.lua           三列结构检测           ✅✅ 已验证
-├── test_third_icons.lua        第三列图标             ✅✅ 已验证
+├── test_third_icons.lua        第三列图标             (未验证)
 ├── test_send_file.lua          发送文件               (未验证)
 ├── test_screenshot.lua         截图发送               (未验证)
 ├── test_search.lua             搜索联系人             (未验证)
