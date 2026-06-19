@@ -188,7 +188,7 @@ char* ocr_capture(ocr_engine_t* engine) {
                 for (auto &[right, cnt] : clusters) {
                     if (right > best_right && cnt >= 1) best_right = right;
                 }
-                boundary = best_right + 20;
+                boundary = best_right + 3;
             } else {
                 // 回退1: Canny 找竖线（分隔线特征）
                 {
