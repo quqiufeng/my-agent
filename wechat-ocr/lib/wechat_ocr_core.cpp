@@ -160,34 +160,17 @@ char* ocr_capture(ocr_engine_t* engine) {
         auto boxes = engine->ocr->run(chat);
 
         // 找第二列和第三列之间的分界
-        // 方法1: 时间戳匹配（HH:MM 右对齐于分隔线，取右边缘中位数+3px）
-        // 方法2: 十字交叉检测（标题栏横线与分隔线竖线的交点）
+        // 方法1: 十字交叉检测（y=85 横线处的竖线 → 分隔线本身）
+        // 方法2: 时间戳匹配（HH:MM 右对齐于分隔线）
         // 方法3: 保底 18%
         int boundary = panel.cols / 5;
         int panel_w = panel.cols;
         bool found = false;
 
-        // --- 方法1: 时间戳匹配 ---
-        {
-            std::regex time_pat(R"(\d{1,2}[:：]\d{2})");
-            std::vector<int> rights;
-            for (auto &b : boxes) {
-                if ((int)b.text.size() >= 4 && (int)b.text.size() <= 10 &&
-                    std::regex_search(b.text, time_pat)) {
-                    rights.push_back(b.bbox.x + b.bbox.width);
-                }
-            }
-            if (!rights.empty()) {
-                std::sort(rights.begin(), rights.end());
-                boundary = rights[rights.size() / 2] + 3;
-                found = true;
-            }
-        }
-
-        // --- 方法2: 十字交叉检测 ---
-        // 横线固定在微信框顶部下方 85px（标题栏底部）
-        // 在 y=85 做 Sobel X，找竖线（分隔线从此开始）
-        if (!found && panel.rows > 100) {
+        // --- 方法1: 十字交叉检测 ---
+        // 微信标题栏底部横线在 y=85，分隔线竖线在此与之垂直相交
+        // 在 y=85 下方 5~35px 做 Sobel X，竖线峰值即为分隔线
+        if (panel.rows > 100) {
             int line_y = 85;
             if (line_y + 30 >= panel.rows) line_y = panel.rows / 4;
 
@@ -218,6 +201,23 @@ char* ocr_capture(ocr_engine_t* engine) {
                 if (col_v[x] > bl * 1.5f && col_v[x] > col_v[x-1] && col_v[x] > col_v[x+1]) {
                     boundary = x; found = true; break;
                 }
+            }
+        }
+
+        // --- 方法2: 时间戳匹配（HH:MM 右对齐于分隔线） ---
+        if (!found) {
+            std::regex time_pat(R"(\d{1,2}[:：]\d{2})");
+            std::vector<int> rights;
+            for (auto &b : boxes) {
+                if ((int)b.text.size() >= 4 && (int)b.text.size() <= 10 &&
+                    std::regex_search(b.text, time_pat)) {
+                    rights.push_back(b.bbox.x + b.bbox.width);
+                }
+            }
+            if (!rights.empty()) {
+                std::sort(rights.begin(), rights.end());
+                boundary = rights[rights.size() / 2] + 3;
+                found = true;
             }
         }
 
