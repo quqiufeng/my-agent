@@ -52,11 +52,8 @@ flush("点第一个结果...\n")
 os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", wx + 180, wy + 90))
 ffi.C.usleep(1500000)
 
--- 发送消息（移植自 wechat_robot.lua 的 send 功能）
+-- 发送消息（搜索结果已自动聚焦输入框）
 flush("发送: " .. msg .. "\n")
--- 点输入框（第三列底部）
-os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", wx + ww - 200, wy + wh - 80))
-ffi.C.usleep(500000)
 -- 剪贴板粘贴
 local f3 = io.open("/tmp/wx_msg.txt", "w"); f3:write(msg); f3:close()
 os.execute("xclip -selection clipboard < /tmp/wx_msg.txt 2>/dev/null")
