@@ -24,41 +24,45 @@ for thr in range(180, 60, -20):
     for c in cs:
         x, y, w, h = cv2.boundingRect(c)
         ratio = w / h if h > 0 else 0
-        if h < 14 or w < 12: continue       # 过滤小文字碎片
-        if ratio > 1.6 or ratio < 0.6: continue  # 图标近似方形（比之前更严）
+        if h < 14 or w < 12: continue       # 过滤小碎片
+        if ratio > 1.8 or ratio < 0.5: continue  # 图标近似方形
         if w*h < 150 or w*h > 3000: continue
-
-        # --- 文字 vs 图标区分 ---
-        # 计算 solidity（轮廓面积 / 凸包面积）
-        # 文字（如"公" "消"）有镂空/细笔划，solidity 偏低（<0.65）
-        # 图标是实心色块，solidity 偏高（>0.65）
-        hull = cv2.convexHull(c)
-        hull_area = cv2.contourArea(hull)
-        solidity = cv2.contourArea(c) / hull_area if hull_area > 0 else 0
-        if solidity < 0.65: continue
-
-        # 计算轮廓的宽高比与面积的综合特征
-        # 文字笔划密度高（内部边缘多），图标更均匀
-        mask = np.zeros((h, w), dtype=np.uint8)
-        cx, cy = x + w//2, y + h//2
-        # 在原图中取 ROI
-        roi_patch = gray[10+cy-h//2:10+cy+h-h//2, 10+cx-w//2:10+cx+w-w//2]
-        if roi_patch.shape[0] < 3 or roi_patch.shape[1] < 3: continue
-        # 计算边缘密度（Canny）
-        edges = cv2.Canny(roi_patch, 30, 90)
-        edge_ratio = np.sum(edges > 0) / (w * h) if w*h > 0 else 1
-        if edge_ratio > 0.25: continue  # 文字笔划多，边缘密度高
-
-        all_blobs.append((10+x, 10+y, w, h, thr))
+        all_blobs.append((10+x, 10+y, w, h, 10+x+w//2, 10+y+h//2))
 
 # 去重
 unique = {}
-for bx, by, bw, bh, bt in all_blobs:
-    key = (bx//6, by//6)
+for bx, by, bw, bh, cx, cy in all_blobs:
+    key = (cx//8, cy//8)
     if key not in unique:
-        unique[key] = (bx, by, bw, bh)
+        unique[key] = (bx, by, bw, bh, cx, cy)
 
-blobs = sorted(unique.values(), key=lambda b: (b[1], b[0]))
+blob_list = sorted(unique.values(), key=lambda b: (b[1], b[0]))
+
+# --- 按行排列过滤文字 ---
+# 文字特征是多个blob在同一水平线上等距排列。
+# 对每个blob，统计其±15px高度范围内、水平间距<150px的邻居数。
+# 邻居≥3的视为文字行，整行排除。
+TEXT_ROW_Y_TOLERANCE = 15
+TEXT_ROW_X_TOLERANCE = 150
+TEXT_ROW_MIN_NEIGHBORS = 3
+
+# 标记哪些blob被判为文字
+is_text = [False] * len(blob_list)
+for i, (bx1, by1, bw1, bh1, cx1, cy1) in enumerate(blob_list):
+    if is_text[i]: continue
+    # 找同行邻居
+    neighbors = []
+    for j, (bx2, by2, bw2, bh2, cx2, cy2) in enumerate(blob_list):
+        if i == j or is_text[j]: continue
+        if abs(cy2 - cy1) <= TEXT_ROW_Y_TOLERANCE and abs(cx2 - cx1) <= TEXT_ROW_X_TOLERANCE:
+            neighbors.append(j)
+    if len(neighbors) >= TEXT_ROW_MIN_NEIGHBORS:
+        is_text[i] = True
+        for j in neighbors: is_text[j] = True
+
+# 只保留非文字 blob
+blobs = [(bx, by, bw, bh) for i, (bx, by, bw, bh, cx, cy) in enumerate(blob_list) if not is_text[i]]
+blobs = sorted(blobs, key=lambda b: (b[1], b[0]))
 
 # 标注
 pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_RGBA2RGB))
