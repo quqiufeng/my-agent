@@ -10,7 +10,7 @@ wx = int(sys.argv[1]); wy = int(sys.argv[2])
 ww = int(sys.argv[3]); wh = int(sys.argv[4])
 out = sys.argv[5] if len(sys.argv) > 5 else os.path.expanduser("~/wechat_first_icons.png")
 
-COL1_W = 90  # 第一列宽度（含少量右边距）
+COL1_W = 75  # 第一列固定宽度
 
 # 截图
 with mss.mss() as sct:
