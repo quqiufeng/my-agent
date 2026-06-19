@@ -160,85 +160,77 @@ char* ocr_capture(ocr_engine_t* engine) {
         auto boxes = engine->ocr->run(chat);
 
         // 找第二列和第三列之间的分界
-        // 策略优先级：时间戳位置 → Canny竖线 → 文本右边缘
-        int boundary = panel.cols / 5; // 保底20%
+        // 方法1: 时间戳匹配（第二列右侧 HH:MM，右对齐于分隔线）
+        // 方法2: 全图 Sobel 垂直边缘求和（分隔线贯穿全高，峰值远高于文字边缘）
+        int boundary = panel.cols / 5;
         int panel_w = panel.cols;
+        bool found = false;
 
-        // 找第二列和第三列之间的分界
-        // 原理：第二列右侧的时间戳是右对齐的。
+        // --- 方法1: 时间戳匹配 ---
         {
             std::regex time_pat(R"(\d{1,2}[:：]\d{2})");
-            std::map<int, int> clusters;
-
+            std::vector<int> rights;
             for (auto &b : boxes) {
                 if ((int)b.text.size() >= 4 && (int)b.text.size() <= 10 &&
                     std::regex_search(b.text, time_pat)) {
-                    int right = b.bbox.x + b.bbox.width;
-                    int best_key = right;
-                    for (auto &[k, v] : clusters) {
-                        if (std::abs(k - right) <= 10) { best_key = k; break; }
-                    }
-                    clusters[best_key]++;
+                    rights.push_back(b.bbox.x + b.bbox.width);
                 }
             }
-
-            if (!clusters.empty()) {
-                // 取右边缘最大的聚类
-                int best_right = 0;
-                for (auto &[right, cnt] : clusters) {
-                    if (right > best_right && cnt >= 1) best_right = right;
-                }
-                boundary = best_right + 3;
-            } else {
-                // 回退1: Canny 找窄竖线（分隔线 2-6px 宽）
-                {
-                    int sy = crop_y + 50, sh = chat_roi.height - 150;
-                    if (sh >= 50) {
-                        cv::Rect sr(0, sy - crop_y, panel_w, sh);
-                        if (sr.y + sr.height > panel.rows) sr.height = panel.rows - sr.y;
-                        cv::Mat strip = panel(sr);
-                        cv::Mat gray;
-                        if (strip.channels() > 1) cv::cvtColor(strip, gray, cv::COLOR_BGR2GRAY);
-                        else gray = strip.clone();
-                        cv::Mat edges;
-                        cv::Canny(gray, edges, 20, 60, 3);
-                        std::vector<int> col_cnt(panel_w, 0);
-                        for (int x = 0; x < panel_w; x++)
-                            for (int y = 0; y < sh; y++)
-                                if (edges.at<uchar>(y, x)) col_cnt[x]++;
-
-                        float thr = sh * 0.02f;
-                        int s_start = panel_w * 8 / 100, s_end = panel_w * 45 / 100;
-                        int best_x = -1;
-                        for (int x = s_start + 2; x < s_end - 2; x++) {
-                            if (col_cnt[x] > thr && col_cnt[x] > col_cnt[x-1] && col_cnt[x] > col_cnt[x+1]) {
-                                // 测量峰值宽度（分隔线 2-6px，UI边缘 > 10px）
-                                int l = x, r = x;
-                                float half = thr * 0.5f;
-                                while (l > s_start && col_cnt[l] > half) l--;
-                                while (r < s_end && col_cnt[r] > half) r++;
-                                int pw = r - l;
-                                if (pw >= 2 && pw <= 8) best_x = x;
-                            }
-                        }
-                        if (best_x > 0) { boundary = best_x; goto boundary_done; }
-                    }
-                }
-                // 回退2: 聊天名称最右边缘 + 35px
-                {
-                    int max_name = 0;
-                    for (auto &b : boxes) {
-                        int bx = b.bbox.x, right = bx + b.bbox.width;
-                        if (bx >= 75 && bx <= 200 && b.bbox.width < 100 && right < panel_w * 0.25) {
-                            if (right > max_name) max_name = right;
-                        }
-                    }
-                    if (max_name > 0) boundary = max_name + 35;
-                    else boundary = panel_w * 20 / 100;
-                }
+            if (!rights.empty()) {
+                std::sort(rights.begin(), rights.end());
+                boundary = rights[rights.size() / 2] + 3;
+                found = true;
             }
         }
-boundary_done:
+
+        // --- 方法2: Sobel 全图垂直边缘求和 ---
+        // 分隔线是贯穿窗口全高的细线，每行都有强垂直边缘。
+        // 求和后，分隔线的峰值 = 高度 × 梯度强度，远高于文字边缘。
+        if (!found && panel.rows > 100) {
+            cv::Mat gray;
+            if (panel.channels() > 1) cv::cvtColor(panel, gray, cv::COLOR_BGR2GRAY);
+            else gray = panel.clone();
+
+            cv::Mat sobel_x;
+            cv::Sobel(gray, sobel_x, CV_32F, 1, 0, 3);
+
+            // 每列求和（绝对值）
+            std::vector<float> col_sum(panel_w, 0.0f);
+            for (int x = 0; x < panel_w; x++) {
+                double sum = 0.0;
+                for (int y = 0; y < panel.rows; y++)
+                    sum += std::abs(sobel_x.at<float>(y, x));
+                col_sum[x] = sum / panel.rows;  // 归一化到每行平均梯度
+            }
+
+            // 找 10%~45% 范围内的最强峰值
+            int s_start = panel_w * 10 / 100, s_end = panel_w * 45 / 100;
+            int best_x = -1;
+            float best_val = 0;
+
+            for (int x = s_start + 1; x < s_end - 1; x++) {
+                float v = (col_sum[x-1] + col_sum[x] + col_sum[x+1]) / 3.0f;
+                if (v > best_val && v > col_sum[x-1] && v > col_sum[x+1]) {
+                    best_val = v;
+                    best_x = x;
+                }
+            }
+
+            // 分隔线的平均梯度应该明显高于纯文字区域
+            // 计算整个 10~45% 范围的平均梯度作为基线
+            float baseline = 0;
+            int count = 0;
+            for (int x = s_start; x < s_end; x++) { baseline += col_sum[x]; count++; }
+            baseline /= count;
+
+            if (best_x > 0 && best_val > baseline * 2.0f) {
+                boundary = best_x;
+                found = true;
+            }
+        }
+
+        // 最终保底
+        if (!found) boundary = panel_w * 18 / 100;
         // 过滤：只保留第三列（boundary右侧）的文字框
         std::vector<TextBox> filtered;
         for (auto &b : boxes) {
