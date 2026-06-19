@@ -163,45 +163,54 @@ char* ocr_capture(ocr_engine_t* engine) {
         int panel_w = panel.cols;
 
         // 找第二列和第三列之间的分界
-        // 主公式：(面板宽度 × 0.217 + 149px) — 从两数据点拟合而来
-        //    - 2560px → 705px (27.5%)  ✓ 全屏
-        //    - 1492px → 473px (31.7%)  ✓ 小屏
-        // OCR 时间戳/文本位置作为微调，约束在 22%~40% 之间
-        int lin_b = panel_w * 217 / 1000 + 149;
-        boundary = lin_b;
-
+        // 第一列（图标列）固定 75px，第二列从 75px 开始
+        //
+        // 第二列的文字特征：
+        //   - 左边缘在 75px~30% 范围内（聊天名称在左侧，预览靠右）
+        //   - 宽度通常 < 450px（预览文字不会太宽）
+        //   - 右边缘不会超过面板 45%
+        // 第三列的文字特征：
+        //   - 时间戳：左边缘在 40%+（小窗口约 44%）
+        //   - 消息内容：宽度常 > 450px
+        // 通过左边缘上限排除第三列时间戳
         {
-            std::regex time_pat(R"(\d{1,2}[:：]\d{2})");
-            std::vector<int> time_rights;
+            const int COL1_W = 75;
+            int max_left = panel_w * 30 / 100;   // 左边缘不超过 30%
+            int max_right = panel_w * 45 / 100;  // 右边缘不超过 45%
+            int max_width = 450;
 
-            // 收集第二列的时间戳右边缘（cx < 30%，短文本）
+            std::vector<int> right_edges;
             for (auto &b : boxes) {
-                int cx = b.bbox.x + b.bbox.width / 2;
-                int right = b.bbox.x + b.bbox.width;
+                int bx = b.bbox.x;
+                int right = bx + b.bbox.width;
                 int len = (int)b.text.size();
-                if (cx > 0 && cx < panel_w * 0.30 && len >= 4 && len <= 10 &&
-                    std::regex_search(b.text, time_pat)) {
-                    time_rights.push_back(right);
+                if (bx >= COL1_W && bx < max_left &&
+                    right < max_right &&
+                    b.bbox.width < max_width && len > 1) {
+                    right_edges.push_back(right);
                 }
             }
 
-            // 有时间戳时，用时间戳位置微调边界
-            if (!time_rights.empty()) {
-                std::sort(time_rights.begin(), time_rights.end());
-                int t_boundary = time_rights[time_rights.size() / 2] + 45;
-                // 微调不超过 ±40px
-                if (t_boundary > boundary - 40 && t_boundary < boundary + 40)
-                    boundary = t_boundary;
+            if (right_edges.empty()) {
+                // 回退
+                for (auto &b : boxes) {
+                    int right = b.bbox.x + b.bbox.width;
+                    if (right > 75 && right < max_right)
+                        right_edges.push_back(right);
+                }
+            }
+
+            if (!right_edges.empty()) {
+                std::sort(right_edges.begin(), right_edges.end());
+                // 95% 分位值 + 偏移
+                size_t idx = right_edges.size() * 95 / 100;
+                if (idx >= right_edges.size()) idx = right_edges.size() - 1;
+                boundary = right_edges[idx] + 25;
             }
         }
 
-        // 约束范围
-        {
-            int min_b = panel_w * 22 / 100;
-            int max_b = panel_w * 40 / 100;
-            if (boundary < min_b) boundary = min_b;
-            if (boundary > max_b) boundary = max_b;
-        }
+boundary_done:
+        if (boundary < 100) boundary = 100;
         // boundary 已确定，继续后续处理
 
         // 过滤：只保留第三列（boundary右侧）的文字框
