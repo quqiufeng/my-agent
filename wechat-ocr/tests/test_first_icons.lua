@@ -81,7 +81,7 @@ io.write("[3/5] 检测第一列图标...\n"); io.flush()
 
 local COL1 = 75
 local all_lines = {}
-for thr = 180, 3, -3 do
+for thr = 240, 3, -3 do
     local pct = thr / 255 * 100
     local cmd = string.format(
         "convert '/tmp/wx_first_raw.png' -crop %dx%d+0+0 -colorspace gray -threshold %.1f%% -negate " ..
