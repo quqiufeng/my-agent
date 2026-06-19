@@ -145,6 +145,23 @@ for _, dot in ipairs(red_dots) do
     end
 end
 
+-- 检查 OCR 文本中的 "*条" 模式（群消息计数）
+for _, entry in ipairs(entries) do
+    if not entry.found then
+        for _, b in ipairs(col2) do
+            if b.ry >= entry.ry - 10 and b.ry <= entry.ry + entry.h and
+               b.rx >= entry.rx - 60 and b.rx <= entry.rx + entry.w and
+               (b.text:match("%d+条") or b.text:match("%d+条")) then
+                entry.found = true
+                entry.dot_x = b.rx + b.w / 2
+                entry.dot_y = b.ry + b.h / 2
+                entry.from_text = true
+                break
+            end
+        end
+    end
+end
+
 -- 未匹配的红点不计数（日志输出）
 for _, dot in ipairs(red_dots) do
     local matched = false
@@ -158,7 +175,8 @@ end
 for _, entry in ipairs(entries) do
     if entry.found then
         unread_count = unread_count + 1
-        io.write(string.format("  #%d 🔴 (%d,%d)\n", entry.idx, entry.dot_x, entry.dot_y))
+        local tag = entry.from_text and "📝" or "🔴"
+        io.write(string.format("  #%d %s (%d,%d)\n", entry.idx, tag, entry.dot_x, entry.dot_y))
         -- 标注整个文字块（红框 + 编号）
         table.insert(convert_cmds, string.format(
             '-fill none -stroke red -strokewidth 2 -draw "rectangle %d,%d %d,%d"',
