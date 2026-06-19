@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <regex>
 #include <algorithm>
+#include <map>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 
@@ -163,46 +164,89 @@ char* ocr_capture(ocr_engine_t* engine) {
         int panel_w = panel.cols;
 
         // 找第二列和第三列之间的分界
-        // 第一列（图标列）固定 75px，第二列从 75px 开始
+        // 关键特征：第二列右侧的时间戳是右对齐的，
+        // 所有时间戳的右边缘在同一垂直线上（即分隔线位置）。
         //
-        // 第二列的文字特征：
-        //   - 左边缘在 75px~30% 范围内（聊天名称在左侧，预览靠右）
-        //   - 宽度通常 < 450px（预览文字不会太宽）
-        //   - 右边缘不会超过面板 45%
-        // 第三列的文字特征：
-        //   - 时间戳：左边缘在 40%+（小窗口约 44%）
-        //   - 消息内容：宽度常 > 450px
-        // 通过左边缘上限排除第三列时间戳
+        // 方法1: 找右对齐的短文本聚类（时间戳）
+        // 方法2: 文字右边缘 95% 分位值
+        bool found = false;
+
+        // --- 方法1: 右对齐短文本聚类 ---
+        // 时间戳是短文本（4-8字符），右对齐在同一列上。
+        // 按右边缘位置分组，找到聚类最多的右边缘位置。
         {
+            // 收集候选：短文本（2-10字符），在第二列范围内
+            std::vector<int> candidates;
+            for (auto &b : boxes) {
+                int cx = b.bbox.x + b.bbox.width / 2;
+                int right = b.bbox.x + b.bbox.width;
+                int len = (int)b.text.size();
+                // 在 5%~45% 范围内，短文本
+                if (cx > panel_w * 0.05 && cx < panel_w * 0.45 &&
+                    len >= 2 && len <= 10) {
+                    candidates.push_back(right);
+                }
+            }
+
+            if (candidates.size() >= 3) {
+                // 按右边缘值聚类（误差 8px 内视为同一列）
+                std::map<int, int> cluster; // right_value -> count
+                for (int r : candidates) {
+                    // 找最近的现有聚类
+                    int best_key = r;
+                    int best_dist = 8;
+                    for (auto &[key, count] : cluster) {
+                        int dist = std::abs(key - r);
+                        if (dist < best_dist) {
+                            best_dist = dist;
+                            best_key = key;
+                        }
+                    }
+                    cluster[best_key]++;
+                }
+
+                // 找到聚类数最多、且右边缘最大的组
+                int max_count = 0;
+                int best_right = 0;
+                for (auto &[right, count] : cluster) {
+                    if (count > max_count || (count == max_count && right > best_right)) {
+                        max_count = count;
+                        best_right = right;
+                    }
+                }
+
+                // 如果有至少 2 个文本在同一右边缘聚类，且该位置 > 20%
+                if (max_count >= 2 && best_right > panel_w * 0.15) {
+                    boundary = best_right + 45;
+                    found = true;
+                }
+            }
+        }
+
+        // --- 方法2: 文字右边缘 95% 分位值 ---
+        if (!found) {
             const int COL1_W = 75;
-            int max_left = panel_w * 30 / 100;   // 左边缘不超过 30%
-            int max_right = panel_w * 45 / 100;  // 右边缘不超过 45%
-            int max_width = 450;
+            int max_left = panel_w * 30 / 100;
+            int max_right = panel_w * 45 / 100;
 
             std::vector<int> right_edges;
             for (auto &b : boxes) {
                 int bx = b.bbox.x;
                 int right = bx + b.bbox.width;
-                int len = (int)b.text.size();
-                if (bx >= COL1_W && bx < max_left &&
-                    right < max_right &&
-                    b.bbox.width < max_width && len > 1) {
+                if (bx >= COL1_W && bx < max_left && right < max_right &&
+                    b.bbox.width < 450 && (int)b.text.size() > 1) {
                     right_edges.push_back(right);
                 }
             }
-
             if (right_edges.empty()) {
-                // 回退
                 for (auto &b : boxes) {
                     int right = b.bbox.x + b.bbox.width;
                     if (right > 75 && right < max_right)
                         right_edges.push_back(right);
                 }
             }
-
             if (!right_edges.empty()) {
                 std::sort(right_edges.begin(), right_edges.end());
-                // 95% 分位值 + 偏移
                 size_t idx = right_edges.size() * 95 / 100;
                 if (idx >= right_edges.size()) idx = right_edges.size() - 1;
                 boundary = right_edges[idx] + 25;
