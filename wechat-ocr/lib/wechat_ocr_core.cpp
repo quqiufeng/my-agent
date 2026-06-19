@@ -174,6 +174,8 @@ char* ocr_capture(ocr_engine_t* engine) {
                 return nullptr;
             }
             boundary = rights[0] + 25;
+            // 小窗口下微信布局有偏移，减10px修正
+            if (panel.cols < 2000) boundary -= 10;
         }
         // 过滤：只保留第三列（boundary右侧）的文字框
         std::vector<TextBox> filtered;
