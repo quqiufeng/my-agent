@@ -120,20 +120,34 @@ for _, thr in ipairs({10, 20, 30, 40}) do
     end
 end
 
--- 基础过滤 + 去重
-local blobs = {}
-local seen = {}
+-- 基础过滤
+local tmp = {}
 for _, b in ipairs(all_lines) do
     local ratio = b.w / b.h
-    if b.h >= 5 and b.w >= 5 and ratio >= 0.3 and ratio <= 2.5 and b.area >= 25 and b.area <= 4000 then
-        local key = math.floor(b.x/20) * 10000 + math.floor(b.y/20)
-        if not seen[key] then
-            seen[key] = true
-            table.insert(blobs, b)
-        end
+    if b.h >= 5 and b.w >= 5 and ratio >= 0.25 and ratio <= 3.0 and b.area >= 25 and b.area <= 4000 then
+        b.cx = b.x + b.w / 2
+        b.cy = b.y + b.h / 2
+        table.insert(tmp, b)
     end
 end
-table.sort(blobs, function(a,b) return a.y < b.y end)
+
+-- 中心距离合并：按面积从大到小排序，取最大框，半径内去重
+table.sort(tmp, function(a,b) return b.area < a.area end)
+local merged = {}
+for _, b in ipairs(tmp) do
+    local dup = false
+    for _, m in ipairs(merged) do
+        local dx = b.cx - m.cx
+        local dy = b.cy - m.cy
+        if dx*dx + dy*dy < 500 then  -- 半径 ~22px
+            dup = true
+            break
+        end
+    end
+    if not dup then table.insert(merged, b) end
+end
+table.sort(merged, function(a,b) return a.y < b.y end)
+local blobs = merged
 
 -- 第一列无文字，直接使用所有blob
 local icons = blobs
