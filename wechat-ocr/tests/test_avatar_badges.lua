@@ -162,12 +162,18 @@ for _, entry in ipairs(entries) do
     end
 end
 
--- 未匹配的红点不计数（日志输出）
+-- 未匹配的红点（在头像区域内的也计入未读，可能无文字的条目如微信支付）
+local extra_unread = 0
 for _, dot in ipairs(red_dots) do
     local matched = false
     for _, entry in ipairs(entries) do if entry.found and entry.dot_x == dot.x then matched = true; break end end
     if not matched then
-        io.write(string.format("  忽略: 未匹配红点 (%d,%d) %dx%d\n", dot.x, dot.y, dot.w, dot.h))
+        if dot.x < 200 and dot.y > 100 then
+            extra_unread = extra_unread + 1
+            io.write(string.format("  [额外] 未匹配红点 (%d,%d) %dx%d — 可能为无文字条目\n", dot.x, dot.y, dot.w, dot.h))
+        else
+            io.write(string.format("  忽略: 非头像区红点 (%d,%d) %dx%d\n", dot.x, dot.y, dot.w, dot.h))
+        end
     end
 end
 
@@ -187,6 +193,7 @@ for _, entry in ipairs(entries) do
     end
 end
 
+unread_count = unread_count + extra_unread
 io.write(string.format("\n共 %d 个头像有红点/数字\n", unread_count))
 
 -- 7. 标注图
