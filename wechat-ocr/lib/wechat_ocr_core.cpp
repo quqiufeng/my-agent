@@ -185,53 +185,38 @@ char* ocr_capture(ocr_engine_t* engine) {
         }
 
         // --- 方法2: 十字交叉检测 ---
+        // 横线固定在微信框顶部下方 85px（标题栏底部）
+        // 在 y=85 做 Sobel X，找竖线（分隔线从此开始）
         if (!found && panel.rows > 100) {
+            int line_y = 85;
+            if (line_y + 30 >= panel.rows) line_y = panel.rows / 4;
+
             cv::Mat gray;
             if (panel.channels() > 1) cv::cvtColor(panel, gray, cv::COLOR_BGR2GRAY);
             else gray = panel.clone();
 
-            cv::Mat sobel_y;
-            cv::Sobel(gray, sobel_y, CV_32F, 0, 1, 3);
+            cv::Mat sobel_x;
+            cv::Sobel(gray, sobel_x, CV_32F, 1, 0, 3);
 
-            // 找标题栏底部（y=20~80 范围内 Sobel Y 最强的行）
-            int title_y = 0;
-            float max_horz = 0;
-            for (int y = 20; y < 80 && y < panel.rows; y++) {
-                double sum = 0;
-                for (int x = 0; x < panel_w; x++)
-                    sum += std::abs(sobel_y.at<float>(y, x));
-                float avg = sum / panel_w;
-                if (avg > max_horz) { max_horz = avg; title_y = y; }
+            // 取横线下方 5~35px（30px 条带）
+            int y0 = std::min(line_y + 5, panel.rows - 10);
+            int y1 = std::min(line_y + 35, panel.rows - 1);
+            int yn = y1 - y0 + 1;
+            std::vector<float> col_v(panel_w, 0.0f);
+            for (int x = 0; x < panel_w; x++) {
+                double s = 0;
+                for (int y = y0; y <= y1; y++) s += std::abs(sobel_x.at<float>(y, x));
+                col_v[x] = s / yn;
             }
 
-            if (title_y > 0 && max_horz > 5.0f) {
-                cv::Mat sobel_x;
-                cv::Sobel(gray, sobel_x, CV_32F, 1, 0, 3);
+            int s0 = panel_w * 10 / 100, s1 = panel_w * 45 / 100;
+            float bl = 0;
+            for (int x = s0; x < s1; x++) bl += col_v[x];
+            bl /= (s1 - s0);
 
-                // 标题栏下方 5~55px，分隔线竖线在此范围最清晰
-                int y_start = std::min(title_y + 5, panel.rows - 10);
-                int y_end   = std::min(title_y + 55, panel.rows - 1);
-                int y_cnt   = y_end - y_start + 1;
-                std::vector<float> col_edge(panel_w, 0.0f);
-                for (int x = 0; x < panel_w; x++) {
-                    double sum = 0;
-                    for (int y = y_start; y <= y_end; y++)
-                        sum += std::abs(sobel_x.at<float>(y, x));
-                    col_edge[x] = sum / y_cnt;
-                }
-
-                int s_start = panel_w * 10 / 100, s_end = panel_w * 45 / 100;
-                float baseline = 0;
-                for (int x = s_start; x < s_end; x++) baseline += col_edge[x];
-                baseline /= (s_end - s_start);
-
-                // 从右向左找第一个显著竖线峰值
-                for (int x = s_end - 2; x >= s_start + 1; x--) {
-                    if (col_edge[x] > baseline * 1.5f &&
-                        col_edge[x] > col_edge[x-1] &&
-                        col_edge[x] > col_edge[x+1]) {
-                        boundary = x; found = true; break;
-                    }
+            for (int x = s1 - 2; x >= s0 + 1; x--) {
+                if (col_v[x] > bl * 1.5f && col_v[x] > col_v[x-1] && col_v[x] > col_v[x+1]) {
+                    boundary = x; found = true; break;
                 }
             }
         }
