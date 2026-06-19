@@ -22,21 +22,16 @@
 --   │ 75px │  时间戳 →| ← 分界      │                       │
 --   └──────┴────────────────────────┴──────────────────────┘
 --
--- 算法优先级:
---   1) OCR 时间戳匹配
---      找到所有 HH:MM 格式的短文本（4-10字节），按右边缘聚类（10px误差）
---      取右边缘最大的聚类 + 20px = 列分界
---      原理：第二列每行右侧的时间戳是右对齐的，所有时间戳的右边缘相同
+-- 算法（C++ libwechat_ocr_core.so ocr_capture 中实现）:
+--   1) OCR 时间戳匹配（优先）
+--      找到 HH:MM 格式短文本，按右边缘聚类（10px误差）
+--      取右边缘最大的聚类 +3px = 列分界
 --
---   2) Canny 边缘检测（无时间戳时）
---      对面板中部取水平条带，Canny + 垂直投影
---      从右向左扫描 10%~45% 范围，找第一条超过阈值(3%)的竖线
---      原理：第二列与第三列之间有一条可拖动的竖分隔线
+--   2) Canny 竖线检测（无时间戳时）
+--      扫描 10%~30% 面板宽度范围，找第一条超过阈值(3%)的竖线
 --
 --   3) 聊天名称回退（无竖线时）
---      找左边缘 75~200px、宽度 < 100px 的短文本（聊天名称）
---      取其最右边缘 + 50px
---      原理：第一列固定 75px，名称右边缘之后是时间戳列的位置
+--      找左边缘 75~200px、宽度<100px 的短文本，取最右边缘 +50px
 --
 -- 依赖:
 --   - libwechat_ocr_core.so (C++ OCR引擎)
@@ -157,13 +152,38 @@ local function run_test()
 
     lib.ocr_destroy(engine)
 
-    -- 6. 生成标记图（带时间戳文件名防覆盖）
+    -- 6. 生成标记图（纯 ImageMagick，无 Python）
     io.write("\n生成标记图...\n")
     local ts = os.date("%Y%m%d_%H%M%S")
-    local outfile = os.getenv("HOME") .. "/wechat_3cols_" .. ts .. ".png"
-    local cmd = string.format("/data/venv/bin/python3 tests/mark_columns.py %d '%s' 2>/dev/null", win.x, outfile)
-    os.execute(cmd)
-    io.write("  标记图: " .. outfile .. "\n")
+    local home = os.getenv("HOME")
+    local outfile = home .. "/wechat_3cols_" .. ts .. ".png"
+    local raw = "/tmp/wx_3cols_raw.png"
+
+    -- 截图
+    os.execute(string.format("import -window root -crop %dx%d+%d+%d '%s' 2>/dev/null", ww, wh, wx, wy, raw))
+    -- 标注：第一列线(x=4) + 第三列分界线 + 文字
+    local col2_rel = win.x - wx
+    local pct = math.floor(col2_rel / ww * 100)
+    local cmds = {
+        '-fill none -stroke "rgb(255,0,0)" -strokewidth 3 -draw "line 4,0 4,%d"',         -- 第一列
+        '-fill none -stroke "rgb(0,0,255)" -strokewidth 3 -draw "line %d,0 %d,%d"',       -- 第三列
+        '-fill "rgb(255,0,0)" -pointsize 20 -annotate +10+35 "第一列 图标"',
+        '-fill "rgb(0,255,0)" -pointsize 20 -annotate +30+65 "第二列 列表+时间"',
+        '-fill "rgb(0,0,255)" -pointsize 20 -annotate +%d+35 "第三列 内容"',
+        '-fill white -pointsize 16 -annotate +10+%d "窗口 %dx%d | 第三列 %dpx (%d%%)"',
+    }
+    local annotate = string.format(table.concat(cmds, " "),
+        wh,                                    -- 第一列线高度
+        col2_rel, col2_rel, wh,                -- 第三列线
+        col2_rel + 15,                         -- 第三列文字 x
+        wh - 30, ww, wh, col2_rel, pct)        -- 底部信息
+    os.execute(string.format("convert '%s' %s '%s' 2>/dev/null", raw, annotate, outfile))
+
+    local fh = io.open(outfile, "r")
+    if fh then
+        local sz = fh:seek("end"); fh:close()
+        io.write(string.format("  标记图: %s (%d KB)\n", outfile, sz/1024))
+    end
 
     -- 7. 隐藏微信窗口（点任务栏图标或最小化）
     os.execute("xdotool search --name 微信 windowminimize 2>/dev/null")
