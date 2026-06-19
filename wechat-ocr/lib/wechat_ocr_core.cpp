@@ -162,99 +162,46 @@ char* ocr_capture(ocr_engine_t* engine) {
         int boundary = panel.cols / 5; // 保底20%
         int panel_w = panel.cols;
 
-        // --- 策略1: 用 OCR 时间戳定位 ---
-        // 时间戳如 "11:08" 出现在聊天列表每行的最右端。
-        // 注意：第三列的聊天消息也有时间戳，通过 x 范围 8%~28% 区分
+        // 找第二列和第三列之间的分界
+        // 主公式：(面板宽度 × 0.217 + 149px) — 从两数据点拟合而来
+        //    - 2560px → 705px (27.5%)  ✓ 全屏
+        //    - 1492px → 473px (31.7%)  ✓ 小屏
+        // OCR 时间戳/文本位置作为微调，约束在 22%~40% 之间
+        int lin_b = panel_w * 217 / 1000 + 149;
+        boundary = lin_b;
+
         {
             std::regex time_pat(R"(\d{1,2}[:：]\d{2})");
             std::vector<int> time_rights;
+
+            // 收集第二列的时间戳右边缘（cx < 30%，短文本）
             for (auto &b : boxes) {
                 int cx = b.bbox.x + b.bbox.width / 2;
                 int right = b.bbox.x + b.bbox.width;
-                if (cx > panel_w * 0.08 && cx < panel_w * 0.28 &&
-                    b.text.size() >= 4 && b.text.size() <= 10 &&
+                int len = (int)b.text.size();
+                if (cx > 0 && cx < panel_w * 0.30 && len >= 4 && len <= 10 &&
                     std::regex_search(b.text, time_pat)) {
                     time_rights.push_back(right);
                 }
             }
+
+            // 有时间戳时，用时间戳位置微调边界
             if (!time_rights.empty()) {
                 std::sort(time_rights.begin(), time_rights.end());
-                // 取中位数 + 偏移（时间戳右边缘通常在 250-380px）
-                int median = time_rights[time_rights.size() / 2];
-                boundary = median + 45;
-                goto boundary_done;
+                int t_boundary = time_rights[time_rights.size() / 2] + 45;
+                // 微调不超过 ±40px
+                if (t_boundary > boundary - 40 && t_boundary < boundary + 40)
+                    boundary = t_boundary;
             }
         }
 
-        // --- 策略2: Canny 边缘检测 → 垂直投影找竖线 ---
-        // 微信窗口有两条竖分隔线：
-        //   线1（x≈60）   ：图标列与聊天列表之间
-        //   线2（x≈15-35%）：聊天列表与内容区之间
-        // 我们找最右侧的竖线作为列分界。
+        // 约束范围
         {
-            int strip_y = crop_y + 60;
-            int strip_h = chat_roi.height - 120;
-            if (strip_h < 80) { strip_y = crop_y; strip_h = chat_roi.height; }
-            cv::Rect strip_roi(0, strip_y - crop_y, panel_w, strip_h);
-            if (strip_roi.y + strip_roi.height > panel.rows)
-                strip_roi.height = panel.rows - strip_roi.y;
-            if (strip_roi.height < 20) goto fallback_ocr;
-
-            cv::Mat strip = panel(strip_roi);
-            cv::Mat gray;
-            if (strip.channels() > 1) cv::cvtColor(strip, gray, cv::COLOR_BGR2GRAY);
-            else gray = strip.clone();
-
-            cv::Mat edges;
-            cv::Canny(gray, edges, 30, 90, 3);
-
-            // 垂直投影
-            std::vector<int> col_edges(panel_w, 0);
-            for (int x = 0; x < panel_w; x++)
-                for (int y = 0; y < strip_h; y++)
-                    if (edges.at<uchar>(y, x)) col_edges[x]++;
-
-            // 平滑
-            std::vector<float> smooth(panel_w, 0.0f);
-            for (int x = 3; x < panel_w - 3; x++) {
-                float s = 0;
-                for (int dx = -3; dx <= 3; dx++) s += col_edges[x+dx];
-                smooth[x] = s / 7.0f;
-            }
-
-            // 在 18%~45% 范围找竖线峰值
-            int search_start = panel_w * 18 / 100;
-            int search_end   = panel_w * 45 / 100;
-            float thr = strip_h * 0.05f;
-
-            // 从右向左找第一个峰值（即最右侧的竖线）
-            for (int x = search_end - 1; x >= search_start; x--) {
-                if (smooth[x] > thr && smooth[x] > smooth[x-1] && smooth[x] > smooth[x+1]) {
-                    boundary = x;
-                    goto boundary_done;
-                }
-            }
-            goto fallback_ocr;
+            int min_b = panel_w * 22 / 100;
+            int max_b = panel_w * 40 / 100;
+            if (boundary < min_b) boundary = min_b;
+            if (boundary > max_b) boundary = max_b;
         }
-
-fallback_ocr:
-        {
-            // --- 策略3: OCR 文本右边缘 90% 分位值 ---
-            std::vector<int> all_rights;
-            for (auto &b : boxes) {
-                int right = b.bbox.x + b.bbox.width;
-                if (right < panel_w * 0.35 && b.text.size() > 2)
-                    all_rights.push_back(right);
-            }
-            if (!all_rights.empty()) {
-                std::sort(all_rights.begin(), all_rights.end());
-                size_t idx = all_rights.size() * 9 / 10;
-                if (idx >= all_rights.size()) idx = all_rights.size() - 1;
-                boundary = all_rights[idx] + 20;
-            }
-        }
-
-boundary_done:
         // boundary 已确定，继续后续处理
 
         // 过滤：只保留第三列（boundary右侧）的文字框
