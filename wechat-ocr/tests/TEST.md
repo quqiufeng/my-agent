@@ -16,7 +16,12 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 
 ## 测试脚本
 
-### 1. test_3columns.lua — 三列结构检测 (未验证)
+### 1. test_3columns.lua — 三列结构检测 ✅✅ 已验证
+
+**基础分割方法：**
+- 第一列：固定 75px（图标列）
+- 第二/三分列：OCR 识别 xx:xx 时间戳，取右边缘 +25px（小屏-10px修正）
+- 时间戳右对齐于分隔线，找不到时间戳则报错
 
 检测微信窗口的三列结构，输出分界位置和标注图。
 
@@ -325,7 +330,7 @@ robot.set_record(true)  -- 开启录像
 ```
 tests/
 ├── TEST.md                     本文档
-├── test_3columns.lua           三列结构检测           (未验证)
+├── test_3columns.lua           三列结构检测           ✅✅ 已验证
 ├── test_icons.lua              全窗口图标             (未验证)
 ├── test_third_icons.lua        第三列图标             (未验证)
 ├── test_send_file.lua          发送文件               (未验证)
