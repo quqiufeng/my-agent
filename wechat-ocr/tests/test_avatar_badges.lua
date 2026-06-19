@@ -131,9 +131,9 @@ for _, dot in ipairs(red_dots) do
     for _, entry in ipairs(entries) do
         -- 红点必须在条目垂直范围内（允许上方 30px 偏差）
         if dot_cy >= entry.ry - 30 and dot_cy <= entry.ry + entry.h + 10 then
-            -- 红点必须在头像右侧区域（离文字左侧 5~30px），排除左侧误判
+            -- 红点离文字左侧的距离（服务号/公众号可能偏左）
             local dist_to_text = entry.rx - dot.x
-            if dist_to_text >= 5 and dist_to_text <= 35 then
+            if dist_to_text >= 5 and dist_to_text <= 50 then
                 if not entry.found then
                     entry.found = true
                     entry.dot_x = dot.x
