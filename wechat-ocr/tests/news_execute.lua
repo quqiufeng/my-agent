@@ -15,42 +15,31 @@ local function click_entry(entry, win)
     ffi.C.usleep(1500000)
 end
 
--- 读取最新一条消息（消息区底部）
+-- 读取最新一条消息（Ctrl+A → Ctrl+C 复制消息区域）
 local function read_latest_message(win)
-    -- 截取消息区底部（避开输入框，输入框在底部约 120px）
-    local msg_x = win.x + math.floor(win.w * 0.40) + 20
-    local msg_w = win.w - math.floor(win.w * 0.40) - 40
-    local msg_y = win.y + win.h - 500  -- 底部往上 500px
-    local msg_h = 380  -- 380px 高，到输入框上方
-    os.execute(string.format("import -window root -crop %dx%d+%d+%d '/tmp/_ft_latest.png' 2>/dev/null", msg_w, msg_h, msg_x, msg_y))
+    -- 点击消息区域激活，然后全选复制
+    local click_x = win.x + math.floor(win.w * 0.70)
+    local click_y = win.y + win.h - 250
+    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", click_x, click_y))
+    ffi.C.usleep(300000)
 
-    local lib = ffi.load("libwechat_ocr_core.so")
-    ffi.cdef[[
-        typedef struct ocr_engine_t ocr_engine_t;
-        ocr_engine_t* ocr_create(const char*,const char*,const char*);
-        char* ocr_capture_file(ocr_engine_t*, const char*, int, int);
-        void ocr_free_string(char*);
-        void ocr_destroy(ocr_engine_t*);
-    ]]
-    local e = lib.ocr_create("/opt/my-agent/wechat-ocr/models/ch_PP-OCRv4_det_infer.onnx",
-                              "/opt/my-agent/wechat-ocr/models/ch_PP-OCRv4_rec_infer.onnx",
-                              "/opt/my-agent/wechat-ocr/ppocr_keys_v1.txt")
-    local s = lib.ocr_capture_file(e, "/tmp/_ft_latest.png", msg_x, msg_y)
-    lib.ocr_destroy(e)
-    if not s or s == ffi.NULL then return "" end
-    local d = cjson.decode(ffi.string(s))
-    lib.ocr_free_string(s)
+    -- Ctrl+A 全选 → Ctrl+C 复制
+    os.execute("xdotool key ctrl+a 2>/dev/null")
+    ffi.C.usleep(200000)
+    os.execute("xdotool key ctrl+c 2>/dev/null")
+    ffi.C.usleep(500000)
 
-    -- 从 OCR 结果中找最靠下的文字（最新消息）
-    local latest_box = nil
-    for _, b in ipairs(d.boxes or {}) do
-        if #b.text > 2 then
-            if not latest_box or b.y + b.h > latest_box.y + latest_box.h then
-                latest_box = b
-            end
-        end
+    -- 读剪贴板
+    local pipe = io.popen("xclip -selection clipboard -o 2>/dev/null")
+    if not pipe then return "" end
+    local text = pipe:read("*a"); pipe:close()
+    
+    -- 取最后一段非空文本（最新消息）
+    local lines = {}
+    for line in text:gmatch("[^\n]+") do
+        if #line > 1 then table.insert(lines, line) end
     end
-    return latest_box and latest_box.text or ""
+    return #lines > 0 and lines[#lines] or text:sub(1, 200)
 end
 
 -- 回复（粘贴+发送）
