@@ -81,10 +81,8 @@ io.write("[3/5] 检测第一列图标...\n"); io.flush()
 
 local COL1 = 75
 local all_lines = {}
--- 方法: 找所有和背景色不同的区域
--- 第一列背景统一为 (237,237,237)，提取底色后做差值
--- 用 -fx 计算每个像素和背景的差异，然后阈值化
-for _, sep in ipairs({3, 5, 8, 12}) do
+-- 方法: 找所有和背景色不同的区域 + 传统阈值补漏
+for _, sep in ipairs({1, 2, 3, 5, 8, 12}) do
     local diff = sep * 100 / 255  -- 转为百分比
     local cmd = string.format(
         "convert '/tmp/wx_first_raw.png' -crop %dx%d+0+0 -colorspace gray " ..
@@ -92,6 +90,24 @@ for _, sep in ipairs({3, 5, 8, 12}) do
         "-define connected-components:verbose=true -connected-components 4 /dev/null 2>&1 " ..
         "| grep -v 'bgcolor\\|id:\\|0:.*gray'",
         COL1, wh, diff)
+    local pipe = io.popen(cmd)
+    if pipe then
+        for line in pipe:lines() do
+            local id, w, h, x, y, area = line:match("(%d+):%s*(%d+)x(%d+)%+(%d+)%+(%d+)%s+[%d.]+,[%d.]+%s+(%d+)")
+            if w and h and x and y and area then
+                table.insert(all_lines, {x=tonumber(x), y=tonumber(y), w=tonumber(w), h=tonumber(h), area=tonumber(area)})
+            end
+        end
+        pipe:close()
+    end
+end
+-- 补漏：Canny边缘检测（抓和底色几乎一样的图标轮廓）
+for _, thr in ipairs({10, 20, 30, 40}) do
+    local cmd = string.format(
+        "convert '/tmp/wx_first_raw.png' -crop %dx%d+0+0 -colorspace gray -canny 0x1+%d%%%%+%d%%%% " ..
+        "-negate -define connected-components:verbose=true -connected-components 4 /dev/null 2>&1 " ..
+        "| grep -v 'bgcolor\\|id:\\|0:.*gray'",
+        COL1, wh, thr, thr * 2)
     local pipe = io.popen(cmd)
     if pipe then
         for line in pipe:lines() do
@@ -119,32 +135,8 @@ for _, b in ipairs(all_lines) do
 end
 table.sort(blobs, function(a,b) return a.y < b.y end)
 
--- 文字行过滤
-local is_text = {}
-for i = 1, #blobs do is_text[i] = false end
-for i, a in ipairs(blobs) do
-    if is_text[i] then goto continue end
-    local neighbors = {}
-    for j, b in ipairs(blobs) do
-        if i ~= j and not is_text[j] then
-            local dy = math.abs((a.y + a.h/2) - (b.y + b.h/2))
-            local dx = math.abs((a.x + a.w/2) - (b.x + b.w/2))
-            if dy <= 15 and dx <= 25 then
-                table.insert(neighbors, j)
-            end
-        end
-    end
-    if #neighbors >= 4 then
-        is_text[i] = true
-        for _, j in ipairs(neighbors) do is_text[j] = true end
-    end
-    ::continue::
-end
-
-local icons = {}
-for i, b in ipairs(blobs) do
-    if not is_text[i] then table.insert(icons, b) end
-end
+-- 第一列无文字，直接使用所有blob
+local icons = blobs
 io.write(string.format("  第一列图标: %d\n", #icons)); io.flush()
 
 -- 5. 标注输出
