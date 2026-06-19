@@ -18,7 +18,9 @@ local ww = tonumber(geo:match("Geometry: (%d+)"))
 local wh = tonumber(geo:match("x(%d+)"))
 
 io.write(string.format("窗口: (%d,%d) %dx%d\n", wx, wy, ww, wh))
-local cmd = string.format("/data/venv/bin/python3 tests/find_icons.py %d %d %d %d 2>/dev/null", wx, wy, ww, wh)
+local ts = os.date("%Y%m%d_%H%M%S")
+local outfile = os.getenv("HOME") .. "/wechat_icons_" .. ts .. ".png"
+local cmd = string.format("/data/venv/bin/python3 tests/find_icons.py %d %d %d %d '%s' 2>/dev/null", wx, wy, ww, wh, outfile)
 os.execute(cmd)
 
 -- 隐藏微信窗口
