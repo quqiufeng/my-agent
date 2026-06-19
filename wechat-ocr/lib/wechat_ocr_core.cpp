@@ -158,16 +158,40 @@ char* ocr_capture(ocr_engine_t* engine) {
         auto boxes = engine->ocr->run(chat);
 
         // 找第二列和第三列之间的分界
-        // 方法：Canny 边缘检测 → 垂直边缘投影 → 找竖线峰值
-        // 微信窗口有两条竖分隔线：
-        //   线1（x≈60）   ：图标列与聊天列表之间
-        //   线2（x≈15-35%）：聊天列表与内容区之间
-        // 我们找第二条竖线作为列分界。
+        // 策略优先级：时间戳位置 → Canny竖线 → 文本右边缘
         int boundary = panel.cols / 5; // 保底20%
         int panel_w = panel.cols;
 
+        // --- 策略1: 用 OCR 时间戳定位 ---
+        // 时间戳如 "11:08" 出现在聊天列表每行的最右端。
+        // 注意：第三列的聊天消息也有时间戳，通过 x 范围 8%~28% 区分
         {
-            // 取一个水平条带避开标题栏和输入框
+            std::regex time_pat(R"(\d{1,2}[:：]\d{2})");
+            std::vector<int> time_rights;
+            for (auto &b : boxes) {
+                int cx = b.bbox.x + b.bbox.width / 2;
+                int right = b.bbox.x + b.bbox.width;
+                if (cx > panel_w * 0.08 && cx < panel_w * 0.28 &&
+                    b.text.size() >= 4 && b.text.size() <= 10 &&
+                    std::regex_search(b.text, time_pat)) {
+                    time_rights.push_back(right);
+                }
+            }
+            if (!time_rights.empty()) {
+                std::sort(time_rights.begin(), time_rights.end());
+                // 取中位数 + 偏移（时间戳右边缘通常在 250-380px）
+                int median = time_rights[time_rights.size() / 2];
+                boundary = median + 45;
+                goto boundary_done;
+            }
+        }
+
+        // --- 策略2: Canny 边缘检测 → 垂直投影找竖线 ---
+        // 微信窗口有两条竖分隔线：
+        //   线1（x≈60）   ：图标列与聊天列表之间
+        //   线2（x≈15-35%）：聊天列表与内容区之间
+        // 我们找最右侧的竖线作为列分界。
+        {
             int strip_y = crop_y + 60;
             int strip_h = chat_roi.height - 120;
             if (strip_h < 80) { strip_y = crop_y; strip_h = chat_roi.height; }
@@ -181,11 +205,10 @@ char* ocr_capture(ocr_engine_t* engine) {
             if (strip.channels() > 1) cv::cvtColor(strip, gray, cv::COLOR_BGR2GRAY);
             else gray = strip.clone();
 
-            // Canny 边缘检测
             cv::Mat edges;
             cv::Canny(gray, edges, 30, 90, 3);
 
-            // 垂直投影：每列统计边缘像素数
+            // 垂直投影
             std::vector<int> col_edges(panel_w, 0);
             for (int x = 0; x < panel_w; x++)
                 for (int y = 0; y < strip_h; y++)
@@ -199,33 +222,24 @@ char* ocr_capture(ocr_engine_t* engine) {
                 smooth[x] = s / 7.0f;
             }
 
-            // 在 10%~38% 范围找竖线峰值
-            int search_start = panel_w * 10 / 100;
-            int search_end   = panel_w * 38 / 100;
-            float threshold = strip_h * 0.12f;
+            // 在 18%~45% 范围找竖线峰值
+            int search_start = panel_w * 18 / 100;
+            int search_end   = panel_w * 45 / 100;
+            float thr = strip_h * 0.05f;
 
-            int best_x = search_start;
-            float best_peak = 0;
-            for (int x = search_start; x < search_end; x++) {
-                if (smooth[x] > threshold && smooth[x] > smooth[x-1] && smooth[x] > smooth[x+1]) {
-                    if (smooth[x] > best_peak) {
-                        best_peak = smooth[x];
-                        best_x = x;
-                    }
+            // 从右向左找第一个峰值（即最右侧的竖线）
+            for (int x = search_end - 1; x >= search_start; x--) {
+                if (smooth[x] > thr && smooth[x] > smooth[x-1] && smooth[x] > smooth[x+1]) {
+                    boundary = x;
+                    goto boundary_done;
                 }
             }
-
-            if (best_peak > threshold) {
-                boundary = best_x;
-            } else {
-                goto fallback_ocr;
-            }
+            goto fallback_ocr;
         }
-        goto after_fallback;
 
 fallback_ocr:
         {
-            // 回退：用 OCR 文本右边缘 90% 分位值
+            // --- 策略3: OCR 文本右边缘 90% 分位值 ---
             std::vector<int> all_rights;
             for (auto &b : boxes) {
                 int right = b.bbox.x + b.bbox.width;
@@ -240,7 +254,7 @@ fallback_ocr:
             }
         }
 
-after_fallback:
+boundary_done:
         // boundary 已确定，继续后续处理
 
         // 过滤：只保留第三列（boundary右侧）的文字框
