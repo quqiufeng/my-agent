@@ -96,9 +96,9 @@ local filtered = {}
 local seen = {}
 for _, b in ipairs(all_blobs) do
     local ratio = b.w / b.h
-    if b.h >= 6 and b.w >= 6
-       and ratio >= 0.35 and ratio <= 2.2
-       and b.area >= 36 and b.area <= 4000 then
+    if b.h >= 5 and b.w >= 5
+       and ratio >= 0.3 and ratio <= 2.5
+       and b.area >= 25 and b.area <= 4000 then
         local key = math.floor(b.x/8) * 10000 + math.floor(b.y/8)
         if not seen[key] then
             seen[key] = true
