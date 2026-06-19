@@ -16,7 +16,7 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 
 ## 测试脚本
 
-### 1. test_3columns.lua — 三列结构检测 ✅ 已验证
+### 1. test_3columns.lua — 三列结构检测 ✅✅ 已验证（全屏/小屏/拖拽分隔线均通过）
 
 检测微信窗口的三列结构，输出分界位置和标注图。
 
