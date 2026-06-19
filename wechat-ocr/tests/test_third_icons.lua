@@ -84,31 +84,31 @@ local raw_tool = "/tmp/wx_third_tool.png"
 local outfile = home .. "/wechat_third_icons_" .. ts .. ".png"
 os.execute(string.format("import -window root -crop %dx%d+%d+%d '%s' 2>/dev/null", ww, wh, wx, wy, raw_full))
 
--- 只截工具栏区域（底部200px）
-local tool_h = math.min(430, wh)
-local tool_y = wy + wh - tool_h
+-- 工具栏图标行在底部 430px 区域的上方 55px
+local bar_h = 55
+local bar_y = wy + wh - 430
 os.execute(string.format("import -window root -crop %dx%d+%d+%d '%s' 2>/dev/null",
-    ww, tool_h, wx, tool_y, raw_tool))
+    ww, bar_h, wx, bar_y, raw_tool))
 
 -- 4. 检测第三列工具栏图标
 io.write("[3/5] 检测第三列图标...\n"); io.flush()
 
 local all_lines = {}
 
--- 只在工具栏区域检测
+-- 只在第三列的工具栏图标行检测
 for thr = 220, 80, -15 do
     local pct = thr / 255 * 100
     local cmd = string.format(
         "convert '%s' +repage -crop %dx%d+%d+0 -colorspace gray -threshold %.1f%%%% -negate " ..
         "-define connected-components:verbose=true -connected-components 4 /dev/null 2>&1 " ..
         "| grep -v 'bgcolor\\|id:\\|0:.*srgb'",
-        raw_tool, col3_w, tool_h, col3_x, pct)
+        raw_tool, col3_w, bar_h, col3_x, pct)
     local pipe = io.popen(cmd)
     if pipe then
         for line in pipe:lines() do
             local id, w, h, x, y, area = line:match("(%d+):%s*(%d+)x(%d+)%+(%d+)%+(%d+)%s+[%d.]+,[%d.]+%s+(%d+)")
             if w and h and x and y and area then
-                table.insert(all_lines, {x=col3_x+tonumber(x), y=tonumber(y) + wh - tool_h,
+                table.insert(all_lines, {x=col3_x+tonumber(x), y=tonumber(y) + bar_y - wy,
                                          w=tonumber(w), h=tonumber(h), area=tonumber(area)})
             end
         end
@@ -192,7 +192,7 @@ for i, b in ipairs(icons) do
     end
 end
 
-os.execute(string.format("convert '%s' %s '%s' 2>/dev/null", raw, table.concat(cmds, " "), outfile))
+os.execute(string.format("convert '%s' %s '%s' 2>/dev/null", raw_full, table.concat(cmds, " "), outfile))
 
 local fh = io.open(outfile, "r")
 if fh then
