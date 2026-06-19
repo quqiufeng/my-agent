@@ -17,11 +17,11 @@ end
 
 -- 读取最新一条消息（消息区底部）
 local function read_latest_message(win)
-    -- 只截取消息区底部 120px（最新消息所在位置）
+    -- 截取消息区底部（避开输入框，输入框在底部约 120px）
     local msg_x = win.x + math.floor(win.w * 0.40) + 20
     local msg_w = win.w - math.floor(win.w * 0.40) - 40
-    local msg_y = win.y + win.h - 400  -- 底部往上 400px 范围
-    local msg_h = 300
+    local msg_y = win.y + win.h - 500  -- 底部往上 500px
+    local msg_h = 380  -- 380px 高，到输入框上方
     os.execute(string.format("import -window root -crop %dx%d+%d+%d '/tmp/_ft_latest.png' 2>/dev/null", msg_w, msg_h, msg_x, msg_y))
 
     local lib = ffi.load("libwechat_ocr_core.so")
