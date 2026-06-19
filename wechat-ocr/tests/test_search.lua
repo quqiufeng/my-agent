@@ -47,12 +47,7 @@ flush("✅ 搜索完成\n")
 -- 如果没有消息参数，到这里结束
 if not msg then os.exit(0) end
 
--- 点第一个搜索结果
-flush("点第一个结果...\n")
-os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", wx + 180, wy + 90))
-ffi.C.usleep(1500000)
-
--- 发送消息（搜索结果已自动聚焦输入框）
+-- 搜索结果已自动打开聊天，输入框已聚焦，直接粘贴发送
 flush("发送: " .. msg .. "\n")
 -- 剪贴板粘贴
 local f3 = io.open("/tmp/wx_msg.txt", "w"); f3:write(msg); f3:close()
