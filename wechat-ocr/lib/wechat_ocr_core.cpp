@@ -173,7 +173,7 @@ char* ocr_capture(ocr_engine_t* engine) {
                 engine->last_error = "未检测到时间戳";
                 return nullptr;
             }
-            boundary = rights[0] + 10;
+            boundary = rights[0] + 15;
         }
         // 过滤：只保留第三列（boundary右侧）的文字框
         std::vector<TextBox> filtered;
