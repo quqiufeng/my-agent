@@ -108,23 +108,24 @@ luajit tests/test_contacts_search.lua [关键词]
 
 ---
 
-### 8. test_first_column.lua — 第一列图标点击 (未验证)
+### 8. test_first_icons.lua — 第一列小图标检测 ✅✅ 已验证
 
-依次点击第一列7个图标。
+**基于三列分割的第一列图标检测：**
+
+- 先用 OCR 做三列分割（识别 xx:xx 时间戳定位第二/三分界）
+- 只检测第一列（75px宽）范围内的图标
+- 背景差值法：`fx abs(u-237/255)` 找所有和底色不同的像素
+- 补漏：Canny 边缘检测抓极浅图标
+- 中心距离合并（22px半径）去重
+- 输出标注图含三列分割线和第一列图标框
 
 ```bash
-luajit tests/test_first_column.lua
+luajit tests/test_first_icons.lua
 ```
 
-| 图标 | 位置 |
+| 输出 | 说明 |
 |------|------|
-| 聊天 | (wx+40, wy+110) |
-| 通讯录 | +60px |
-| 收藏 | +60px |
-| 朋友圈 | +60px |
-| 小程序 | +60px |
-| 更多 | +60px |
-| 设置 | +60px |
+| `~/wechat_first_icons_*.png` | 三列分割 + 第一列图标标注 |
 
 ---
 
@@ -337,7 +338,7 @@ tests/
 ├── test_screenshot.lua         截图发送               (未验证)
 ├── test_search.lua             搜索联系人             (未验证)
 ├── test_contacts_search.lua    通讯录搜索             (未验证)
-├── test_first_column.lua       第一列图标             (未验证)
+├── test_first_icons.lua        第一列图标检测         ✅✅ 已验证
 ├── test_unread_detect.lua      未读检测（旧版）       (未验证)
 ├── test_two_lines.lua          第二列条目+自动点击    (未验证)
 ├── test_avatar_badges.lua      头像红点检测           (未验证)
