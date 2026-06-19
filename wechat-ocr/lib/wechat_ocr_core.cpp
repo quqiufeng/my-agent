@@ -164,32 +164,38 @@ char* ocr_capture(ocr_engine_t* engine) {
         int panel_w = panel.cols;
 
         // 找第二列和第三列之间的分界
-        // 聊天名称特征：bx=150~175，宽度小（<=100px）
-        // 第三列预览文字：bx=150~175，宽度大（>100px）且有时间戳
+        // 原理：第二列右侧的时间戳是右对齐的，
+        // 所有时间戳的右边缘 = 分隔线左侧位置。
+        // 用时间戳的右边缘 + 偏移作为列分界。
         {
-            const int COL1 = 75;
-            int max_right = 0;
+            std::regex time_pat(R"(\d{1,2}[:：]\d{2})");
+            std::vector<int> stamp_rights;  // 时间戳右边缘
 
             for (auto &b : boxes) {
-                int bx = b.bbox.x;
-                int bw = b.bbox.width;
-                int right = bx + bw;
-                // 聊天名称：左边缘在 75~200，宽度 <= 100，右边缘不太大
-                if (bx >= COL1 && bx <= COL1 + 125 && bw < 100 && right < panel_w * 0.25) {
-                    if (right > max_right) max_right = right;
-                }
-            }
-
-            // 如果没找到，回退
-            if (max_right == 0) {
-                for (auto &b : boxes) {
+                if ((int)b.text.size() >= 4 && (int)b.text.size() <= 10 &&
+                    std::regex_search(b.text, time_pat)) {
                     int right = b.bbox.x + b.bbox.width;
-                    if (right > COL1 && right < panel_w * 0.40)
-                        if (right > max_right) max_right = right;
+                    stamp_rights.push_back(right);
                 }
             }
 
-            boundary = max_right + 15;
+            // 有时间戳：取中位数 + 偏移
+            if (!stamp_rights.empty()) {
+                std::sort(stamp_rights.begin(), stamp_rights.end());
+                int median = stamp_rights[stamp_rights.size() / 2];
+                boundary = median + 15;
+            } else {
+                // 没有时间戳：回退到聊天名称最右边缘 + 偏移
+                int max_name = 0;
+                for (auto &b : boxes) {
+                    int bx = b.bbox.x;
+                    int right = bx + b.bbox.width;
+                    if (bx >= 75 && bx <= 200 && b.bbox.width < 100 && right < panel_w * 0.25) {
+                        if (right > max_name) max_name = right;
+                    }
+                }
+                boundary = (max_name > 0) ? (max_name + 15) : (panel_w * 22 / 100);
+            }
         }
         // boundary 已确定，继续后续处理
 
