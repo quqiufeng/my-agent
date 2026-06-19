@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <memory>
 #include <unistd.h>
+#include <regex>
+#include <algorithm>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 
@@ -155,21 +157,44 @@ char* ocr_capture(ocr_engine_t* engine) {
 
         auto boxes = engine->ocr->run(chat);
 
-        // 找第二列右侧的文字（时间戳或短文本）定位边界
-        int boundary = panel.cols * 3 / 10; // 保底30%
-        std::vector<int> right_items;
+        // 找第二列右侧的边界（时间戳/短文本右侧），用于分隔第二列和第三列
+        int boundary = panel.cols / 5; // 保底20%（第二列约占窗口20%宽度）
+        std::vector<int> right_edges;
+
+        // 优先匹配时间格式 HH:MM（如 "08:44"、"18:30"，兼容全角冒号）
+        std::regex time_pattern(R"(\d{1,2}[:：]\d{2})");
+        // 也匹配 "昨天"、"今天" 等时间词
+        std::regex date_pattern(R"((昨天|今天|星期[一二三四五六日天]))");
+
         for (auto &b : boxes) {
-            int cx = b.bbox.x + b.bbox.width / 2;
-            // 在第二列右侧的文字：x在15%~45%之间，长度4-8字符
-            if (cx > panel.cols * 0.15 && cx < panel.cols * 0.45) {
-                if (b.text.size() >= 3 && b.text.size() <= 8) {
-                    right_items.push_back(cx);
-                }
+            if (std::regex_search(b.text, time_pattern) || std::regex_search(b.text, date_pattern)) {
+                // 时间戳通常在第二列右侧，用文本右边缘定位
+                int right = b.bbox.x + b.bbox.width;
+                right_edges.push_back(right);
             }
         }
-        if (!right_items.empty()) {
-            std::sort(right_items.begin(), right_items.end());
-            boundary = right_items[right_items.size() / 2] + 40;
+
+        // 如果没找到时间文本，用第二列所有文本的右边缘聚合定位
+        if (right_edges.empty()) {
+            std::vector<int> all_rights;
+            for (auto &b : boxes) {
+                // 只考虑面板左侧 35% 范围内的文本（第二列区域）
+                int right = b.bbox.x + b.bbox.width;
+                if (right < panel.cols * 0.35 && b.text.size() > 1) {
+                    all_rights.push_back(right);
+                }
+            }
+            if (!all_rights.empty()) {
+                std::sort(all_rights.begin(), all_rights.end());
+                // 取右边缘的 80% 分位值（排除极长的异常值），+偏移
+                size_t idx = all_rights.size() * 8 / 10;
+                if (idx >= all_rights.size()) idx = all_rights.size() - 1;
+                boundary = all_rights[idx] + 30;
+            }
+        } else {
+            std::sort(right_edges.begin(), right_edges.end());
+            // 取中位数 + 偏移
+            boundary = right_edges[right_edges.size() / 2] + 40;
         }
 
         // 过滤：只保留第三列（boundary右侧）的文字框
