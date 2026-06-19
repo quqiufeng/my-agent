@@ -43,7 +43,7 @@ luajit tests/test_icons.lua
 
 ---
 
-### 3. test_third_icons.lua — 第三列小图标检测 (未验证)
+### 3. test_third_icons.lua — 第三列小图标检测 ✅✅ 已验证（全屏21图标/小屏23图标，基于三列算法定位）
 
 先 OCR 定位第三列 → 再扫描找图标 → 标注。
 
@@ -327,7 +327,7 @@ tests/
 ├── TEST.md                     本文档
 ├── test_3columns.lua           三列结构检测           ✅ 已验证
 ├── test_icons.lua              全窗口图标             ✅✅ 已验证
-├── test_third_icons.lua        第三列图标             (未验证)
+├── test_third_icons.lua        第三列图标             ✅✅ 已验证
 ├── test_send_file.lua          发送文件               (未验证)
 ├── test_screenshot.lua         截图发送               (未验证)
 ├── test_search.lua             搜索联系人             (未验证)
