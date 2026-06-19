@@ -155,6 +155,10 @@ local function run_test()
     os.execute(cmd)
     io.write("  标记图: ~/wechat_3cols_test.png\n")
 
+    -- 7. 隐藏微信窗口（点任务栏图标或最小化）
+    os.execute("xdotool search --name 微信 windowminimize 2>/dev/null")
+    io.write("  微信已隐藏\n")
+
     return true
 end
 
