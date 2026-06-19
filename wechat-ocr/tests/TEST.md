@@ -38,7 +38,21 @@ luajit tests/test_3columns.lua
 
 ---
 
-### 3. test_third_icons.lua — 第三列小图标检测 (未验证)
+### 3. test_third_icons.lua — 第三列小图标检测 ✅✅ 已验证
+
+**基于三列分割的第三列工具栏图标检测：**
+
+- OCR 定位第三列边界
+- 只检测底部 430px（工具栏+输入框区域）
+- 多阈值（220→80）+ Canny 边缘检测
+- 中心距离合并去重 + 文字行过滤
+- `+repage` 处理虚拟画布偏移
+
+```bash
+luajit tests/test_third_icons.lua
+```
+
+---
 
 先 OCR 定位第三列 → 再扫描找图标 → 标注。
 
@@ -322,7 +336,7 @@ robot.set_record(true)  -- 开启录像
 tests/
 ├── TEST.md                     本文档
 ├── test_3columns.lua           三列结构检测           ✅✅ 已验证
-├── test_third_icons.lua        第三列图标             (未验证)
+├── test_third_icons.lua        第三列图标             ✅✅ 已验证
 ├── test_send_file.lua          发送文件               (未验证)
 ├── test_screenshot.lua         截图发送               (未验证)
 ├── test_search.lua             搜索联系人             (未验证)
