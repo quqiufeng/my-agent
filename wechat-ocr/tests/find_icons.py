@@ -16,17 +16,17 @@ with mss.mss() as sct:
 gray = cv2.cvtColor(img, cv2.COLOR_RGBA2GRAY)
 roi = gray[10:wh-10, 10:ww-10]
 
-# 多阈值合并
+# 多阈值合并（从深色到浅色全覆盖）
 all_blobs = []
-for thr in range(180, 60, -20):
+for thr in range(180, 20, -10):
     _, t = cv2.threshold(roi, thr, 255, cv2.THRESH_BINARY_INV)
     cs, _ = cv2.findContours(t, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for c in cs:
         x, y, w, h = cv2.boundingRect(c)
         ratio = w / h if h > 0 else 0
-        if h < 14 or w < 12: continue       # 过滤小碎片
-        if ratio > 1.8 or ratio < 0.5: continue  # 图标近似方形
-        if w*h < 150 or w*h > 3000: continue
+        if h < 8 or w < 8: continue         # 过滤微小碎片
+        if ratio > 2.0 or ratio < 0.4: continue  # 图标近似方形
+        if w*h < 60 or w*h > 4000: continue  # 放宽面积范围
         all_blobs.append((10+x, 10+y, w, h, 10+x+w//2, 10+y+h//2))
 
 # 去重
@@ -43,18 +43,18 @@ blob_list = sorted(unique.values(), key=lambda b: (b[1], b[0]))
 # 对每个blob，统计其±15px高度范围内、水平间距<150px的邻居数。
 # 邻居≥3的视为文字行，整行排除。
 TEXT_ROW_Y_TOLERANCE = 15
-TEXT_ROW_X_TOLERANCE = 150
+TEXT_ROW_X_MAX = 60   # 文字间距密（<60px），图标间距疏（>60px）
 TEXT_ROW_MIN_NEIGHBORS = 3
 
-# 标记哪些blob被判为文字
+# 对每个blob，找同一水平线上间距<60px的邻居
+# 如果3+个blob密集排列，判定为文字行
 is_text = [False] * len(blob_list)
 for i, (bx1, by1, bw1, bh1, cx1, cy1) in enumerate(blob_list):
     if is_text[i]: continue
-    # 找同行邻居
     neighbors = []
     for j, (bx2, by2, bw2, bh2, cx2, cy2) in enumerate(blob_list):
         if i == j or is_text[j]: continue
-        if abs(cy2 - cy1) <= TEXT_ROW_Y_TOLERANCE and abs(cx2 - cx1) <= TEXT_ROW_X_TOLERANCE:
+        if abs(cy2 - cy1) <= TEXT_ROW_Y_TOLERANCE and abs(cx2 - cx1) <= TEXT_ROW_X_MAX:
             neighbors.append(j)
     if len(neighbors) >= TEXT_ROW_MIN_NEIGHBORS:
         is_text[i] = True
