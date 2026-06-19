@@ -21,7 +21,8 @@ static bool detect_panel(cv::Mat &out_panel, int &out_x, int &out_y,
 // Run a shell command and capture output (used for xdotool desktop switching)
 static std::string exec_cmd(const char *cmd) {
     std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    auto pipe_close = [](FILE *f) { if (f) pclose(f); };
+    std::unique_ptr<FILE, decltype(pipe_close)> pipe(popen(cmd, "r"), pipe_close);
     if (!pipe) return result;
     char buf[128];
     while (fgets(buf, sizeof(buf), pipe.get()) != nullptr) {
@@ -164,41 +165,70 @@ char* ocr_capture(ocr_engine_t* engine) {
         int panel_w = panel.cols;
 
         // 找第二列和第三列之间的分界
-        // 原理：第二列右侧的时间戳是右对齐的，
-        // 所有时间戳的右边缘 = 分隔线左侧位置。
-        // 用时间戳的右边缘 + 偏移作为列分界。
+        // 原理：第二列右侧的时间戳是右对齐的。
         {
             std::regex time_pat(R"(\d{1,2}[:：]\d{2})");
-            std::vector<int> stamp_rights;  // 时间戳右边缘
+            std::map<int, int> clusters;
 
             for (auto &b : boxes) {
                 if ((int)b.text.size() >= 4 && (int)b.text.size() <= 10 &&
                     std::regex_search(b.text, time_pat)) {
                     int right = b.bbox.x + b.bbox.width;
-                    stamp_rights.push_back(right);
+                    int best_key = right;
+                    for (auto &[k, v] : clusters) {
+                        if (std::abs(k - right) <= 10) { best_key = k; break; }
+                    }
+                    clusters[best_key]++;
                 }
             }
 
-            // 有时间戳：取中位数 + 偏移
-            if (!stamp_rights.empty()) {
-                std::sort(stamp_rights.begin(), stamp_rights.end());
-                int median = stamp_rights[stamp_rights.size() / 2];
-                boundary = median + 15;
+            if (!clusters.empty()) {
+                // 取右边缘最大的聚类
+                int best_right = 0;
+                for (auto &[right, cnt] : clusters) {
+                    if (right > best_right && cnt >= 1) best_right = right;
+                }
+                boundary = best_right + 20;
             } else {
-                // 没有时间戳：回退到聊天名称最右边缘 + 偏移
-                int max_name = 0;
-                for (auto &b : boxes) {
-                    int bx = b.bbox.x;
-                    int right = bx + b.bbox.width;
-                    if (bx >= 75 && bx <= 200 && b.bbox.width < 100 && right < panel_w * 0.25) {
-                        if (right > max_name) max_name = right;
+                // 回退1: Canny 找竖线（分隔线特征）
+                {
+                    int sy = crop_y + 50, sh = chat_roi.height - 150;
+                    if (sh >= 50) {
+                        cv::Rect sr(0, sy - crop_y, panel_w, sh);
+                        if (sr.y + sr.height > panel.rows) sr.height = panel.rows - sr.y;
+                        cv::Mat strip = panel(sr);
+                        cv::Mat gray;
+                        if (strip.channels() > 1) cv::cvtColor(strip, gray, cv::COLOR_BGR2GRAY);
+                        else gray = strip.clone();
+                        cv::Mat edges;
+                        cv::Canny(gray, edges, 25, 80, 3);
+                        std::vector<int> col_cnt(panel_w, 0);
+                        for (int x = 0; x < panel_w; x++)
+                            for (int y = 0; y < sh; y++)
+                                if (edges.at<uchar>(y, x)) col_cnt[x]++;
+
+                        float thr = sh * 0.03f;
+                        int s_start = panel_w * 10 / 100, s_end = panel_w * 45 / 100;
+                        for (int x = s_end - 1; x >= s_start; x--) {
+                            if (col_cnt[x] > thr) { boundary = x; goto boundary_done; }
+                        }
                     }
                 }
-                boundary = (max_name > 0) ? (max_name + 15) : (panel_w * 22 / 100);
+                // 回退2: 聊天名称最右边缘 + 50px
+                {
+                    int max_name = 0;
+                    for (auto &b : boxes) {
+                        int bx = b.bbox.x, right = bx + b.bbox.width;
+                        if (bx >= 75 && bx <= 200 && b.bbox.width < 100 && right < panel_w * 0.25) {
+                            if (right > max_name) max_name = right;
+                        }
+                    }
+                    if (max_name > 0) boundary = max_name + 50;
+                    else boundary = panel_w * 22 / 100;
+                }
             }
         }
-        // boundary 已确定，继续后续处理
-
+boundary_done:
         // 过滤：只保留第三列（boundary右侧）的文字框
         std::vector<TextBox> filtered;
         for (auto &b : boxes) {
