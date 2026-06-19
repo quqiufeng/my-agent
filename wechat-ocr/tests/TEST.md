@@ -154,7 +154,15 @@ luajit tests/test_avatar_badges.lua
 | 控制台 | 红点位置、匹配条目编号 |
 | ~/wechat_avatar_badges.png | 标注图（红框标记有未读的条目） |
 
-**检测方法**: ImageMagick 连通分量分析 → 严格红色阈值（R>G*2.2, G<0.5）→ 位置匹配 → 跳过公众号/服务号
+**检测方法**: ImageMagick 连通分量分析 → 严格红色阈值（R>G*2.2, G<0.5）→ 位置匹配 → 额外检测无文字条目（如微信支付）
+
+**红点特征**:
+| 类型 | 检测方式 | 标注 |
+|------|---------|------|
+| 小红点（无数字） | 严格红色阈值 + 连通分量 5~20px | 🔴 红框 |
+| 红底白字数字 | 同红色检测 + 中心白色像素判断 | 🔴 红框 |
+| 群消息 N条 | OCR 文本匹配 `%d+条` | 📝 红框 |
+| 无文字条目 | 未匹配红点 x<200, y>100 | 🟠 橙色框 "?" |
 
 ---
 
@@ -186,6 +194,29 @@ luajit tests/ai_to_wechat.lua
 ```bash
 luajit tests/test_open_chrome.lua
 ```
+
+---
+
+### 15. monitor — C 守护进程（微信消息监控）
+
+每 5 分钟检测微信未读红点，编译运行：
+
+```bash
+# 编译
+cd /opt/my-agent/wechat-ocr
+gcc -O2 -o monitor monitor.c
+
+# 运行守护进程
+./monitor &
+# 日志: /tmp/wechat_monitor.log
+
+# 单次检测
+./monitor --once
+```
+
+**检测流程**: 点底部面板微信图标 → 截图 → ImageMagick 红色分析 → 连通分量匹配
+
+---
 
 ## 统一API
 
@@ -226,6 +257,8 @@ tests/
 ├── test_ai_search.lua       Chrome AI 搜索
 ├── test_open_chrome.lua     打开 Chrome
 ├── ai_to_wechat.lua         AI→微信发送
+├── monitor.c                未读监控 C 守护进程
+├── monitor                  未读监控（已编译）
 ├── mark_columns.py          标注图生成
 ├── find_icons.py            图标检测
 ├── find_third_icons.py      第三列图标
