@@ -20,3 +20,7 @@ local wh = tonumber(geo:match("x(%d+)"))
 io.write(string.format("窗口: (%d,%d) %dx%d\n", wx, wy, ww, wh))
 local cmd = string.format("/data/venv/bin/python3 tests/find_icons.py %d %d %d %d 2>/dev/null", wx, wy, ww, wh)
 os.execute(cmd)
+
+-- 隐藏微信窗口
+os.execute("xdotool search --name 微信 windowminimize 2>/dev/null")
+io.write("  微信已隐藏\n")
