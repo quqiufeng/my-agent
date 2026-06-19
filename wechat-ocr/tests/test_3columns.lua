@@ -149,11 +149,13 @@ local function run_test()
 
     lib.ocr_destroy(engine)
 
-    -- 6. 生成标记图
+    -- 6. 生成标记图（带时间戳文件名防覆盖）
     io.write("\n生成标记图...\n")
-    local cmd = string.format("/data/venv/bin/python3 tests/mark_columns.py %d 2>/dev/null", win.x)
+    local ts = os.date("%Y%m%d_%H%M%S")
+    local outfile = os.getenv("HOME") .. "/wechat_3cols_" .. ts .. ".png"
+    local cmd = string.format("/data/venv/bin/python3 tests/mark_columns.py %d '%s' 2>/dev/null", win.x, outfile)
     os.execute(cmd)
-    io.write("  标记图: ~/wechat_3cols_test.png\n")
+    io.write("  标记图: " .. outfile .. "\n")
 
     -- 7. 隐藏微信窗口（点任务栏图标或最小化）
     os.execute("xdotool search --name 微信 windowminimize 2>/dev/null")

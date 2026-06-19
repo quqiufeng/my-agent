@@ -7,6 +7,7 @@ import cv2, numpy as np, subprocess, re, mss, os, sys
 from PIL import Image, ImageDraw, ImageFont
 
 col3 = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+out_path = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser("~/wechat_3cols_test.png")
 
 geo = subprocess.run(["xdotool","getactivewindow","getwindowgeometry"],
                      capture_output=True,text=True).stdout
@@ -50,7 +51,6 @@ info = f"窗口 {ww}x{wh} | 第三列 {col3-wx}px ({(col3-wx)/ww*100:.0f}%)"
 draw.text((10, wh-30), info, fill=(255,255,255), font=font)
 
 vis = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-out = os.path.expanduser("~/wechat_3cols_test.png")
-cv2.imwrite(out, vis)
-print(f"标记图: {out}")
+cv2.imwrite(out_path, vis)
+print(f"标记图: {out_path}")
 print(f"第三列: {col3-wx}px, {(col3-wx)/ww*100:.0f}%")
