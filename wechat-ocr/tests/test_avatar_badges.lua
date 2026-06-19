@@ -196,6 +196,22 @@ end
 unread_count = unread_count + extra_unread
 io.write(string.format("\n共 %d 个头像有红点/数字\n", unread_count))
 
+-- 标注额外红点（无文字条目）
+if extra_unread > 0 then
+    for _, dot in ipairs(red_dots) do
+        local matched = false
+        for _, entry in ipairs(entries) do if entry.found and entry.dot_x == dot.x then matched = true; break end end
+        if not matched and dot.x < 200 and dot.y > 100 then
+            table.insert(convert_cmds, string.format(
+                '-fill none -stroke orange -strokewidth 2 -draw "rectangle %d,%d %d,%d"',
+                dot.x - 2, dot.y - 2, dot.x + dot.w + 2, dot.y + dot.h + 2))
+            table.insert(convert_cmds, string.format(
+                '-fill orange -pointsize 12 -annotate +%d+%d "?"',
+                dot.x + 2, dot.y - 4))
+        end
+    end
+end
+
 -- 7. 标注图
 if #convert_cmds > 0 then
     local home = os.getenv("HOME") or "/home/quqiufeng"
