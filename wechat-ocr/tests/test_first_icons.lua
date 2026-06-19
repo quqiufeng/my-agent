@@ -81,13 +81,17 @@ io.write("[3/5] 检测第一列图标...\n"); io.flush()
 
 local COL1 = 75
 local all_lines = {}
-for thr = 240, 3, -3 do
-    local pct = thr / 255 * 100
+-- 方法: 找所有和背景色不同的区域
+-- 第一列背景统一为 (237,237,237)，提取底色后做差值
+-- 用 -fx 计算每个像素和背景的差异，然后阈值化
+for _, sep in ipairs({3, 5, 8, 12}) do
+    local diff = sep * 100 / 255  -- 转为百分比
     local cmd = string.format(
-        "convert '/tmp/wx_first_raw.png' -crop %dx%d+0+0 -colorspace gray -threshold %.1f%% -negate " ..
+        "convert '/tmp/wx_first_raw.png' -crop %dx%d+0+0 -colorspace gray " ..
+        "-fx 'abs(u - 237/255)' -threshold %.1f%%%% " ..
         "-define connected-components:verbose=true -connected-components 4 /dev/null 2>&1 " ..
-        "| grep -v 'bgcolor\\|id:\\|0:.*srgb'",
-        COL1, wh, pct)
+        "| grep -v 'bgcolor\\|id:\\|0:.*gray'",
+        COL1, wh, diff)
     local pipe = io.popen(cmd)
     if pipe then
         for line in pipe:lines() do
