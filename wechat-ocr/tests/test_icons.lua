@@ -123,7 +123,7 @@ for i = 1, #filtered do
             local b = filtered[j]
             local dy = math.abs((a.y + a.h/2) - (b.y + b.h/2))
             local dx = math.abs((a.x + a.w/2) - (b.x + b.w/2))
-            if dy <= 15 and dx <= 45 then
+            if dy <= 15 and dx <= 25 then
                 table.insert(neighbors, j)
             end
         end
