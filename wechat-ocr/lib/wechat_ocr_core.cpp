@@ -164,97 +164,33 @@ char* ocr_capture(ocr_engine_t* engine) {
         int panel_w = panel.cols;
 
         // 找第二列和第三列之间的分界
-        // 关键特征：第二列右侧的时间戳是右对齐的，
-        // 所有时间戳的右边缘在同一垂直线上（即分隔线位置）。
-        //
-        // 方法1: 找右对齐的短文本聚类（时间戳）
-        // 方法2: 文字右边缘 95% 分位值
-        bool found = false;
-
-        // --- 方法1: 右对齐短文本聚类 ---
-        // 时间戳是短文本（4-8字符），右对齐在同一列上。
-        // 按右边缘位置分组，找到聚类最多的右边缘位置。
+        // 聊天名称特征：bx=150~175，宽度小（<=100px）
+        // 第三列预览文字：bx=150~175，宽度大（>100px）且有时间戳
         {
-            // 收集候选：短文本（2-10字符），在第二列范围内
-            std::vector<int> candidates;
-            for (auto &b : boxes) {
-                int cx = b.bbox.x + b.bbox.width / 2;
-                int right = b.bbox.x + b.bbox.width;
-                int len = (int)b.text.size();
-                // 在 5%~45% 范围内，短文本
-                if (cx > panel_w * 0.05 && cx < panel_w * 0.45 &&
-                    len >= 2 && len <= 10) {
-                    candidates.push_back(right);
-                }
-            }
+            const int COL1 = 75;
+            int max_right = 0;
 
-            if (candidates.size() >= 3) {
-                // 按右边缘值聚类（误差 8px 内视为同一列）
-                std::map<int, int> cluster; // right_value -> count
-                for (int r : candidates) {
-                    // 找最近的现有聚类
-                    int best_key = r;
-                    int best_dist = 8;
-                    for (auto &[key, count] : cluster) {
-                        int dist = std::abs(key - r);
-                        if (dist < best_dist) {
-                            best_dist = dist;
-                            best_key = key;
-                        }
-                    }
-                    cluster[best_key]++;
-                }
-
-                // 找到聚类数最多、且右边缘最大的组
-                int max_count = 0;
-                int best_right = 0;
-                for (auto &[right, count] : cluster) {
-                    if (count > max_count || (count == max_count && right > best_right)) {
-                        max_count = count;
-                        best_right = right;
-                    }
-                }
-
-                // 如果有至少 2 个文本在同一右边缘聚类，且该位置 > 20%
-                if (max_count >= 2 && best_right > panel_w * 0.15) {
-                    boundary = best_right + 45;
-                    found = true;
-                }
-            }
-        }
-
-        // --- 方法2: 文字右边缘 95% 分位值 ---
-        if (!found) {
-            const int COL1_W = 75;
-            int max_left = panel_w * 30 / 100;
-            int max_right = panel_w * 45 / 100;
-
-            std::vector<int> right_edges;
             for (auto &b : boxes) {
                 int bx = b.bbox.x;
-                int right = bx + b.bbox.width;
-                if (bx >= COL1_W && bx < max_left && right < max_right &&
-                    b.bbox.width < 450 && (int)b.text.size() > 1) {
-                    right_edges.push_back(right);
+                int bw = b.bbox.width;
+                int right = bx + bw;
+                // 聊天名称：左边缘在 75~200，宽度 <= 100，右边缘不太大
+                if (bx >= COL1 && bx <= COL1 + 125 && bw < 100 && right < panel_w * 0.25) {
+                    if (right > max_right) max_right = right;
                 }
             }
-            if (right_edges.empty()) {
+
+            // 如果没找到，回退
+            if (max_right == 0) {
                 for (auto &b : boxes) {
                     int right = b.bbox.x + b.bbox.width;
-                    if (right > 75 && right < max_right)
-                        right_edges.push_back(right);
+                    if (right > COL1 && right < panel_w * 0.40)
+                        if (right > max_right) max_right = right;
                 }
             }
-            if (!right_edges.empty()) {
-                std::sort(right_edges.begin(), right_edges.end());
-                size_t idx = right_edges.size() * 95 / 100;
-                if (idx >= right_edges.size()) idx = right_edges.size() - 1;
-                boundary = right_edges[idx] + 25;
-            }
-        }
 
-boundary_done:
-        if (boundary < 100) boundary = 100;
+            boundary = max_right + 15;
+        }
         // boundary 已确定，继续后续处理
 
         // 过滤：只保留第三列（boundary右侧）的文字框
