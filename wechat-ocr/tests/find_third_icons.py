@@ -1,60 +1,75 @@
 #!/usr/bin/env python3
 """WeChat OCR - 第三列小图标检测
-只扫描第三列区域（时间戳+40px分界），找小方形暗色块
-用法: python3 find_third_icons.py <第三列X> <窗口X> <窗口Y> <窗口W> <窗口H>
+只扫描第三列区域（由 C++ OCR 引擎定位），找方形暗色块/灰色图标
+用法: python3 find_third_icons.py <第三列X> <窗口X> <窗口Y> <窗口W> <窗口H> [输出路径]
 """
-import cv2, numpy as np, os, sys, subprocess, re
+import cv2, numpy as np, os, sys, mss
 from PIL import Image, ImageDraw, ImageFont
 
 col3_x = int(sys.argv[1])
-input_box_y = int(sys.argv[6]) if len(sys.argv) > 6 else 99999
+wx = int(sys.argv[2]); wy = int(sys.argv[3])
+ww = int(sys.argv[4]); wh = int(sys.argv[5])
+out = sys.argv[6] if len(sys.argv) > 6 else os.path.expanduser("~/wechat_third_icons.png")
 
-# 获取窗口位置
-geo = subprocess.run(["xdotool","getactivewindow","getwindowgeometry"],capture_output=True,text=True).stdout
-wx = int(re.search(r"Position: (\d+)", geo).group(1))
-wy = int(re.search(r",(\d+)", geo).group(1))
-ww = int(re.search(r"Geometry: (\d+)", geo).group(1))
-wh = int(re.search(r"x(\d+)", geo).group(1))
+# 截图
+with mss.mss() as sct:
+    img = np.array(sct.grab({"left":wx,"top":wy,"width":ww,"height":wh}))
 
-# 用 import (ImageMagick) 截图
-tmp = "/tmp/wechat_scr.png"
-subprocess.run(["import","-window","root","-crop",f"{ww}x{wh}+{wx}+{wy}",tmp],capture_output=True)
-img = cv2.imread(tmp)
-if img is None:
-    # fallback: mss
-    import mss
-    with mss.mss() as sct:
-        img = cv2.cvtColor(np.array(sct.grab({"left":wx,"top":wy,"width":ww,"height":wh})), cv2.COLOR_RGBA2BGR)
+# 第三列 ROI（从 col3_x 到窗口右边缘，避开边缘10px）
+roi_x = col3_x - wx
+roi_w = ww - roi_x - 10
+roi_h = wh - 20
+if roi_w < 50 or roi_h < 50:
+    print(f"第三列区域太小: {roi_w}x{roi_h}")
+    sys.exit(1)
 
 gray = cv2.cvtColor(img, cv2.COLOR_RGBA2GRAY)
+roi = gray[10:wh-10, roi_x:roi_x+roi_w]
 
-# 只扫第三列
-roi = gray[10:wh-10, col3_x-wx:ww-wx-10]
-
+# ---- 多阈值找图标（同 find_icons.py） ----
 all_blobs = []
-for thr in range(180, 60, -20):
+for thr in range(180, 5, -5):
     _, t = cv2.threshold(roi, thr, 255, cv2.THRESH_BINARY_INV)
     cs, _ = cv2.findContours(t, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for c in cs:
         x, y, w, h = cv2.boundingRect(c)
         ratio = w / h if h > 0 else 0
-        if h < 14 or w < 12: continue
-        if ratio > 1.8 or ratio < 0.5: continue
-        if w*h < 150 or w*h > 3000: continue
-        if wy+10+y >= input_box_y: continue   # 去掉输入框下方的
-        if wy+10+y < input_box_y - 250: continue  # 只保留输入框上方250px内的
-        all_blobs.append((col3_x+x, 10+y, w, h, thr))
+        if h < 6 or w < 6: continue
+        if ratio > 2.2 or ratio < 0.35: continue
+        if w*h < 36 or w*h > 4000: continue
+        # 坐标转回全窗口坐标
+        all_blobs.append((roi_x + x, 10 + y, w, h, roi_x + x + w//2, 10 + y + h//2))
 
 # 去重
 unique = {}
-for bx, by, bw, bh, bt in all_blobs:
-    key = (bx//6, by//6)
+for bx, by, bw, bh, cx, cy in all_blobs:
+    key = (cx//8, cy//8)
     if key not in unique:
-        unique[key] = (bx, by, bw, bh)
+        unique[key] = (bx, by, bw, bh, cx, cy)
 
-blobs = sorted(unique.values(), key=lambda b: (b[1], b[0]))
+blob_list = sorted(unique.values(), key=lambda b: (b[1], b[0]))
 
-# 标注
+# ---- 文字行过滤（同 find_icons.py） ----
+TEXT_ROW_Y_TOLERANCE = 15
+TEXT_ROW_X_MAX = 45
+TEXT_ROW_MIN_NEIGHBORS = 4
+
+is_text = [False] * len(blob_list)
+for i, (bx1, by1, bw1, bh1, cx1, cy1) in enumerate(blob_list):
+    if is_text[i]: continue
+    neighbors = []
+    for j, (bx2, by2, bw2, bh2, cx2, cy2) in enumerate(blob_list):
+        if i == j or is_text[j]: continue
+        if abs(cy2 - cy1) <= TEXT_ROW_Y_TOLERANCE and abs(cx2 - cx1) <= TEXT_ROW_X_MAX:
+            neighbors.append(j)
+    if len(neighbors) >= TEXT_ROW_MIN_NEIGHBORS:
+        is_text[i] = True
+        for j in neighbors: is_text[j] = True
+
+blobs = [(bx, by, bw, bh) for i, (bx, by, bw, bh, cx, cy) in enumerate(blob_list) if not is_text[i]]
+blobs = sorted(blobs, key=lambda b: (b[1], b[0]))
+
+# ---- 标注 ----
 pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_RGBA2RGB))
 draw = ImageDraw.Draw(pil_img)
 font = None
@@ -65,13 +80,14 @@ for fp in ["/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
         font = ImageFont.truetype(fp, 14)
         break
 
-draw.line([(col3_x-wx,0),(col3_x-wx,wh)], fill=(255,0,0), width=2)
+# 画第三列分界线
+draw.line([(col3_x-wx, 0), (col3_x-wx, wh)], fill=(255, 0, 0), width=2)
 draw.text((10, 10), f"第三列 {len(blobs)} 个小图标", fill=(0,255,0), font=font or ImageFont.load_default())
 
 for i, (bx, by, bw, bh) in enumerate(blobs):
-    draw.rectangle([(bx-wx,by),(bx-wx+bw,by+bh)], outline=(0,255,0), width=1)
-    draw.text((bx-wx, by-10), str(i+1), fill=(0,255,0), font=font or ImageFont.load_default())
+    rx, ry = bx - wx, by - wy
+    draw.rectangle([(rx, ry), (rx+bw, ry+bh)], outline=(0, 255, 0), width=1)
+    draw.text((rx, ry-10), str(i+1), fill=(0, 255, 0), font=font or ImageFont.load_default())
 
-out = os.path.expanduser("~/wechat_third_icons.png")
 cv2.imwrite(out, cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR))
 print(f"标记图: {out}\n第三列找到 {len(blobs)} 个小图标")
