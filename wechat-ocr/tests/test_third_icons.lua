@@ -85,7 +85,7 @@ local outfile = home .. "/wechat_third_icons_" .. ts .. ".png"
 os.execute(string.format("import -window root -crop %dx%d+%d+%d '%s' 2>/dev/null", ww, wh, wx, wy, raw_full))
 
 -- 只截工具栏区域（底部200px）
-local tool_h = math.min(200, wh)
+local tool_h = math.min(430, wh)
 local tool_y = wy + wh - tool_h
 os.execute(string.format("import -window root -crop %dx%d+%d+%d '%s' 2>/dev/null",
     ww, tool_h, wx, tool_y, raw_tool))
