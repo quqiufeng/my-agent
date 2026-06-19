@@ -160,52 +160,12 @@ char* ocr_capture(ocr_engine_t* engine) {
         auto boxes = engine->ocr->run(chat);
 
         // 找第二列和第三列之间的分界
-        // 方法1: 十字交叉检测（y=85 横线处的竖线 → 分隔线本身）
-        // 方法2: 时间戳匹配（HH:MM 右对齐于分隔线）
-        // 方法3: 保底 18%
-        int boundary = panel.cols / 5;
+        // 只有时间戳匹配是准的（HH:MM 右对齐于分隔线）
+        // 找不到时间戳就报错，不瞎猜
         int panel_w = panel.cols;
-        bool found = false;
+        int boundary = 0;
 
-        // --- 方法1: 十字交叉检测 ---
-        // 微信标题栏底部横线在 y=85，分隔线竖线在此与之垂直相交
-        // 在 y=85 下方 5~35px 做 Sobel X，竖线峰值即为分隔线
-        if (panel.rows > 100) {
-            int line_y = 85;
-            if (line_y + 30 >= panel.rows) line_y = panel.rows / 4;
-
-            cv::Mat gray;
-            if (panel.channels() > 1) cv::cvtColor(panel, gray, cv::COLOR_BGR2GRAY);
-            else gray = panel.clone();
-
-            cv::Mat sobel_x;
-            cv::Sobel(gray, sobel_x, CV_32F, 1, 0, 3);
-
-            // 取横线下方 5~35px（30px 条带）
-            int y0 = std::min(line_y + 5, panel.rows - 10);
-            int y1 = std::min(line_y + 35, panel.rows - 1);
-            int yn = y1 - y0 + 1;
-            std::vector<float> col_v(panel_w, 0.0f);
-            for (int x = 0; x < panel_w; x++) {
-                double s = 0;
-                for (int y = y0; y <= y1; y++) s += std::abs(sobel_x.at<float>(y, x));
-                col_v[x] = s / yn;
-            }
-
-            int s0 = panel_w * 10 / 100, s1 = panel_w * 45 / 100;
-            float bl = 0;
-            for (int x = s0; x < s1; x++) bl += col_v[x];
-            bl /= (s1 - s0);
-
-            for (int x = s1 - 2; x >= s0 + 1; x--) {
-                if (col_v[x] > bl * 1.5f && col_v[x] > col_v[x-1] && col_v[x] > col_v[x+1]) {
-                    boundary = x; found = true; break;
-                }
-            }
-        }
-
-        // --- 方法2: 时间戳匹配（HH:MM 右对齐于分隔线） ---
-        if (!found) {
+        {
             std::regex time_pat(R"(\d{1,2}[:：]\d{2})");
             std::vector<int> rights;
             for (auto &b : boxes) {
@@ -214,14 +174,13 @@ char* ocr_capture(ocr_engine_t* engine) {
                     rights.push_back(b.bbox.x + b.bbox.width);
                 }
             }
-            if (!rights.empty()) {
-                std::sort(rights.begin(), rights.end());
-                boundary = rights[rights.size() / 2] + 10;
-                found = true;
+            if (rights.empty()) {
+                engine->last_error = "未检测到时间戳，无法确定第三列边界";
+                return nullptr;
             }
+            std::sort(rights.begin(), rights.end());
+            boundary = rights[rights.size() / 2] + 10;
         }
-
-        if (!found) boundary = panel_w * 18 / 100;
         // 过滤：只保留第三列（boundary右侧）的文字框
         std::vector<TextBox> filtered;
         for (auto &b : boxes) {
