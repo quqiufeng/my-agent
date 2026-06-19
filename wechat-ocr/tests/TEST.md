@@ -33,7 +33,7 @@ luajit tests/test_3columns.lua
 
 ---
 
-### 2. test_icons.lua — 全窗口小图标检测 (未验证)
+### 2. test_icons.lua — 全窗口小图标检测 ✅✅ 已验证（全屏167图标/小屏151图标，第三列灰色图标均识别）
 
 ```bash
 luajit tests/test_icons.lua
@@ -326,7 +326,7 @@ robot.set_record(true)  -- 开启录像
 tests/
 ├── TEST.md                     本文档
 ├── test_3columns.lua           三列结构检测           ✅ 已验证
-├── test_icons.lua              全窗口图标             (未验证)
+├── test_icons.lua              全窗口图标             ✅✅ 已验证
 ├── test_third_icons.lua        第三列图标             (未验证)
 ├── test_send_file.lua          发送文件               (未验证)
 ├── test_screenshot.lua         截图发送               (未验证)
