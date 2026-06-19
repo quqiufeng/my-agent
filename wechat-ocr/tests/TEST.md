@@ -54,14 +54,6 @@ luajit tests/test_third_icons.lua
 
 ---
 
-先 OCR 定位第三列 → 再扫描找图标 → 标注。
-
-```bash
-luajit tests/test_third_icons.lua
-```
-
-输出: `~/wechat_third_icons.png`
-
 ---
 
 ### 4. test_send_file.lua — 发送文件 (未验证)
