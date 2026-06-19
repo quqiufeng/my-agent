@@ -1,1253 +1,272 @@
-# Agent 管理系统 - 架构设计文档
+# My Agent — 多模态 Agent 管理与桌面自动化工具集
 
 > **相关文档**
-> - [Agent 管理脚本使用指南](AGENTS.md) - CLI 版 Agent 管理、心跳守护、多 Agent 协作方案
-> - [钉钉 Agent 集成说明](ding/agent.md) - 钉钉入口的 Agent 任务执行流程
-> - [微信 Bot API 接入指南](weixin.md) - 基于腾讯 iLink 协议的微信 Bot 接入方案
-> - [Chrome DevTools MCP 配置](chrome.md) - Chrome 官方 MCP 服务器集成
-
-## 1. 项目概述
-
-本项目是一个基于钉钉/微信的 **多 Agent 统一入口系统**。用户通过手机钉钉或微信（支持语音输入）发送指令，系统通过 Master Agent 管理和调度多个 Worker Agent 执行复杂任务，实现"口袋里的远程编程助手"。
-
-**核心场景**：手机钉钉 → 语音输入 → 远程写代码/管理服务器/执行复杂任务
+> - [Agent 管理脚本使用指南](AGENTS.md) — Master-Slave 架构的 Agent 管理
+> - [Chrome 浏览器控制](chrome.md) — Lua + xdotool 的 Chrome 控制 API
+> - [WeChat OCR 技术文档](wechat-ocr/WECHAT_OCR.md) — 桌面微信 OCR 识别与自动化
+> - [WeChat OCR 快速入门](wechat-ocr/README.md) — 微信自动化 Lua API 使用指南
+> - [UTEL 编码规则](rule.md) — LLM 文本压缩编码协议
 
 ---
 
-## 2. 系统架构
+## 项目概述
 
-### 2.1 整体架构图
+本项目是一个面向 Linux 桌面的**多模态 Agent 管理系统与自动化工具集**，围绕以下核心能力构建：
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        用户端                                │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐                  │
-│  │ 钉钉手机 │  │ 钉钉PC   │  │ 语音输入 │                  │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘                  │
-│       └──────────────┴──────────────┘                      │
-│                         │                                  │
-│                    WebSocket Stream                        │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│                    钉钉网关层                                │
-│              ┌─────────────────────┐                       │
-│              │  autobot_dingtalk   │  接收消息、解析指令     │
-│              │     (主进程)        │  文件中转、结果回传     │
-│              └──────────┬──────────┘                       │
-└─────────────────────────┼───────────────────────────────────┘
-                          │ 消息/任务
-┌─────────────────────────▼───────────────────────────────────┐
-│                    核心调度层                                │
-│              ┌─────────────────────┐                       │
-│              │    task_worker      │  任务分发、插件执行     │
-│              │    (Worker进程)     │  结果收集、错误处理     │
-│              └──────────┬──────────┘                       │
-└─────────────────────────┼───────────────────────────────────┘
-                          │
-              ┌───────────┼───────────┐
-              │           │           │
-     ┌────────▼───┐ ┌─────▼────┐ ┌───▼────┐
-     │   本地插件  │ │ 本地执行  │ │ Agent  │
-     │  tasks/*.py │ │ executor │ │ 调度   │
-     └─────────────┘ └──────────┘ └───┬────┘
-                                      │
-┌─────────────────────────────────────▼───────────────────────┐
-│                    Agent 管理层 (Master-Slave)              │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Master Agent (中央控制器)                │   │
-│  │  tmux session: master  port: 4097                   │   │
-│  │  - 任务分配、Slave 管理、状态监控                     │   │
-│  └──────────────────────┬──────────────────────────────┘   │
-│                         │ HTTP API                         │
-│         ┌───────────────┼───────────────┐                  │
-│         │               │               │                  │
-│  ┌──────▼─────┐  ┌─────▼──────┐  ┌─────▼──────┐          │
-│  │ Slave-1    │  │ Slave-2    │  │ Slave-N    │          │
-│  │ 代码专家   │  │ 系统运维   │  │ 数据分析   │          │
-│  │ port:4098  │  │ port:4099  │  │ port:4100  │          │
-│  └────────────┘  └────────────┘  └────────────┘          │
-│                                                             │
-│  **核心原则**: Slave 只负责执行，不直接通信，所有协调通过 Master  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 2.2 进程架构
-
-| 进程 | 职责 | 特点 |
-|------|------|------|
-| **主进程** (autobot_dingtalk) | 接收钉钉消息、维持长连接、文件下载 | 永不崩溃，轻量级 |
-| **Worker进程** (task_worker) | 执行插件任务、管理本地资源 | 可重启，不影响主进程 |
-| **Master** (tmux:master) | 任务分配、Slave 管理、状态监控 | 常驻，自动恢复 |
-| **Slave** (tmux:slave-*) | 接收任务、执行工作、汇报结果 | 动态创建，独立环境 |
-
-**核心原则**：
-- **Master 统一管理**：所有任务由 Master 统一分配
-- **Slave 只负责执行**：Slave 之间不直接通信
-- **心跳监控**：Master 通过心跳机制监控 Slave 状态
-
-### 2.3 数据流
-
-```
-用户消息 → 钉钉 → 主进程 → Worker进程 → Master Agent
-                                              ↓
-                                    任务分配给 Slave
-                                              ↓
-                                    Slave 执行工作
-                                              ↓
-                          结果 ← 主进程 ← Master Agent
-```
-
-### 2.4 指令执行流程
-
-系统支持三种输入方式：**语音消息**、**#标签指令** 和 **自然语言指令**
-
-#### 语音消息接收与处理流程
-
-用户发送语音消息，系统自动识别为文本后进入后续处理：
-
-```
-用户: [发送语音消息] "帮我写一个爬虫"
-  ↓
-autobot_dingtalk.py:200  检测到语音消息类型
-  ↓
-autobot_dingtalk.py:203  下载语音文件到 /tmp/voice_xxx.amr
-  ↓
-autobot_dingtalk.py:206  voice_recognition.recognize_audio()
-  │     ↓
-  │   voice_recognition.py:45    ctypes → libsensevoice.so
-  │     ↓
-  │   SenseVoice C++ API → 模型常驻内存 → 识别文本
-  │     ↓
-  │   返回: "帮我写一个爬虫"
-  │     ↓
-  └─ 替换消息内容为识别文本 → 继续后续处理
-    ↓
-  检测无 #标签 → 进入自然语言流程（B）
-    ↓
-  AI 分析意图 → 判断为 Agent 任务 → 内部调用 #agent
-    ↓
-  ...（进入 B 流程，从 AIImageTask 开始执行）
-```
-
-**语音处理特点：**
-- 模型常驻内存，首次加载 ~0.9s，后续识别 ~0.25s
-- 支持多种音频格式（amr/wav/mp3，自动转换）
-- 识别后的文本与普通文本消息走完全相同的处理流程
+- **Agent 管理** — 基于 OpenCode + tmux 的 Master-Slave 架构，支持创建、管理、监控多个 Agent 实例
+- **微信自动化** — 通过 LuaJIT + C++ + ONNX Runtime GPU 实现桌面微信的识别、操作与监控
+- **图像生成** — 基于 stable-diffusion.cpp 的本地 GPU 图像生成
+- **多模态 C 封装** — SenseVoice (ASR) 和 JoyCaption (Vision) 的 C 语言绑定
+- **Chrome 控制** — 纯 Lua 实现的 Chrome 浏览器操作（不需 MCP 守护进程）
+- **UTEL 编码** — 针对 LLM 的文本压缩编码协议，含 Python 编码器实现
 
 ---
 
-#### A. #标签指令执行流程
-
-用户发送以 `#` 开头的指令，如 `#img 一只猫`、`#shell ls -la`、`#agent 帮我写个爬虫`
-
-**A1. 普通 #标签指令（如 #img、#shell）**
+## 目录结构
 
 ```
-用户: #img 一只可爱的猫
-  ↓
-autobot_dingtalk.py:182  正则匹配 #(\w+) → directive_name="img"
-  ↓
-autobot_dingtalk.py:186  检查 tasks/img.py 是否存在
-  ↓
-autobot_dingtalk.py:189  dispatch_task("img", {"raw": "#img 一只可爱的猫"})
-  ↓
-TaskClient 通过 Unix Domain Socket 发送任务
-  ↓
-task_worker.py (TaskServer) 实时接收任务
-  ↓
-do_task() → get_task("img") → ImgTask()
-  ↓
-tasks/img.py:85          execute()
-  ├─ 解析参数: prompt="一只可爱的猫"
-  ├─ 调用 img.sh (RTX 3080) 生成图片
-  ├─ 上传钉钉: dt.upload_media()
-  └─ 发送图片: dt.send_markdown_image()
-    ↓
-返回 TaskResult(exec_responses="__MEDIA_ID__: xxx")
-  ↓
-TaskServer 通过 Socket 返回结果
-  ↓
-TaskClient 收到结果
-  ↓
-autobot_dingtalk.py:234  检测到 __MEDIA_ID__
-  ↓
-不发送文本（图片已发送）
-  ↓
-返回 AckMessage.STATUS_OK
+my-agent/
+├── README.md                          # 本文档
+├── AGENTS.md                          # Agent Master-Slave 架构指南
+├── agent.sh                           # Agent 管理脚本（启动/停止/发送指令）
+├── start.sh                           # 一键启动脚本（当前依赖已删除的 ding/ 目录）
+├── img.sh                             # 本地图像生成脚本（stable-diffusion.cpp）
+├── chrome.md                          # Chrome 浏览器控制模块文档
+├── rule.md                            # UTEL 编码规则完整文档
+├── utel_encoder.py                    # UTEL 编码器 Python 实现
+│
+├── wechat-ocr/                        # 桌面微信自动化框架
+│   ├── wechat_robot.lua              # 统一 Lua API 库
+│   ├── run.lua                       # 入口脚本
+│   ├── lib/                          # C++ 动态库 + API
+│   ├── src/                          # 截图、OCR 推理 C++ 源码
+│   ├── lua/                          # Lua 辅助模块
+│   ├── tests/                        # 测试脚本
+│   ├── models/                       # OCR 模型文件
+│   ├── build_final.sh                # C 库构建脚本
+│   └── CMakeLists.txt                # CMake 构建配置
+│
+├── sense-voice-wrapper/               # SenseVoice ASR C 封装源码备份
+│   └── sensevoice_wrapper.cpp
+│
+├── joycaption-wrapper/                # JoyCaption Vision C 封装源码备份
+│   └── joycaption_wrapper.cpp
+│
+├── models/                            # OCR 模型文件（PP-OCRv4）
+│   ├── ch_PP-OCRv4_det_infer.onnx
+│   ├── ch_PP-OCRv4_rec_infer.onnx
+│   └── ppocr_keys_v1.txt
+│
+└── .gitignore
 ```
-
-**A2. #agent 指令 - Master-Slave 任务执行**
-
-```
-用户: #agent 帮我写一个爬虫
-  ↓
-autobot_dingtalk.py:182  正则匹配 #(\w+) → directive_name="agent"
-  ↓
-autobot_dingtalk.py:189  dispatch_task("agent", {"raw": "#agent 帮我写一个爬虫"})
-  ↓
-TaskClient 通过 Unix Domain Socket 发送任务
-  ↓
-task_worker.py (TaskServer) 实时接收任务
-  ↓
-do_task() → get_task("agent") → AgentTask()
-  ↓
-tasks/agent.py:41        execute()
-  ↓
-tasks/agent.py:53        解析参数 → agent_name="master", instruction="帮我写一个爬虫"
-  ↓
-tasks/agent.py:68        检查 Master 是否运行（通过 tmux）
-  ↓
-tasks/agent.py:72        如果未运行，自动启动 Master Agent
-  ↓
-tasks/agent.py:89        自动加载 AGENTS.md 作为系统提示
-  ↓
-tasks/agent.py:101       发送指令给 Master
-  ↓
-Master 阅读 AGENTS.md → 分析任务 → 决策
-  ├─ "这是一个 Python 爬虫任务"
-  ├─ "需要创建 coder Slave"
-  │     ↓
-  │   ./agent.sh start coder
-  │     ↓
-  │   ./agent.sh send coder "帮我写一个爬虫"
-  │     ↓
-  └─ coder Slave 执行 → 生成代码 → 返回结果给 Master
-    ↓
-Master 汇总结果 → 返回给用户
-  ↓
-autobot_dingtalk.py:234  收到结果
-  ↓
-发送文本给用户
-  ↓
-返回 AckMessage.STATUS_OK
-```
-
-#### B. 自然语言指令执行流程（智能分配模式）
-
-用户发送自然语言，如 "帮我写个爬虫"，AI 识别意图后自动转为 #agent 指令
-
-```
-用户: 帮我写个爬虫
-  ↓
-autobot_dingtalk.py:243  检测无 #标签 → 走 ai_image 任务
-  ↓
-autobot_dingtalk.py:244  dispatch_task("ai_image", {"user_input": "帮我写个爬虫"})
-  ↓
-TaskClient 通过 Unix Domain Socket 发送任务
-  ↓
-task_worker.py (TaskServer) 实时接收任务
-  ↓
-do_task() → get_task("ai_image") → AIImageTask()
-  ↓
-tasks/ai_image.py:67     _handle_text()
-  ├─ ai.analyze("帮我写个爬虫") → 调用本地 OpenCode API
-  │     ↓
-  │   prompt.py:24        system prompt 意图识别规则
-  │   "判断用户意图..."
-  │     ↓
-  │   OpenCode 判断: "这是需要写代码的任务 → 应该由 Agent 处理"
-  │     ↓
-  │   OpenCode 返回: "#agent master 帮我写一个爬虫"
-  │     ↓
-  ├─ ai_image.py:72      正则匹配 #agent → 提取指令
-  │     ↓
-  ├─ ai_image.py:86      调用 AgentTask.execute({"raw": "#agent master 帮我写个爬虫"})
-  │     ↓
-  │   （进入 A2 流程，从 AgentTask 开始执行）
-  │     ↓
-  │   tasks/agent.py:53    解析参数 → agent_name="master", instruction="帮我写一个爬虫"
-  │     ↓
-  │   tasks/agent.py:89    自动加载 AGENTS.md 作为系统提示
-  │     ↓
-  │   tasks/agent.py:101   发送指令给 Master
-  │     ↓
-  │   Master 阅读 AGENTS.md → 分析任务 → 判断意图
-  │   "用户要我写爬虫 → 需要 coder Slave"
-  │     ↓
-  │   Master 创建 coder Slave → 分配任务
-  │     ↓
-  │   coder 执行 → 返回结果 → Master 汇总
-  │     ↓
-  └─ 返回 TaskResult(exec_responses="代码已生成...")
-    ↓
-TaskServer 通过 Socket 返回结果
-  ↓
-TaskClient 收到结果
-  ↓
-autobot_dingtalk.py:266  收到结果
-  ↓
-发送文本给用户
-  ↓
-返回 AckMessage.STATUS_OK
-```
-
-**关键区别：**
-
-| 类型 | 触发方式 | 意图识别 | 执行路径 |
-|------|---------|---------|---------|
-| **#标签指令** | 用户直接发送 `#xxx` | 主进程正则匹配 | 直接分发到对应任务 |
-| **自然语言指令** | 用户发送普通文本 | OpenCode AI 分析意图 → 判断为 Agent 任务 | AI 自动转为 #agent 指令 → 发给 Master → Master 判断意图并分配 Slave |
-
-**Agent 任务执行方式：**
-
-| 模式 | 示例 | 意图识别 | 执行方式 |
-|------|------|---------|---------|
-| **智能分配** | `帮我写个爬虫` | AI 分析意图 → "这是写代码任务 → 需要 Agent" | 自动发给 Master，Master 判断需要 coder Slave → 创建并分配任务 |
-| **显式分配** | `#agent 帮我写个爬虫` | 主进程正则匹配 → #agent 标签 | 发给 Master，Master 判断需要 coder Slave → 创建并分配任务 |
-| **直接发送** | `#agent coder 写个脚本` | 主进程正则匹配 → 指定 coder | 直接发给 coder Slave，如未运行则自动启动 |
-
-**通信机制（Unix Domain Socket）：**
-
-| 维度 | 文件轮询（旧） | Socket 通信（新） |
-|------|---------------|------------------|
-| **延迟** | 0.5-1s 轮询等待 | 实时通信，无延迟 |
-| **可靠性** | 文件读写可能冲突 | Socket 内核处理，更可靠 |
-| **超时控制** | 固定 sleep 检查 | 支持 socket 级别超时 |
-| **Worker 断开** | 任务文件堆积 | 连接断开立即感知 |
-| **重连能力** | 无 | 支持自动重连 |
-
-**支持的 #标签：**
-
-| 标签 | 功能 | 典型场景 |
-|------|------|---------|
-| `#agent` | Master-Slave 任务执行 | 写代码、创建 Slave、复杂任务 |
-| `#img` | 本地图片生成 | 画画、生成图片、做图 |
-| `#shell` | 执行 Shell 命令 | 查看文件、系统操作 |
-| `#code` / `#python` | 执行 Python 代码 | 计算、测试代码 |
-| `#ai_analyze` | AI 分析媒体 | 图片分析、语音转写（自动触发） |
-| `#test` | 测试任务 | 测试系统功能 |
-| `#write` | 写入文件 | 保存代码到文件 |
 
 ---
 
-## 3. 核心概念
+## 模块详解
 
-### 3.1 Master-Slave 架构
+### 1. Agent 管理 — Master-Slave 架构
 
-本系统采用 **Master-Slave** 架构，一个 Master 管理多个 Slave：
-
-**Master**：
-- 统一入口，接收所有任务
-- 任务分配，选择合适的 Slave
-- 状态监控，通过心跳检测 Slave 健康
-- 结果汇总，返回给用户
-
-**Slave**：
-- 只负责执行，不直接通信
-- 接收 Master 分配的任务
-- 执行完成后汇报结果给 Master
-- 定期向 Master 发送心跳
-
-### 3.2 角色定义
+基于 OpenCode 和 tmux 的 Agent 管理方案。
 
 | 角色 | 名称 | 端口 | 职责 |
 |------|------|------|------|
 | **Master** | master | 4097 | 任务分配、Slave 管理、状态监控 |
 | **Slave** | coder, reviewer... | 4098+ | 接收任务、执行工作、汇报结果 |
 
-**核心原则**：
-- 所有任务由 **Master** 统一分配
-- **Slave** 只负责执行，不直接通信
-- Master 通过心跳监控所有 Slave 状态
-
-### 3.3 指令格式
-
-```
-#agent <slave_name> <指令内容>
-```
-
-示例：
-- `#agent master 创建一个叫 coder 的 Slave，专门写 Python`
-- `#agent coder 帮我写一个爬取豆瓣电影的脚本`
-- `#agent ops 查看服务器内存使用情况`
-- `#agent master 列出所有 Slave 状态`
-
----
-
-## 4. 模块设计
-
-### 4.1 钉钉网关 (autobot_dingtalk.py)
-
-**职责**：与钉钉保持 WebSocket 长连接，接收所有消息类型
-
-**支持的输入**：
-- 文本消息（含 #指令）
-- 图片消息（自动分析）
-- 文件消息（自动下载分析）
-- 语音消息（自动语音识别）
-- Markdown 消息
-
-**输出处理**：
-- 文本回复（截断 1000 字符）
-- 图片发送（通过 media_id）
-- 文件发送（通过钉钉文件接口）
-- 语音转文字后处理
-
-### 4.2 任务调度 (task_worker.py)
-
-**职责**：插件加载、任务执行、结果收集
-
-**插件机制**：
-- 自动扫描 `tasks/` 目录
-- 继承 `BaseTask` 即可注册
-- 支持热加载（重启 Worker 生效）
-
-**执行模式**：
-- 同步执行：简单任务（如天气查询）
-- 异步委托：复杂任务（如 Agent 指令）转交 Master 处理
-
-### 4.3 Agent 管理 (tasks/agent.py)
-
-**核心功能**：
-
-```python
-class AgentTask(BaseTask):
-    task_type = "agent"
-    
-    def execute(self, content, session_webhook):
-        # 1. 解析指令
-        # 2. 路由到目标 Agent
-        # 3. 调用 Master 或直接执行
-        # 4. 返回结果
-```
-
-**子功能**：
-
-| 功能 | 说明 | 示例 |
-|------|------|------|
-| `create` | 创建新 Agent | `#agent master create coder` |
-| `destroy` | 销毁 Agent | `#agent master destroy coder` |
-| `list` | 列出所有 Agent | `#agent master list` |
-| `status` | 查看 Agent 状态 | `#agent master status coder` |
-| `send` | 发送指令给 Agent | `#agent coder 写个脚本` |
-| `broadcast` | 广播指令 | `#agent master broadcast 全部更新` |
-
-### 4.4 Master Agent 服务 (master.py)
-
-**启动流程**：
+**快速开始：**
 
 ```bash
-# 1. 启动 Master OpenCode Server
-tmux new-session -d -s master "opencode serve --port 4097 --work-dir ~/agents/master"
+# 启动 Master
+./agent.sh start master
 
-# 2. 启动 Master Agent TUI
-tmux new-window -t master -n tui "opencode attach http://localhost:4097"
+# 启动 Slave
+./agent.sh start coder
 
-# 3. 启动 Master 管理脚本（监听 HTTP 或共享文件）
-tmux new-window -t master -n daemon "python master_daemon.py"
-```
-
-**master_daemon.py 职责**：
-- 维护 `~/agents/registry.json`（Agent 注册表）
-- 提供 HTTP API：
-  - `POST /agent/create` - 创建 Agent
-  - `POST /agent/destroy` - 销毁 Agent
-  - `GET /agent/list` - 列出 Agent
-  - `GET /agent/status/<name>` - 查看状态
-  - `POST /agent/<name>/send` - 发送指令
-- 心跳检测：定期检查 Agent 健康状态
-- 自动恢复：崩溃的 Agent 自动重启
-
-### 4.5 Worker Agent
-
-**创建流程**：
-
-```bash
-# Master 收到创建请求后执行：
-
-# 1. 创建工作目录
-mkdir -p ~/agents/coder
-
-# 2. 生成配置文件
-cat > ~/agents/coder/config.json << EOF
-{
-  "name": "coder",
-  "port": 4098,
-  "work_dir": "~/agents/coder",
-  "system_prompt": "你是一个专业的 Python 程序员...",
-  "created_by": "master",
-  "created_at": "2024-01-01T00:00:00"
-}
-EOF
-
-# 3. 启动 tmux session
-tmux new-session -d -s agent-coder "opencode serve --port 4098 --work-dir ~/agents/coder"
-
-# 4. 注册到 Master
-# 写入 registry.json
-```
-
-**特点**：
-- 每个 Worker 是独立的 OpenCode 实例
-- 有自己的工作目录和上下文
-- 通过 HTTP API 接受指令
-- 可独立重启，不影响其他 Agent
-
----
-
-## 5. 多模态功能集成
-
-系统支持**语音**和**视觉**功能，全部基于本地开源模型：
-
-| 功能 | 技术方案 | 模型大小 | 运行方式 |
-|------|---------|---------|---------|
-| **语音转文本 (ASR)** | SenseVoice (C++) | ~230MB | `libsensevoice.so` + ctypes |
-| **文本转语音 (TTS)** | Piper (C++) | ~63MB | `libpiper_tts.so` + ctypes |
-| **图片分析 (Vision)** | JoyCaption2 (llama.cpp) | ~2.3GB | `llama-mtmd-cli` 子进程 |
-
-### 5.1 模型文件位置
-
-所有模型文件存放在**源码目录下**，不放入项目目录：
-
-| 功能 | 模型路径 | 大小 |
-|------|---------|------|
-| **ASR (SenseVoice)** | `/home/dministrator/SenseVoice.cpp/models/sense-voice-small-q6_k.gguf` | ~230MB |
-| **TTS (Piper)** | `/opt/piper-src/models/zh_CN-huayan-medium.onnx` | ~63MB |
-| **Vision (JoyCaption)** | `~/joycaption/Llama-Joycaption-Beta-One-Hf-Llava-Q4_K.gguf` | ~2GB |
-| **Vision MMPROJ** | `~/joycaption/llama-joycaption-beta-one-llava-mmproj-model-f16.gguf` | ~300MB |
-
-> 注意：模型文件通过 `.gitignore` 排除，不会提交到 git。部署新机器时需手动下载或复制。
-
-### 5.2 新增代码文件
-
-以下文件为本次集成新增/修改，已备份到项目目录：
-
-| 文件 | 说明 | 位置 |
-|------|------|------|
-| `ding/voice_recognition.py` | ASR Python 封装（ctypes） | 项目目录 |
-| `ding/text_to_speech.py` | TTS Python 封装（ctypes） | 项目目录 |
-| `ding/image_analyzer.py` | Vision Python 封装（调用 CLI） | 项目目录 |
-| `sense-voice-wrapper/sensevoice_wrapper.cpp` | SenseVoice C wrapper | 项目目录（备份） |
-| `joycaption-wrapper/joycaption_wrapper.cpp` | JoyCaption C wrapper（框架） | 项目目录（备份） |
-| `libs/libsensevoice.so` | SenseVoice 共享库 | 项目目录（编译产物） |
-| `src/cpp/piper_wrapper.cpp` | Piper C wrapper | `/opt/piper-src/src/cpp/` |
-| `libpiper_tts.so` | Piper 共享库 | `/opt/piper-src/build/` |
-
-### 5.3 语音转文本（ASR）- SenseVoice
-
-#### 架构
-
-```
-用户语音消息 → voice_recognition.py → ctypes → libsensevoice.so → SenseVoice C++ API → 文本
-```
-
-**特点**：
-- 模型**常驻内存**，首次加载后复用
-- 支持 GPU 加速（CUDA）
-- 支持多种音频格式（自动转换为 WAV）
-
-#### 编译方法
-
-在 SenseVoice.cpp 源码目录执行：
-
-```bash
-cd /home/dministrator/SenseVoice.cpp
-
-# 1. 重新编译静态库（添加 -fPIC）
-mkdir -p build && cd build
-cmake -DCMAKE_CXX_FLAGS="-fPIC" ..
-make -j$(nproc)
-
-# 2. 单独编译 main.cc（关键！sense_voice_free 等函数只在此文件中）
-cd ..
-g++ -c -fPIC -std=c++17 -I. -Isense-voice/csrc \
-  -Ibuild/_deps/ggml-src/include \
-  sense-voice/csrc/main.cc -o /tmp/main.o
-
-# 3. 编译 wrapper 为共享库
-g++ -shared -fPIC -std=c++17 \
-  -I. -Isense-voice/csrc \
-  -Ibuild/_deps/ggml-src/include \
-  sense-voice/csrc/sensevoice_wrapper.cpp \
-  /tmp/main.o \
-  build/lib/libsense-voice-core.a \
-  build/lib/libcommon.a \
-  -Lbuild/lib -lggml -lggml-base -lggml-cpu \
-  -o libsensevoice.so \
-  -lpthread -ldl
-
-# 4. 复制到项目目录
-cp libsensevoice.so /home/dministrator/my-agent/libs/
-```
-
-#### 使用示例
-
-```python
-from ding.voice_recognition import recognize_audio
-
-# 识别音频文件（支持 wav/mp3/amr 等）
-text = recognize_audio("/tmp/voice_message.wav")
-print(text)  # 输出：你好，请问有什么可以帮您的吗？
-
-# 模型在第一次调用时自动加载，后续识别复用
-```
-
-#### 性能
-
-| 指标 | 数值 |
-|------|------|
-| 首次加载 | ~0.9s（含模型加载） |
-| 后续识别 | ~0.25s |
-| 显存占用 | ~260MB（GPU） |
-
-#### 环境要求
-
-```bash
-# 必须设置 LD_LIBRARY_PATH，否则找不到 libggml.so
-export LD_LIBRARY_PATH=/home/dministrator/SenseVoice.cpp/build/lib:$LD_LIBRARY_PATH
-```
-
----
-
-### 5.4 文本转语音（TTS）- Piper
-
-#### 架构
-
-```
-文本 → text_to_speech.py → ctypes → libpiper_tts.so → Piper C++ API → ONNX Runtime → WAV 音频
-```
-
-**特点**：
-- **源码集成**（非命令行调用）
-- 模型轻量（~63MB），推理极快
-- **纯 CPU 运行**，零显存占用
-- 支持中文、英文等多种语言
-
-#### 编译方法
-
-在 Piper 源码目录执行：
-
-```bash
-cd /opt/piper-src
-
-# 1. 配置并编译
-mkdir -p build && cd build
-cmake -DCMAKE_CXX_FLAGS="-fPIC" ..
-make -j$(nproc) piper_tts
-
-# 编译产物：build/libpiper_tts.so
-```
-
-#### 使用示例
-
-```python
-from ding.text_to_speech import text_to_speech
-
-# 将文本转为语音
-audio_path = text_to_speech("你好，我是钉钉机器人助手。")
-print(audio_path)  # 输出：/tmp/piper_tts_1234567890.wav
-
-# 指定输出路径
-audio_path = text_to_speech(
-    "今天天气不错，适合出去散步。",
-    output_path="/tmp/greeting.wav"
-)
-```
-
-#### 性能
-
-| 指标 | 数值 |
-|------|------|
-| 模型加载 | ~0.3s |
-| 文本合成 | ~0.15-0.5s |
-| 显存占用 | **0**（纯 CPU） |
-| 模型大小 | ~63MB |
-
-#### 环境要求
-
-```bash
-# 设置库搜索路径
-export LD_LIBRARY_PATH=/opt/piper-src/build/pi/lib:$LD_LIBRARY_PATH
-```
-
----
-
-### 5.5 图片分析（Vision）- JoyCaption2
-
-#### 架构
-
-```
-用户图片 → image_analyzer.py → llama-mtmd-cli → llama.cpp + JoyCaption 模型 → 详细描述
-```
-
-**说明**：
-- 使用 **CLI 调用方案**（Python subprocess 调用 llama-mtmd-cli）
-- **按需加载**：每次推理时加载模型，推理后自动释放（不常驻内存）
-- C wrapper 已备份：`joycaption-wrapper/joycaption_wrapper.cpp` + `libs/libjoycaption.so`
-- 如需常驻内存（高频场景），可切换到 ctypes + `libjoycaption.so` 方案
-
-**特点**：
-- **本地运行**，无需云端 API
-- **按需加载**：2.3GB 模型不占常驻内存
-- 基于 llama.cpp 多模态框架（LLaVA 架构）
-- 输出**自然语言描述**（非标签列表）
-- 支持 GPU 加速（RTX 3080）
-
-#### 模型准备
-
-```bash
-# 创建模型目录
-mkdir -p ~/joycaption
-
-# 下载模型（使用代理）
-curl -x http://192.168.1.10:7897 -L -o ~/joycaption/Llama-Joycaption-Beta-One-Hf-Llava-Q4_K.gguf \
-  "https://huggingface.co/concedo/llama-joycaption-beta-one-hf-llava-mmproj-gguf/resolve/main/Llama-Joycaption-Beta-One-Hf-Llava-Q4_K.gguf"
-
-curl -x http://192.168.1.10:7897 -L -o ~/joycaption/llama-joycaption-beta-one-llava-mmproj-model-f16.gguf \
-  "https://huggingface.co/concedo/llama-joycaption-beta-one-hf-llava-mmproj-gguf/resolve/main/llama-joycaption-beta-one-llava-mmproj-model-f16.gguf"
-```
-
-#### 编译 llama.cpp
-
-使用现有编译脚本（已包含多模态支持）：
-
-```bash
-cd ~/my-shell/3080/build
-bash build_llama_cpp.sh
-```
-
-编译选项已更新：
-- `-DLLAMA_BUILD_EXAMPLES=ON`：编译 llama-mtmd-cli
-- `-DLLAMA_BUILD_SERVER=ON`：编译 llama-server
-
-#### 使用示例
-
-```python
-from ding.image_analyzer import analyze_image
-
-# 分析图片（生成详细描述）
-description = analyze_image("/path/to/image.jpg")
-print(description)
-
-# 生成 SD 提示词
-prompt = analyze_image_for_sd("/path/to/image.jpg")
-print(prompt)
-```
-
-#### 性能
-
-| 指标 | 数值 |
-|------|------|
-| 模型加载 | ~2.4s |
-| 图片编码 | ~300-400ms |
-| 文本生成 | ~10-100ms/token（取决于长度）|
-| 显存占用 | ~2.5GB（GPU）|
-| 模型大小 | ~2.3GB（LLM + MMPROJ）|
-
-#### 环境要求
-
-```bash
-# llama-mtmd-cli 路径
-export PATH="$HOME/llama.cpp/build/bin:$PATH"
-```
-
----
-
-### 5.6 文件架构
-
-```
-# 项目目录（轻量，只含代码 + wrapper 源码备份）
-my-agent/
-├── ding/
-│   ├── voice_recognition.py      # ASR Python 封装
-│   ├── text_to_speech.py         # TTS Python 封装
-│   └── ...
-├── libs/
-│   └── libsensevoice.so          # SenseVoice 共享库
-├── sense-voice-wrapper/
-│   └── sensevoice_wrapper.cpp    # SenseVoice C wrapper 源码备份
-├── piper-wrapper/
-│   ├── piper_wrapper.cpp         # Piper C wrapper 源码备份
-│   ├── CMakeLists.txt.patched    # 修改后的 CMakeLists（添加共享库目标）
-│   └── VERSION                   # Piper 版本号
-├── joycaption-wrapper/
-│   └── joycaption_wrapper.cpp    # JoyCaption C wrapper 源码备份（框架）
-└── README.md
-
-# SenseVoice 源码目录（含模型）
-/home/dministrator/SenseVoice.cpp/
-├── models/
-│   └── sense-voice-small-q6_k.gguf    # ASR 模型 (~230MB)
-├── build/
-│   └── lib/
-│       └── libggml.so                 # 运行时依赖
-└── sense-voice/csrc/
-    └── sensevoice_wrapper.cpp         # C wrapper（新增）
-
-# Piper 源码目录（含模型）
-/opt/piper-src/
-├── models/
-│   ├── zh_CN-huayan-medium.onnx       # TTS 模型 (~63MB)
-│   └── zh_CN-huayan-medium.onnx.json  # 模型配置
-├── build/
-│   ├── libpiper_tts.so                # 编译产物
-│   └── pi/lib/
-│       └── libonnxruntime.so          # 运行时依赖
-└── src/cpp/
-    └── piper_wrapper.cpp              # C wrapper（新增）
-
-# JoyCaption 模型目录
-~/joycaption/
-├── Llama-Joycaption-Beta-One-Hf-Llava-Q4_K.gguf           # LLM 模型 (~2GB)
-└── llama-joycaption-beta-one-llava-mmproj-model-f16.gguf  # 视觉投影器 (~300MB)
-```
-
----
-
-### 5.6 常见问题
-
-#### ASR (SenseVoice)
-
-| 问题 | 原因 | 解决 |
-|------|------|------|
-| `libggml.so: cannot open` | 未设置 LD_LIBRARY_PATH | `export LD_LIBRARY_PATH=/home/dministrator/SenseVoice.cpp/build/lib:$LD_LIBRARY_PATH` |
-| `undefined reference to sense_voice_free` | 未链接 main.o | 确保编译时包含 `/tmp/main.o` |
-| `relocation R_X86_64_32S` | 静态库未用 -fPIC 编译 | 删除 build 目录重新 cmake |
-
-#### TTS (Piper)
-
-| 问题 | 原因 | 解决 |
-|------|------|------|
-| `libonnxruntime.so: cannot open` | 未设置 LD_LIBRARY_PATH | `export LD_LIBRARY_PATH=/opt/piper-src/build/pi/lib:$LD_LIBRARY_PATH` |
-| `piper_initialize: undefined symbol` | 共享库未正确导出 | 确保 C wrapper 中使用 `__attribute__((visibility("default"))` |
-| 模型加载失败 | 模型路径错误 | 检查 `/opt/piper-src/models/` 下是否有模型文件 |
-
-#### Vision (JoyCaption)
-
-| 问题 | 原因 | 解决 |
-|------|------|------|
-| `llama-mtmd-cli: command not found` | llama.cpp 未编译或路径不对 | 检查 `~/llama.cpp/build/bin/llama-mtmd-cli` 是否存在 |
-| 显存不足 | 模型需要 ~2.5GB 显存 | 关闭其他 GPU 程序，或添加 `-ngl 20` 减少 GPU 层数 |
-| 模型加载失败 | 模型路径错误 | 检查 `~/joycaption/` 下是否有模型文件 |
-| 推理超时 | 生成文本太长 | 减少 `-n` 参数值（默认 200） |
-
----
-
-## 6. 通信协议
-
-### 5.1 Master ↔ Worker 通信
-
-**方式**：HTTP REST API
-
-**创建 Agent**：
-```http
-POST http://localhost:4097/agent/create
-Content-Type: application/json
-
-{
-  "name": "coder",
-  "type": "python",
-  "system_prompt": "你是一个 Python 专家"
-}
-
-# 返回
-{
-  "success": true,
-  "agent": {
-    "name": "coder",
-    "port": 4098,
-    "status": "running",
-    "pid": 12345
-  }
-}
-```
-
-**发送指令**：
-```http
-POST http://localhost:4097/agent/coder/send
-Content-Type: application/json
-
-{
-  "instruction": "写一个快速排序算法",
-  "session_id": "uuid-xxx",
-  "timeout": 120
-}
-
-# 返回
-{
-  "success": true,
-  "result": {
-    "stdout": "代码已生成...",
-    "files": ["/home/user/agents/coder/quicksort.py"]
-  }
-}
-```
-
-**查询状态**：
-```http
-GET http://localhost:4097/agent/list
-
-# 返回
-{
-  "agents": [
-    {"name": "master", "port": 4097, "status": "running"},
-    {"name": "coder", "port": 4098, "status": "running"},
-    {"name": "ops", "port": 4099, "status": "stopped"}
-  ]
-}
-```
-
-### 5.2 Worker → Master 汇报
-
-Worker 定期向 Master 汇报状态：
-
-```http
-POST http://localhost:4097/agent/heartbeat
-Content-Type: application/json
-
-{
-  "name": "coder",
-  "status": "running",
-  "tasks_completed": 42,
-  "current_task": null,
-  "uptime": 3600
-}
-```
-
-### 5.3 主进程 ↔ Agent 插件通信
-
-主进程通过文件系统或共享内存与 Worker 进程通信：
-
-```
-/tmp/autobot_tasks/
-├── task.json      # 主进程写入任务
-└── result.json    # Worker 进程写入结果
-```
-
----
-
-## 6. 使用场景示例
-
-### 场景 1：远程写代码
-
-**用户**（手机钉钉语音）：
-> "帮我写一个爬取豆瓣 Top250 电影的 Python 脚本"
-
-**系统处理**：
-1. 钉钉接收语音 → 语音识别 → 文本
-2. 无 #指令 → 默认交给 ai_image（AI 对话）
-3. AI 判断需要写代码 → 内部调用 `#agent coder`
-4. 创建/复用 coder Agent
-5. 发送指令给 coder Agent
-6. coder Agent 生成代码并保存到文件
-7. 返回代码内容和文件路径
-8. 主进程发送结果给用户
-
-**回复**：
-> "已为你生成豆瓣爬虫脚本，保存在 `~/agents/coder/douban_spider.py`，核心逻辑：
-> 1. 使用 requests 请求豆瓣页面
-> 2. 使用 BeautifulSoup 解析 HTML
-> 3. 提取电影名称、评分、链接
-> 4. 保存为 CSV 文件
->
-> 你可以运行 `#agent coder 执行这个脚本` 来测试"
-
-### 场景 2：Master 分配任务给 Slave
-
-**用户**：
-> `#agent master 创建数据分析团队，分析服务器日志`
-
-**系统处理**：
-1. Master 解析指令
-2. 创建多个 Slave：
-   - `data-collector`：负责收集日志
-   - `data-parser`：负责解析和清洗
-   - `data-analyzer`：负责分析和生成报告
-3. Master 按顺序分配任务：
-   - 先让 collector 收集日志
-   - 然后 parser 解析
-   - 最后 analyzer 生成报告
-4. 所有结果汇总给 Master
-5. Master 返回最终报告给用户
-
-### 场景 3：服务器运维
-
-**用户**（手机钉钉）：
-> `#agent ops 查看服务器状态，如果有异常就重启 Nginx`
-
-**系统处理**：
-1. 指令路由到 Master
-2. Master 分配给 ops Slave
-3. ops Slave 执行：
-   - `df -h` 检查磁盘
-   - `free -m` 检查内存
-   - `systemctl status nginx` 检查服务
-4. 发现 Nginx 异常
-5. 执行 `sudo systemctl restart nginx`
-6. 返回结果给 Master
-7. Master 汇总返回用户
-
-### 场景 4：Agent 管理
-
-**用户**：
-> `#agent master 列出所有 Slave`
-
-**回复**：
-> "当前运行的 Slave：
-> - 🤖 master (端口 4097) - 运行中 - 管理中枢
-> - 💻 coder (端口 4098) - 运行中 - 已完成 12 个任务
-> - 🔧 ops (端口 4099) - 已停止 - 上次运行 2 小时前
-> - 📊 data (端口 4100) - 运行中 - 正在执行数据分析"
-
-**核心原则**：
-- 所有任务由 **Master** 统一分配
-- **Slave** 只负责执行，不直接通信
-- Master 通过心跳监控所有 Slave 状态
-
----
-
-## 7. 目录结构
-
-```
-my-agent/
-├── README.md                      # 本文档
-├── img.sh                         # 本地图像生成脚本
-├── ding/                          # 钉钉机器人核心
-│   ├── autobot_dingtalk.py        # 主进程：钉钉消息接收
-│   ├── task_worker.py             # Worker：任务执行
-│   ├── executor.py                # 执行器：Shell/Python
-│   ├── ai.py                      # AI 模块：任务分析
-│   ├── siliconflow.py             # SiliconFlow API
-│   ├── dingtalk.py                # 钉钉 API 封装
-│   ├── config.py                  # 配置管理
-│   ├── prompt.py                  # 系统提示词
-│   ├── guardian.py                # 守护进程
-│   ├── logger.py                  # 日志模块
-│   ├── master.py                  # Master Agent 管理
-│   ├── agent.md                   # Agent 使用指南（钉钉入口）
-│   ├── AGENTS.md                  # Master-Slave 架构指南（CLI 入口）
-│   ├── tasks/                     # 插件目录
-│   │   ├── __init__.py
-│   │   ├── base.py                # 任务基类
-│   │   ├── registry.py            # 注册表
-│   │   ├── shell.py               # #shell 指令
-│   │   ├── code.py                # #code 指令
-│   │   ├── python.py              # #python 指令
-│   │   ├── agent.py               # #agent 指令
-│   │   ├── img.py                 # #img 指令
-│   │   ├── ai_image.py            # 默认 AI 对话
-│   │   ├── ai_analyze.py          # 图片分析
-│   │   └── ...
-│   └── logs/                      # 日志目录
-├── agents/                        # Agent 工作目录（自动创建）
-│   ├── registry.json              # Agent 注册表
-│   ├── master/                    # Master Agent
-│   │   ├── config.json
-│   │   └── work/                  # 工作文件
-│   ├── coder/                     # 代码专家 Agent
-│   │   ├── config.json
-│   │   └── work/
-│   └── ...
-└── .env                           # 环境变量
-```
-
----
-
-## 8. 部署与启动
-
-### 8.1 首次部署
-
-```bash
-# 1. 克隆代码
-git clone <repo> my-agent
-cd my-agent
-
-# 2. 安装依赖
-pip install -r requirements.txt
-
-# 3. 配置环境变量
-cp .env.example .env
-# 编辑 .env 填入钉钉密钥、API Key 等
-
-# 4. 创建 Agent 目录
-mkdir -p agents
-```
-
-### 8.2 启动脚本 start.sh
-
-项目根目录提供 `start.sh` 一键启动/停止所有服务。
-
-**启动所有服务：**
-```bash
-./start.sh start
-```
-启动以下 3 个进程：
-- **bot** (`autobot_dingtalk.py`) - 钉钉消息接收，日志 `/tmp/autobot_bot.log`
-- **worker** (`task_worker.py`) - 任务执行，日志 `/tmp/autobot_worker.log`
-- **master** (`opencode serve`) - Master Agent，运行在 tmux session 中
-
-**启动流程：**
-```
-start.sh start
-  ├─ 启动 bot (autobot_dingtalk.py)  → 接收钉钉消息
-  ├─ 启动 worker (task_worker.py)     → 执行任务分发
-  └─ 启动 master (opencode serve)     → Master Agent，管理 Slave 集群
-       ├─ 创建 tmux session: master
-       ├─ 运行: opencode serve --port 4097
-       └─ 创建 tui 窗口: opencode attach http://localhost:4097
-```
-
-**说明：**
-- `start.sh` 启动时会**自动启动 Master Agent**（port: 4097）
-- Master 启动后会等待任务，无需手动启动
-- 当用户发送 `#agent 任务` 时，AgentTask 直接连接已启动的 Master
-- Master 根据 AGENTS.md 的指引，自主创建 Slave 并分配任务
-
-**停止所有服务：**
-```bash
-./start.sh stop
-```
-
-**重启：**
-```bash
-./start.sh restart
-```
-
-**查看运行状态：**
-```bash
-# 查看 bot 和 worker 进程
-ps aux | grep -E "autobot_dingtalk|task_worker"
-
-# 查看 master
-ps aux | grep "opencode serve"
-
-# 查看日志
-tail -f /tmp/autobot_bot.log
-tail -f /tmp/autobot_worker.log
-```
-
-### 8.3 通过钉钉控制
-
-启动后，所有操作都可通过钉钉完成：
-
-```
-# 查看帮助
-#agent help
-
-# 创建 Agent
-#agent master create coder --type python
-
-# 发送指令
-#agent coder 写一个 WebSocket 客户端
+# 发送任务
+./agent.sh send coder "写一个 Python 爬虫"
 
 # 查看状态
-#agent master list
+./agent.sh status
 
-# 停止 Agent
-#agent master destroy coder
+# 附加到 tmux 查看执行过程
+./agent.sh attach coder
 ```
 
----
+**心跳机制：**
+- Master 每 25 分钟自心跳，防止无故停机
+- Slave 每 15 分钟向 Master 汇报状态
+- 连续 3 次健康检查失败自动重启 Agent
 
-## 9. 安全设计
-
-### 9.1 命令黑名单
-
-在 `config.py` 中配置，禁止执行危险命令：
-- `rm -rf /`
-- `mkfs`, `dd if=`
-- `shutdown`, `reboot`
-- `iptables`, `ufw`
-- `docker`, `kubectl`
-
-### 9.2 Agent 隔离
-
-- 每个 Agent 独立进程、独立目录
-- Agent 之间不能直接访问对方文件
-- 敏感操作需二次确认
-
-### 9.3 权限控制
-
-- 区分"只读 Agent"和"可写 Agent"
-- 系统级操作需要特殊权限
-- 生产环境建议启用 HTTP Basic Auth
+详见 [AGENTS.md](AGENTS.md)。
 
 ---
 
-## 10. 扩展性设计
+### 2. 微信自动化 — WeChat OCR
 
-### 10.1 新增 Agent 类型
+基于 LuaJIT + C++ + ONNX Runtime GPU 的桌面微信操作框架。
 
-只需定义系统提示词和配置：
+**核心能力：**
+
+| 功能 | 说明 |
+|------|------|
+| 窗口定位 | 白面板检测 + 跨桌面切换 + xdotool 兜底 |
+| 聊天文字识别 | PaddleOCR PP-OCRv4，GPU 加速 |
+| 逐字输入发送 | 剪贴板 + 随机延时 + 回车 |
+| 文件/截图发送 | 模拟点击图标 + 粘贴路径 |
+| 联系人搜索 | 搜索框 + 通讯录双路径 |
+| 持续监控 | 轮询检测新消息，回调通知 |
+| Chrome AI 搜索 | 微信指令 → Chrome AI 搜索 → 结果回微信 |
+| 操作录屏 | ffmpeg 录制完整操作过程 |
+
+**快速使用：**
+
+```lua
+local robot = require("wechat_robot")
+robot.init()
+robot.search("小王")
+robot.send("你好！")
+local text = robot.capture()
+robot.destroy()
+```
+
+详见 [wechat-ocr/README.md](wechat-ocr/README.md) 和 [WECHAT_OCR.md](wechat-ocr/WECHAT_OCR.md)。
+
+---
+
+### 3. 图像生成 — stable-diffusion.cpp
+
+本地 GPU 图像生成脚本，基于 `stable-diffusion.cpp`。
+
+```bash
+# 基本用法
+./img.sh "A beautiful landscape"
+
+# 自定义尺寸
+./img.sh "A sunset" /path/to/output.png 1280 720
+
+# 环境变量覆盖参数
+SAMPLING_METHOD=euler CFG_SCALE=3.2 STEPS=25 ./img.sh "..."
+```
+
+| 特性 | 说明 |
+|------|------|
+| 模型 | SD Turbo (Q5_K_M) |
+| VAE | ae.safetensors |
+| 增强 | FreeU + SAG + Auto-enhance |
+| GPU | RTX 3080 |
+
+---
+
+### 4. Chrome 浏览器控制
+
+纯 Lua 实现，通过 xdotool 模拟键盘快捷键操作现有 Chrome 窗口（不打开新浏览器）。
+
+```lua
+local chrome = require("wechat_ocr.chrome")
+chrome.new_tab()              -- Ctrl+T 新标签
+chrome.open("网址")            -- 新标签打开网址
+chrome.search("关键词")        -- Google 搜索
+chrome.ai_search("问题")       -- AI 模式搜索
+chrome.screenshot()            -- 截图
+```
+
+详见 [chrome.md](chrome.md)。
+
+---
+
+### 5. 多模态 C 封装
+
+| 模块 | 功能 | 技术方案 |
+|------|------|---------|
+| **SenseVoice** | 语音转文本 (ASR) | C++ wrapper → `libsensevoice.so` |
+| **JoyCaption** | 图片分析 (Vision) | C++ wrapper → `libjoycaption.so` |
+
+源码备份存放在：
+- `sense-voice-wrapper/sensevoice_wrapper.cpp`
+- `joycaption-wrapper/joycaption_wrapper.cpp`
+
+---
+
+### 6. UTEL 编码系统
+
+针对 LLM 的文本压缩编码协议，支持自然语言和代码的双模式压缩。
 
 ```python
-# tasks/agent_types.py
-AGENT_TYPES = {
-    "python": {
-        "system_prompt": "你是 Python 专家...",
-        "tools": ["python", "pip", "pytest"]
-    },
-    "frontend": {
-        "system_prompt": "你是前端开发专家...",
-        "tools": ["node", "npm", "vite"]
-    },
-    "ops": {
-        "system_prompt": "你是运维专家...",
-        "tools": ["docker", "kubectl", "nginx"]
-    }
-}
+from utel_encoder import UTEL_Encoder
+
+encoder = UTEL_Encoder()
+compressed = encoder.pack("请帮我实现一个红黑树，需要支持完整的插入、删除操作。")
 ```
 
-### 10.2 新增消息类型
+**特性：**
+- 自然语言：双拼音节编码 + 逻辑符号
+- 代码：`#code ... #end` 块内 1:1 脱水/还原
+- 多版本演进 (v2.1 ~ v3.2)
 
-在 `autobot_dingtalk.py` 的 `process` 方法中添加处理逻辑即可。
+详见 [rule.md](rule.md) 和 `utel_encoder.py`。
 
-### 10.3 新增插件
+---
 
-在 `tasks/` 目录下创建新文件，继承 `BaseTask`：
+## 构建与运行
 
-```python
-from tasks.base import BaseTask, TaskResult
+### 微信 OCR 模块
 
-class MyTask(BaseTask):
-    task_type = "mycommand"
-    
-    def execute(self, content, session_webhook=None):
-        return TaskResult.ok("执行成功")
+```bash
+cd wechat-ocr
+cmake -S . -B build_lib \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_PREFIX_PATH="/data/venv/onnxruntime-linux-x64-gpu-1.26.0/lib/cmake"
+cmake --build build_lib -j$(nproc) --target wechat_ocr_core
+```
+
+### Agent 管理
+
+```bash
+# 确保已安装依赖
+# tmux, opencode
+
+# 启动 Master
+./agent.sh start master
+
+# 启动 Worker
+./agent.sh start coder
+```
+
+### 图像生成
+
+```bash
+# 需要 stable-diffusion.cpp 编译的 myimg-cli
+# 模型文件位于 /opt/image/model/
+./img.sh "prompt"
 ```
 
 ---
 
-## 11.  roadmap
+## 依赖汇总
 
-### Phase 1: 基础架构 ✅
-- [x] 钉钉消息接收与回复
-- [x] 插件化任务系统
-- [x] 基础 Agent 管理
-
-### Phase 2: Master Agent 🔄
-- [ ] Master Agent 自动启动
-- [ ] Agent 生命周期管理
-- [ ] 指令路由与分发
-- [ ] 状态监控与心跳
-
-### Phase 3: 多模态支持 🔄
-- [x] 语音消息自动识别（ASR - SenseVoice）
-- [x] 文本转语音（TTS - Piper）
-- [ ] 图片理解与生成
-- [ ] 文件上传与下载
-
-### Phase 4: 高级功能 📋
-- [ ] Agent 间协作
-- [ ] 长任务持久化
-- [ ] 结果文件自动发送
-- [ ] 权限与审计日志
-
-### Phase 5: 生态扩展 📋
-- [ ] Web 管理界面
-- [ ] 更多 Agent 类型
-- [ ] 插件市场
-- [ ] 多用户支持
+| 组件 | 用途 | 所属模块 |
+|------|------|---------|
+| OpenCode + tmux | Agent 管理与运行 | Agent 管理 |
+| LuaJIT | 微信自动化脚本语言 | WeChat OCR |
+| ONNX Runtime GPU | 深度学习推理 | WeChat OCR |
+| PaddleOCR PP-OCRv4 | 文字检测+识别模型 | WeChat OCR |
+| OpenCV | 图像处理 | WeChat OCR |
+| xdotool / xclip | 桌面操作 | WeChat OCR / Chrome |
+| ffmpeg | 录屏 | WeChat OCR |
+| CUDA | GPU 加速 | WeChat OCR |
+| stable-diffusion.cpp | 本地图像生成 | Image Gen |
+| SenseVoice.cpp | 语音识别 ASR | C Wrappers |
 
 ---
 
-## 9. Chrome DevTools MCP 集成
+## 注意事项
 
-详见 [chrome.md](chrome.md) — Chrome 官方 MCP 服务器的安装、配置、可用工具及示例。
+1. **start.sh 需更新** — 当前引用了已删除的 `ding/` 目录，需根据实际需求调整
+2. **模型文件** — 大模型文件通过 `.gitignore` 排除，部署时需手动下载
+3. **Agent 心跳** — Slave 每 15 分钟收到系统自动心跳消息，Slave 应忽略这些消息无需回复
+4. **微信安全** — 微信自动化操作频率不宜过高，避免触发风控
 
 ---
 
-*文档版本: 1.1*
-*更新日期: 2026-06-18*
+*文档版本: 2.0*
+*更新日期: 2026-06-19*
