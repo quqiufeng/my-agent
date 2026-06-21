@@ -1,308 +1,107 @@
 # WeChat OCR 测试脚本
 
-> ⚠️ **全部脚本当前标记为「未验证」** — 需重新测试确认功能正常。
+本目录包含「微信机器人」框架的各类测试脚本，用于验证截图、OCR、窗口定位、消息发送、Chrome 搜索等能力。
 
-## 环境要求
+> **状态说明**
+> - ✅ 已验证：曾经在对应环境下跑通过，但因微信版本、分辨率、主题变化可能仍需重测。
+> - ⚠️ 未验证：已编写但尚未在目标环境充分测试。
+> - 所有脚本都需要先完成 [环境准备](#环境准备)。
+
+---
+
+## 环境准备
 
 ```bash
+cd /opt/my-agent/wechat-ocr
+
 export LD_LIBRARY_PATH=./lib:/data/venv/onnxruntime-linux-x64-gpu-1.26.0/lib
 export LUA_PATH="/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;;"
 export LUA_CPATH="/usr/local/lualib/?.so;;"
 ```
 
-或直接用 `run.sh`。
-
----
-
-## 测试脚本
-
-### 1. test_3columns.lua — 三列结构检测 ✅✅ 已验证
-
-**基础分割方法：**
-- 第一列：固定 75px（图标列）
-- 第二/三分列：OCR 识别 xx:xx 时间戳，取右边缘 +25px（小屏-10px修正）
-- 时间戳右对齐于分隔线，找不到时间戳则报错
-
-检测微信窗口的三列结构，输出分界位置和标注图。
+或直接用：
 
 ```bash
-luajit tests/test_3columns.lua
+./run.sh
 ```
 
-| 输出 | 说明 |
-|------|------|
-| 控制台 | 三列分界位置（px和百分比） |
-| ~/wechat_3cols_test.png | 标注图 |
-
-**边界定位**: 用第二列右侧短文本（3-8字符）+40px 动态定位，无固定比例，自适应窗口大小。
-
----
-
-### 3. test_third_icons.lua — 第三列小图标检测 ✅✅ 已验证（基于三列分割+工具栏图标行55px检测）
-
-**基于三列分割的第三列工具栏图标检测：**
-
-- OCR 定位第三列边界
-- 只检测底部 430px（工具栏+输入框区域）
-- 多阈值（220→80）+ Canny 边缘检测
-- 中心距离合并去重 + 文字行过滤
-- `+repage` 处理虚拟画布偏移
-
-```bash
-luajit tests/test_third_icons.lua
-```
+**前置条件**：
+- 桌面已登录「小龙虾」微信客户端
+- 已安装 `luajit`、`xdotool`、`xclip`、`ffmpeg`、`imagemagick`
+- 已编译 `lib/libwechat_ocr_core.so`
+- 已放置 OCR 模型：`models/ch_PP-OCRv4_det_infer.onnx`、`models/ch_PP-OCRv4_rec_infer.onnx`
+- 推荐屏幕分辨率 2560×1440，窗口缩放 100%
 
 ---
 
----
+## 测试脚本一览
 
-### 4. test_send_file.lua — 发送文件 (未验证)
+### 1. 窗口结构检测
 
-点文件图标 → 粘贴文件名 → 回车。
+| 脚本 | 功能 | 状态 | 用法 |
+|------|------|------|------|
+| `test_3columns.lua` | 检测微信窗口三列结构，输出分界位置和标注图 | ✅ 已验证 | `luajit tests/test_3columns.lua` |
+| `test_first_icons.lua` | 第一列 7 个图标检测，输出标注图 | ✅ 已验证 | `luajit tests/test_first_icons.lua` |
+| `test_first_column.lua` | 依次点击第一列 7 个图标 | ⚠️ 未验证 | `luajit tests/test_first_column.lua` |
+| `test_third_icons.lua` | 第三列工具栏图标检测 | ✅ 已验证 | `luajit tests/test_third_icons.lua` |
 
-```bash
-luajit tests/test_send_file.lua [文件路径]
-# 默认: ~/wechat_third_icons.png
-luajit tests/test_send_file.lua ~/video.mp4
-```
-
----
-
-### 5. test_screenshot.lua — 截图发送 (未验证)
-
-点截图图标 → 框选全屏 → 双击确认 → 发送。
-
-```bash
-luajit tests/test_screenshot.lua
-```
+**输出文件**：
+- `~/wechat_3cols_*.png`
+- `~/wechat_first_icons_*.png`
+- `~/wechat_third_icons_*.png`
 
 ---
 
-### 6. test_search.lua — 搜索联系人 (未验证)
+### 2. 消息交互操作
 
-```bash
-# 只搜索
-luajit tests/test_search.lua [关键词]
-luajit tests/test_search.lua "小王"
+| 脚本 | 功能 | 状态 | 用法 |
+|------|------|------|------|
+| `test_search.lua` | 搜索联系人，可选点第一个结果并发送消息 | ⚠️ 未验证 | `luajit tests/test_search.lua "小王"` 或 `luajit tests/test_search.lua "小王" "你好！"` |
+| `test_contacts_search.lua` | 通讯录搜索 | ⚠️ 未验证 | `luajit tests/test_contacts_search.lua "小王"` |
+| `test_send_file.lua` | 点文件图标 → 粘贴文件名 → 发送 | ⚠️ 未验证 | `luajit tests/test_send_file.lua ~/video.mp4` |
+| `test_screenshot.lua` | 点截图图标 → 框选全屏 → 发送 | ⚠️ 未验证 | `luajit tests/test_screenshot.lua` |
 
-# 搜索 + 点第一个结果 + 发消息
-luajit tests/test_search.lua [关键词] [消息]
-luajit tests/test_search.lua "小王" "你好！"
-```
-
-搜索框位置: 窗口 (wx+180, wy+50)
+搜索框默认位置：`(wx+180, wy+50)`。
 
 ---
 
-### 7. test_contacts_search.lua — 通讯录搜索 (未验证)
+### 3. 未读消息与列表检测
 
-点通讯录图标 → 搜索。
-
-```bash
-luajit tests/test_contacts_search.lua [关键词]
-```
-
----
-
-### 8. test_first_icons.lua — 第一列小图标检测 ✅✅ 已验证
-
-**基于三列分割的第一列图标检测：**
-
-- 先用 OCR 做三列分割（识别 xx:xx 时间戳定位第二/三分界）
-- 只检测第一列（75px宽）范围内的图标
-- 背景差值法：`fx abs(u-237/255)` 找所有和底色不同的像素
-- 补漏：Canny 边缘检测抓极浅图标
-- 中心距离合并（22px半径）去重
-- 输出标注图含三列分割线和第一列图标框
-
-```bash
-luajit tests/test_first_icons.lua
-```
-
-| 输出 | 说明 |
-|------|------|
-| `~/wechat_first_icons_*.png` | 三列分割 + 第一列图标标注 |
+| 脚本 | 功能 | 状态 | 用法 |
+|------|------|------|------|
+| `test_unread_detect.lua` | OCR 全窗口找第二列数字未读数 | ⚠️ 未验证 | `luajit tests/test_unread_detect.lua` |
+| `test_two_lines.lua` | 第二列聊天条目等距标注 + 自动点击 | ⚠️ 未验证 | `luajit tests/test_two_lines.lua` |
+| `test_avatar_badges.lua` | 头像红点/红底白字数字检测 | ⚠️ 未验证 | `luajit tests/test_avatar_badges.lua` |
+| `test_avatars.lua` | 第二列头像 OCR 检测 | ⚠️ 未验证 | `luajit tests/test_avatars.lua` |
 
 ---
 
-### 9. test_unread_detect.lua — 未读消息检测（旧版）(未验证)
+### 4. Chrome AI 搜索
 
-检测第二列中红色背景的数字（未读标记）。
-
-```bash
-luajit tests/test_unread_detect.lua
-```
-
-检测方法: OCR全窗口 → 在第二列中找纯数字 → 输出
-
----
-
-### 10. test_two_lines.lua — 第二列聊天条目检测 + 自动点击 (未验证)
-
-检测第二列聊天列表条目，等距标注，并依次点击/悬停（服务号只悬停不点击）。
-
-```bash
-luajit tests/test_two_lines.lua
-```
-
-| 输出 | 说明 |
-|------|------|
-| 控制台 | 行位置、服务号标记 |
-| ~/wechat_two_lines_annotated.png | 标注图 |
+| 脚本 | 功能 | 状态 | 用法 |
+|------|------|------|------|
+| `test_ai_search.lua` | Chrome AI 搜索 → 复制结果 → 输出 | ⚠️ 未验证 | `luajit tests/test_ai_search.lua "马斯克最新身价多少"` |
+| `ai_to_wechat.lua` | Chrome AI 搜索 → OCR 读结果 → 微信发送 | ⚠️ 未验证 | `luajit tests/ai_to_wechat.lua` |
+| `google_ai_qa.lua` | 新标签 → 输入问题 → 截图 + OCR 读结果 | ⚠️ 未验证 | `luajit tests/google_ai_qa.lua` |
+| `google_ai_test.lua` | 打开 Google → 输入问题 → 点 AI 模式按钮 → 截图 | ⚠️ 未验证 | `luajit tests/google_ai_test.lua` |
+| `test_open_chrome.lua` | 启动 Chrome | ⚠️ 未验证 | `luajit tests/test_open_chrome.lua` |
+| `chrome_bridge.lua` | 通过 JSON-RPC 与 Chrome DevTools MCP 交互 | ⚠️ 未验证 | `luajit tests/chrome_bridge.lua "打开 https://example.com 并截图"` |
 
 ---
 
-### 11. test_avatar_badges.lua — 头像红点/未读标记检测 (未验证)
+### 5. 监控与自动回复
 
-检测聊天列表头像上的红色未读标记（小红点和数字）。
-
-```bash
-luajit tests/test_avatar_badges.lua
-```
-
-| 输出 | 说明 |
-|------|------|
-| 控制台 | 红点位置、匹配条目编号 |
-| ~/wechat_avatar_badges.png | 标注图（红框标记有未读的条目） |
-
-**检测方法**: ImageMagick 连通分量分析 → 严格红色阈值（R>G*2.2, G<0.5）→ 位置匹配 → 额外检测无文字条目（如微信支付）
-
-**红点特征**:
-| 类型 | 检测方式 | 标注 |
-|------|---------|------|
-| 小红点（无数字） | 严格红色阈值 + 连通分量 5~20px | 🔴 红框 |
-| 红底白字数字 | 同红色检测 + 中心白色像素判断 | 🔴 红框 |
-| 群消息 N条 | OCR 文本匹配 `%d+条` | 📝 红框 |
-| 无文字条目 | 未匹配红点 x<200, y>100 | 🟠 橙色框 "?" |
+| 脚本 | 功能 | 状态 | 用法 |
+|------|------|------|------|
+| `monitor.lua` | Lua 版未读红点监控 | ⚠️ 未验证 | `luajit tests/monitor.lua` / `luajit tests/monitor.lua --once` |
+| `news_execute.lua` | 文件传输助手未读 → 读取 → 自动回复 | ⚠️ 未验证 | `luajit tests/news_execute.lua` |
+| `monitor.c` | C 版未读红点监控守护进程 | ⚠️ 未验证 | `gcc -O2 -o monitor monitor.c && ./monitor --once` |
 
 ---
 
-### 12. test_avatars.lua — 第二列头像检测（OCR）(未验证)
+## 统一 API 速查
 
-完全用 OCR 检测第二列中的头像文字（方形文字框），不涉及颜色检测。
-
-```bash
-luajit tests/test_avatars.lua
-```
-
-输出: 头像区域文字框的坐标和文本
-
----
-
-### 13. test_ai_search.lua — Chrome AI 搜索 (未验证)
-
-Chrome 新标签 → 地址栏输入 → Tab → 回车（AI 模式），支持自定义问题。
-
-```bash
-luajit tests/test_ai_search.lua "问题"
-luajit tests/test_ai_search.lua "马斯克最新身价多少"
-```
-
-**获取结果**: Ctrl+A → Ctrl+C 复制页面内容后读取剪贴板。
-
----
-
-### 14. test_open_chrome.lua — 打开 Chrome (未验证)
-
-```bash
-luajit tests/test_open_chrome.lua
-```
-
----
-
-### 15. google_ai_qa.lua — Google AI 模式问答 (未验证)
-
-新空白标签 → 输入问题 → 回车搜索 → 截图 + OCR 读结果。
-
-```bash
-luajit tests/google_ai_qa.lua
-```
-
----
-
-### 16. google_ai_test.lua — Google AI 模式测试 (未验证)
-
-打开 Google → 输入问题 → 点 AI 模式按钮 → 截图。
-
-```bash
-luajit tests/google_ai_test.lua
-```
-
----
-
-### 17. ai_to_wechat.lua — AI 搜索 → 微信发送 (未验证)
-
-Chrome AI 搜索 → OCR 读结果 → 微信搜索文件传输助手 → 粘贴发送。
-
-```bash
-luajit tests/ai_to_wechat.lua
-```
-
----
-
-### 18. monitor.lua — 微信消息监控（Lua版本）(未验证)
-
-每 5 分钟检测微信未读红点，支持单次模式和守护模式。
-
-```bash
-# 后台运行守护进程
-luajit tests/monitor.lua &
-
-# 只检测一次
-luajit tests/monitor.lua --once
-```
-
-**检测方法**: 截图 → ImageMagick 连通分量分析红点 → 输出未读数
-
----
-
-### 19. news_execute.lua — 文件传输助手自动回复 (未验证)
-
-检测文件传输助手未读 → 点进去 → 右键复制最新消息 → 回复"收到！马上处理"+引用原文。
-
-```bash
-luajit tests/news_execute.lua
-```
-
-**依赖**: `wechat_ocr.badge_detect` 模块
-
----
-
-### 20. chrome_bridge.lua — Chrome DevTools MCP 桥 (未验证)
-
-通过 JSON-RPC 协议与 Chrome DevTools MCP 交互，支持导航、截图等操作。
-
-```bash
-luajit tests/chrome_bridge.lua "打开 https://www.example.com 并截图"
-luajit tests/chrome_bridge.lua "搜索 小红书"
-```
-
-**依赖**: `chrome-devtools-mcp@latest` (通过 npx 自动安装)
-
----
-
-### 21. monitor — C 守护进程（微信消息监控）(未验证)
-
-每 5 分钟检测微信未读红点，编译运行：
-
-```bash
-# 编译
-cd /opt/my-agent/wechat-ocr
-gcc -O2 -o monitor monitor.c
-
-# 运行守护进程
-./monitor &
-# 日志: /tmp/wechat_monitor.log
-
-# 单次检测
-./monitor --once
-```
-
-**检测流程**: 点底部面板微信图标 → 截图 → ImageMagick 红色分析 → 连通分量匹配
-
----
-
-## 统一API
+日常开发建议直接使用 `wechat_robot.lua`：
 
 ```lua
 local robot = require("wechat_robot")
@@ -316,9 +115,31 @@ robot.click_sidebar(3)
 robot.capture()
 robot.monitor({on_message=fn})
 robot.set_record(true)  -- 开启录像
+robot.destroy()
 ```
 
-详见 `wechat_robot.lua`。
+详见 `../wechat_robot.lua`。
+
+---
+
+## 已知问题
+
+1. **`google_ai_qa.lua` 使用了未文档化的 API**：
+   - 调用 `chrome.type(...)`，但 `chrome.md` 中未定义该接口。
+   - 需要确认 `wechat_ocr.chrome` 模块是否支持，或用 `xclip + xdotool` 替代。
+
+2. **`news_execute.lua` 依赖缺失模块**：
+   - 依赖 `wechat_ocr.badge_detect`，当前项目目录中未找到该模块。
+
+3. **`chrome_bridge.lua` 未读取响应**：
+   - 只发送 JSON-RPC 请求，未读取 MCP 服务器返回。
+
+4. **坐标硬编码**：
+   - 多数脚本假设 2560×1440 分辨率、100% 缩放、固定微信布局。
+   - 更换分辨率或微信版本后可能需要调整偏移量。
+
+5. **状态验证 disclaimer**：
+   - 标记为 ✅ 的脚本仅代表曾经在特定环境跑通，不保证当前环境一定可用。
 
 ---
 
@@ -326,35 +147,31 @@ robot.set_record(true)  -- 开启录像
 
 ```
 tests/
-├── TEST.md                     本文档
-├── test_3columns.lua           三列结构检测           ✅✅ 已验证
-├── test_third_icons.lua        第三列图标             ✅✅ 已验证
-├── test_send_file.lua          发送文件               (未验证)
-├── test_screenshot.lua         截图发送               (未验证)
-├── test_search.lua             搜索联系人             (未验证)
-├── test_contacts_search.lua    通讯录搜索             (未验证)
-├── test_first_icons.lua        第一列图标检测         ✅✅ 已验证
-├── test_unread_detect.lua      未读检测（旧版）       (未验证)
-├── test_two_lines.lua          第二列条目+自动点击    (未验证)
-├── test_avatar_badges.lua      头像红点检测           (未验证)
-├── test_avatars.lua            头像OCR检测            (未验证)
-├── test_ai_search.lua          Chrome AI 搜索        (未验证)
-├── test_open_chrome.lua        打开 Chrome           (未验证)
-├── google_ai_qa.lua            Google AI问答         (未验证)
-├── google_ai_test.lua          Google AI测试         (未验证)
-├── ai_to_wechat.lua            AI→微信发送           (未验证)
-├── monitor.lua                 未读监控（Lua版）      (未验证)
-├── news_execute.lua            文件传输助手自动回复   (未验证)
-├── chrome_bridge.lua           Chrome MCP桥          (未验证)
-├── monitor.c                   未读监控 C 源码        (未验证)
-├── monitor                     未读监控（已编译）
-├── mark_columns.py             标注图生成
-├── find_icons.py               图标检测
-├── find_third_icons.py         第三列图标
-└── find_red_badges.py          红色检测
+├── TEST.md                     # 本文档
+├── test_3columns.lua           # 三列结构检测
+├── test_first_icons.lua        # 第一列图标检测
+├── test_first_column.lua       # 第一列图标依次点击
+├── test_third_icons.lua        # 第三列图标检测
+├── test_send_file.lua          # 发送文件
+├── test_screenshot.lua         # 截图发送
+├── test_search.lua             # 搜索联系人
+├── test_contacts_search.lua    # 通讯录搜索
+├── test_unread_detect.lua      # 未读数字检测（旧版）
+├── test_two_lines.lua          # 第二列条目+自动点击
+├── test_avatar_badges.lua      # 头像红点检测
+├── test_avatars.lua            # 头像 OCR 检测
+├── test_ai_search.lua          # Chrome AI 搜索
+├── test_open_chrome.lua        # 打开 Chrome
+├── google_ai_qa.lua            # Google AI 问答
+├── google_ai_test.lua          # Google AI 测试
+├── ai_to_wechat.lua            # AI → 微信发送
+├── monitor.lua                 # 未读监控（Lua版）
+├── news_execute.lua            # 文件传输助手自动回复
+├── chrome_bridge.lua           # Chrome DevTools MCP 桥
+└── monitor.c                   # 未读监控 C 源码
 ```
 
 ---
 
-*更新日期: 2026-06-19*
-*状态: 全部脚本待验证*
+*更新日期: 2026-06-21*
+*状态: 已整理，多数脚本待验证*

@@ -1,8 +1,20 @@
 # WeChat OCR 模块技术文档
 
-## 一、技术架构
+本文档描述「微信机器人消息入口」的底层实现：如何定位桌面「小龙虾」微信窗口、识别聊天文字、并把消息内容交给上层 Lua 脚本处理。
+
+---
+
+## 一、整体定位
 
 ```
+远程微信消息
+      │
+      ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 桌面「小龙虾」微信客户端                                      │
+└─────────────────────────────────────────────────────────────┘
+      │
+      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Lua 逻辑层 (wechat_ocr/init.lua)                           │
 │                                                             │
@@ -30,16 +42,7 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 核心依赖
-
-| 组件 | 版本 | 用途 |
-|------|------|------|
-| LuaJIT | 2.1+ | 主逻辑语言，FFI 调用 C |
-| ONNX Runtime | 1.26.0 (GPU) | 深度学习推理引擎 |
-| PaddleOCR | PP-OCRv4 | 文字检测 + 识别模型 |
-| OpenCV | 4.6+ | 图像处理、边缘检测 |
-| X11/XShm | - | Linux 桌面截图 |
-| xdotool | - | 窗口查找 + 跨桌面切换 |
+---
 
 ## 二、微信窗口结构识别
 
@@ -75,7 +78,7 @@
 | 位置 | 最左侧竖条 |
 | 宽度 | 约 0-2% 的白面板宽度 (~30px) |
 | 特征 | 导航图标，选中为绿色，未选中为灰色 |
-| 用途 | 切换功能模块（聊天、通讯录、收藏等）|
+| 用途 | 切换功能模块（聊天、通讯录、收藏等） |
 
 #### 第二区域：列表显示区域
 
@@ -122,27 +125,29 @@
 └──────────────────────────────────────┘
 ```
 
+---
+
 ## 三、OCR 识别流程
 
 ### 3.1 完整处理步骤
 
 ```
 Step 1: 捕获策略（三路径）
-  ├─ 路径A: 白面板检测 (当前桌面)
-  │   └─ capture_full_screen() → find_white_window() → 直接截取
+  ├─ 路径A: xdotool 窗口几何（主）
+  │   └─ find_wechat_window() → capture_screen() 直接截取
   │
-  ├─ 路径B: 跨桌面切换 (微信在其他虚拟桌面)
-  │   └─ find_wechat_xid() → xdotool 将窗口切换到当前桌面
-  │   └─ 等待 200ms → 走路径A 继续
+  ├─ 路径B: 白面板检测（备）
+  │   └─ capture_full_screen() → find_white_window() → 截取
   │
-  └─ 路径C: xdotool 窗口几何 (兜底)
-      └─ find_wechat_window() → capture_screen() 直接截图
+  └─ 路径C: 跨桌面切换（兜底）
+      └─ find_wechat_xid() → xdotool 将窗口切换到当前桌面
+      └─ 等待 200ms → 走路径A 继续
 
 Step 2: 裁剪第三区域（内容展示区）
-  └─ crop_x = panel.cols * 0.28   (跳过图标栏 + 列表区域)
-  └─ crop_y = 35                  (跳过标题栏)
-  └─ crop_h = panel.rows - 220    (跳过输入框+底部)
-  └─ 结果: 只保留第三区域的核心内容部分
+  └─ 对全窗口做 OCR，识别 HH:MM 时间戳
+  └─ 取第一个时间戳右边缘 + 25px 作为第二/三分隔线
+  └─ 小屏（< 2000px）减 10px 修正
+  └─ 过滤后只保留第三列文字框
 
 Step 3: OCR 推理
   └─ Text Detection (PP-OCRv4 det model)
@@ -165,23 +170,26 @@ Step 4: 返回结果
        ]
      }
 
-Step 5: Lua 返回
+Step 5: Lua 层处理
   └─ capture() 直接返回文字列表 (按Y排序)
   └─ monitor() 持续轮询 + 差分检测新消息
+  └─ 上层脚本将文本解析为指令并执行
 ```
 
-### 3.2 输入框上方功能键（待实现）
+### 3.2 输入框上方功能键
 
 第三区域（内容展示区）输入框上方有一排功能图标：
 
 ```
 索引 1     2     3       4     5       6       7
-  😊    📎    🎤    📺    📹      📹      ...
- 表情   文件  语音   截图   视频    视频   更多
+   😊    📎    🎤    📺    📹      📹      ...
+  表情   文件  语音   截图   视频    视频   更多
                                 (倒数第二个) (最右边)
 ```
 
-- **第3个图标 `📎`** — 发送文件（重要，后续优先实现）
+- **第 3 个图标 `📎`** — 发送文件
+- **第 4 个图标 `📺`** — 截图
+
 ### 3.3 第三区域底部结构（工具区）
 
 ```
@@ -199,24 +207,15 @@ Step 5: Lua 返回
 - 图标为灰色 (RGB ~180-200)，背景浅灰 (RGB ~237)，对比度低
 - 定位方法：Canny + Hough 检测底部最后一条最长水平线
 
-### 3.4 功能键说明
-
-- **第4个图标 `📺`** — 截图
-  ```
-  点击截图图标 → 双击微信窗口区域 → 截图自动填入输入框 → 回车发送
-  ```
-- 识别方法：固定偏移量定位输入框上方区域，模板匹配或颜色检测
-- 图标特点：灰色图标 (RGB ~180-200) 画在浅灰背景 (RGB ~237) 上，对比度很低，阈值法难识别
-- 后续方案：截图保存典型图标模板 → OpenCV matchTemplate 匹配点击
-- 当前输入框裁剪不包括此区域，需要时调整 `crop_y` 参数
-
-### 3.3 窗口定位方法对比
+### 3.4 窗口定位方法对比
 
 | 方法 | 原理 | 可靠性 | 场景 |
 |------|------|--------|------|
-| **白面板检测** (主) | Canny边缘检测 → 最大矩形轮廓 → 内部亮度验证 | ★★★★★ | 微信在当前桌面 |
-| **跨桌面切换** (备) | xdotool 将微信切到当前桌面 → 白面板检测 | ★★★★★ | 微信在其他虚拟桌面 |
-| **xdotool 几何** (兜底) | 通过窗口标题/类名获取位置 → 直接截图 | ★★★☆☆ | 白面板检测失败 |
+| **xdotool 几何** (主) | 通过窗口标题/类名获取位置 → 直接截图 | ★★★★★ | 常规运行 |
+| **白面板检测** (备) | Canny边缘检测 → 最大矩形轮廓 → 内部亮度验证 | ★★★★☆ | xdotool 失败 |
+| **跨桌面切换** (兜底) | xdotool 将微信切到当前桌面 → 重新定位 | ★★★★☆ | 微信在其他虚拟桌面 |
+
+---
 
 ## 四、关键算法说明
 
@@ -265,6 +264,8 @@ PP-OCRv4 字典: 6623 个中英文字符
 CTC 解码: 去重 + 去blank → 最终文字
 ```
 
+---
+
 ## 五、模型文件
 
 | 文件 | 大小 | 说明 |
@@ -275,28 +276,44 @@ CTC 解码: 去重 + 去blank → 最终文字
 
 模型来源: PaddleOCR PP-OCRv4，通过 paddle2onnx 转换为 ONNX 格式。
 
+---
+
 ## 六、构建与运行
 
+### 构建 C 动态库
+
 ```bash
-# 构建 C 动态库
 cd /opt/my-agent/wechat-ocr
 cmake -S . -B build_lib \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH="/data/venv/onnxruntime-linux-x64-gpu-1.26.0/lib/cmake"
 cmake --build build_lib -j$(nproc) --target wechat_ocr_core
+```
 
-# 运行（需设置环境变量）
+### 运行监控
+
+```bash
+./run.sh
+```
+
+或手动：
+
+```bash
 LD_LIBRARY_PATH=./lib:/data/venv/onnxruntime-linux-x64-gpu-1.26.0/lib \
 LUA_PATH="/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;;" \
 LUA_CPATH="/usr/local/lualib/?.so;;" \
 /usr/local/bin/luajit -e 'local ocr = require("wechat_ocr"); ocr.start("/opt/my-agent/wechat-ocr/")'
 ```
 
+---
+
 ## 七、项目文件结构
 
 ```
 wechat-ocr/
 ├── WECHAT_OCR.md              # 本文档
+├── README.md                  # 微信机器人快速入门
+├── CLAUDE.md                  # Chrome 控制规则
 ├── run.lua                    # Lua 入口脚本
 ├── run.sh                     # Shell 启动脚本
 ├── build_final.sh             # 构建脚本
@@ -307,14 +324,16 @@ wechat-ocr/
 │   ├── wechat_ocr_core.cpp    # C API 实现
 │   └── libwechat_ocr_core.so  # 编译产物 (C动态库)
 │
-├── lua/
-│   ├── ocr_core.lua           # FFI 绑定
-│   └── wechat_monitor.lua     # 旧版监控脚本
-│
 ├── src/
 │   ├── screenshot.cpp/hpp     # 截图 + 窗口检测
-│   ├── ocr.cpp/hpp            # OCR 推理封装
-│   └── monitor.cpp/hpp        # 旧版 C++ 监控
+│   └── ocr.cpp/hpp            # OCR 推理封装
+│
+├── lua/
+│   ├── ocr_core.lua           # FFI 绑定
+│   └── wechat_monitor.lua     # Lua 监控循环
+│
+├── tests/
+│   └── TEST.md + test_*.lua
 │
 ├── models/
 │   ├── ch_PP-OCRv4_det_infer.onnx
@@ -322,3 +341,8 @@ wechat-ocr/
 │
 └── ppocr_keys_v1.txt          # 中文字典
 ```
+
+---
+
+*文档版本: 1.1*
+*更新日期: 2026-06-21*
