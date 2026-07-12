@@ -28,7 +28,7 @@ os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", wx + 180
 ffi.C.usleep(500000)
 
 -- 输入"丰"
-os.execute("xdotool type '丰' 2>/dev/null")
+os.execute("xdotool type --delay 300 '丰' 2>/dev/null")
 ffi.C.usleep(300000)
 
 -- 回车搜索
@@ -39,8 +39,8 @@ ffi.C.usleep(1500000)
 os.execute("xdotool key Return 2>/dev/null")
 ffi.C.usleep(1500000)
 
--- 输入"今天天气真好"
-os.execute("xdotool type '今天天气真好' 2>/dev/null")
+-- 输入"今天天气真好"（每键间隔150ms，模拟真人）
+os.execute("xdotool type --delay 150 '今天天气真好' 2>/dev/null")
 ffi.C.usleep(300000)
 
 -- 回车发送
