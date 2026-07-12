@@ -25,7 +25,9 @@ local f = io.open("/tmp/wx_geo.txt")
 local geo = f:read("*a"); f:close()
 local _, _, wx = geo:find("Position: (%d+)")
 local _, _, wy = geo:find(",(%d+)")
-wx, wy = tonumber(wx), tonumber(wy)
+local _, _, ww = geo:find("Geometry: (%d+)")
+local _, _, wh = geo:find("x(%d+)")
+wx, wy, ww, wh = tonumber(wx), tonumber(wy), tonumber(ww), tonumber(wh)
 if not wx then flush("❌ 获取窗口失败\n"); os.exit(1) end
 
 -- 点搜索框
@@ -44,12 +46,14 @@ ffi.C.usleep(1500000)
 os.execute("xdotool key Return 2>/dev/null")
 ffi.C.usleep(1500000)
 
--- 输入消息（每键间隔150ms，模拟真人）
+-- 输入消息
 local safe_msg = msg:gsub("'", "'\\''")
-os.execute("xdotool type --delay 150 '" .. safe_msg .. "' 2>/dev/null")
-ffi.C.usleep(300000)
+os.execute("xdotool type --delay 80 '" .. safe_msg .. "' 2>/dev/null")
+ffi.C.usleep(2000000)
 
--- 回车发送
+-- 回车发送 + 点发送按钮（双保险）
 os.execute("xdotool key Return 2>/dev/null")
+ffi.C.usleep(200000)
+os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", wx + ww - 80, wy + wh - 60))
 ffi.C.usleep(500000)
 flush(string.format("✅ 已发送: %s\n", msg))
