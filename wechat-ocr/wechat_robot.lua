@@ -8,6 +8,11 @@
 local ffi = require("ffi")
 ffi.cdef[[void usleep(unsigned int);]]
 ffi.cdef[[int getpid(void);]]
+ffi.cdef[[
+    int         joycaption_init(const char* model, const char* mmproj, int use_gpu);
+    const char* joycaption_analyze(const char* image, const char* prompt);
+    void        joycaption_free();
+]]
 
 local ocr = require("wechat_ocr")
 local cjson = require("cjson")
@@ -37,6 +42,10 @@ local SIDEBAR_INDEX_MAP = {
     [6] = "Search",
     [7] = "MiniProgram",
 }
+
+local VLM_MODEL  = "/data/models/Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf"
+local VLM_MMPROJ = "/data/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
+local _vlm_lib = nil
 
 -- === 基础工具 ===
 
@@ -74,6 +83,28 @@ function M.get_window_rect()
     local wh = tonumber(geo:match("x(%d+)"))
     if not wx then return nil end
     return {x = wx, y = wy, w = ww, h = wh}
+end
+
+-- === VLM 加载 ===
+
+local function vlm_load()
+    if _vlm_lib then return _vlm_lib end
+    local paths = {
+        "libjoycaption",
+        "/opt/my-agent/joycaption-wrapper/libjoycaption.so",
+        os.getenv("HOME") .. "/my-agent/joycaption-wrapper/libjoycaption.so",
+    }
+    for _, p in ipairs(paths) do
+        local ok, lib = pcall(ffi.load, p)
+        if ok then
+            local ret = lib.joycaption_init(VLM_MODEL, VLM_MMPROJ, 1)
+            if ret == 0 then
+                _vlm_lib = lib
+                return lib
+            end
+        end
+    end
+    return nil
 end
 
 -- === 图标缓存加载 ===
@@ -342,11 +373,7 @@ end
 
 -- === 未读红点检测 ===
 
--- 检测第二列未读消息，返回未读方块/行的坐标数组
--- 每个元素: { x, y, badge_x, badge_y, row_y, row_h }
---  x,y      : 推荐点击位置（联系人行中部）
---  badge_x,y: 红点徽章中心
-function M.detect_unread()
+local function detect_unread_cv(debug)
     M.activate()
     local win = M.get_window_rect()
     if not win then return nil, "no window" end
@@ -354,7 +381,10 @@ function M.detect_unread()
     local wx, wy, wh = win.x, win.y, win.h
     local col1_w = 75
 
-    -- 截图并裁出第二列
+    if debug then
+        flush(string.format("[detect_unread_cv] window: (%d,%d) %dx%d\n", wx, wy, win.w, win.h))
+    end
+
     os.execute(string.format(
         "import -window root -crop %dx%d+%d+%d '/tmp/wx_unread_full.png' 2>/dev/null",
         win.w, win.h, wx, wy))
@@ -362,38 +392,63 @@ function M.detect_unread()
         "convert '/tmp/wx_unread_full.png' +repage -crop %dx%d+%d+0 +repage '/tmp/wx_unread_col2.png' 2>/dev/null",
         445, wh, col1_w))
 
-    -- 垂直投影找行
+    if debug then
+        os.execute(string.format("cp '/tmp/wx_unread_full.png' '%s/wx_unread_debug_full.png' 2>/dev/null", HOME))
+        os.execute(string.format("cp '/tmp/wx_unread_col2.png' '%s/wx_unread_debug_col2.png' 2>/dev/null", HOME))
+    end
+
     local pipe = io.popen(string.format(
-        "convert '/tmp/wx_unread_col2.png' -crop 60x+15+0 +repage -colorspace gray -scale 1x%d! txt:- 2>/dev/null | grep -oP 'gray\\(\\K[0-9.]+'",
+        "convert '/tmp/wx_unread_col2.png' -colorspace gray -scale 1x%d! txt:- 2>/dev/null | grep -oP 'gray\\(\\K[0-9.]+'",
         wh))
     if not pipe then return nil, "row detection failed" end
 
-    local states, prev_v, y = {}, 255, 0
+    local proj = {}
     for line in pipe:lines() do
         local v = tonumber(line)
-        if v then
-            if v < 200 and prev_v >= 210 then
-                table.insert(states, {type="start", y=y})
-            elseif v >= 210 and prev_v < 200 then
-                table.insert(states, {type="end", y=y})
-            end
-            prev_v = v; y = y + 1
-        end
+        if v then table.insert(proj, v) end
     end
     pipe:close()
 
+    local dark = {}
+    for i, v in ipairs(proj) do dark[i] = v < 180 end
+
     local rows = {}
-    for i = 1, #states do
-        if states[i].type == "start" and i < #states then
-            local h = states[i+1].y - states[i].y
-            if h >= 50 and h <= 80 then
-                table.insert(rows, {y = states[i].y, h = h})
+    local run_start_idx = nil
+    local gap_count = 0
+    for idx = 1, #dark do
+        if dark[idx] then
+            if run_start_idx == nil then run_start_idx = idx end
+            gap_count = 0
+        else
+            if run_start_idx then
+                gap_count = gap_count + 1
+                if gap_count > 15 then
+                    local end_idx = idx - gap_count
+                    local h = end_idx - run_start_idx + 1
+                    table.insert(rows, {y = run_start_idx - 1, h = h})
+                    run_start_idx = nil
+                    gap_count = 0
+                end
             end
         end
     end
+    if run_start_idx then
+        local end_idx = #dark - gap_count
+        local h = end_idx - run_start_idx + 1
+        table.insert(rows, {y = run_start_idx - 1, h = h})
+    end
+
+    local valid_rows = {}
+    for _, r in ipairs(rows) do
+        if r.h >= 45 and r.h <= 90 then table.insert(valid_rows, r) end
+    end
+
+    if debug then
+        flush(string.format("[detect_unread_cv] rows found: %d (valid: %d)\n", #rows, #valid_rows))
+    end
 
     local result = {}
-    for _, r in ipairs(rows) do
+    for i, r in ipairs(valid_rows) do
         if r.y > 80 then
             os.execute(string.format(
                 "convert '/tmp/wx_unread_col2.png' +repage -crop 15x15+68+%d +repage '/tmp/wx_unread_badge.png' 2>/dev/null",
@@ -401,7 +456,8 @@ function M.detect_unread()
             local rp = io.popen(
                 "convert /tmp/wx_unread_badge.png -fx '(r>0.78&&g<0.47&&b<0.47)?1:0' -format '%[fx:mean*100]' info: 2>/dev/null")
             if rp then
-                local pct = tonumber(rp:read("*a"):match("[%d.]+")) or 0
+                local raw = rp:read("*a")
+                local pct = tonumber(raw:match("[%d.]+")) or 0
                 rp:close()
                 if pct > 5 then
                     table.insert(result, {
@@ -411,6 +467,7 @@ function M.detect_unread()
                         badge_y = wy + r.y + 7,
                         row_y = r.y,
                         row_h = r.h,
+                        pct = pct,
                     })
                 end
             end
@@ -418,6 +475,157 @@ function M.detect_unread()
     end
 
     return result
+end
+
+-- VLM 识别第二列未读消息（红底白字数字徽章）
+-- 返回每个未读项的坐标：{ x, y, badge_x, badge_y, row, count, name }
+function M.detect_unread_vlm(debug)
+    M.activate()
+    local win = M.get_window_rect()
+    if not win then return nil, "no window" end
+
+    local wx, wy, wh = win.x, win.y, win.h
+    local col1_w = 75
+    local col2_w = 445
+
+    os.execute(string.format(
+        "import -window root -crop %dx%d+%d+%d '/tmp/wx_unread_full.png' 2>/dev/null",
+        win.w, win.h, wx, wy))
+    os.execute(string.format(
+        "convert '/tmp/wx_unread_full.png' +repage -crop %dx%d+%d+0 +repage '/tmp/wx_unread_col2.png' 2>/dev/null",
+        col2_w, wh, col1_w))
+
+    local lib = vlm_load()
+    if not lib then return nil, "vlm not available" end
+
+    if debug then
+        flush("[detect_unread_vlm] VLM analyzing...\n")
+    end
+
+    local prompt = [[Look at this WeChat chat list (second column).
+Find all contacts that have unread messages, shown as a red circular badge with a white number on the top-right corner of the avatar.
+For each unread contact, list:
+- Row number counting from the first contact in the visible list (starting from 1)
+- The unread number shown in the red badge
+- The contact name if readable
+
+Format exactly: "1. 小王: 3"
+If no unread badges, reply only "None".]]
+
+    local result_ptr = lib.joycaption_analyze("/tmp/wx_unread_col2.png", prompt)
+    if result_ptr == ffi.NULL then return nil, "vlm returned null" end
+    local text = ffi.string(result_ptr)
+
+    if debug then
+        flush(string.format("[detect_unread_vlm] VLM output:\n%s\n", text))
+    end
+
+    local chat_list_start = 110
+    local row_height = 70
+    local result = {}
+    for line in text:gmatch("[^\n]+") do
+        local row_str, name, count = line:match("^(%d+)%.%s*([^:]+)%s*:%s*(%d+)")
+        if row_str then
+            local row = tonumber(row_str)
+            if row and row > 0 then
+                local y = wy + chat_list_start + (row - 1) * row_height + row_height / 2
+                table.insert(result, {
+                    x = wx + col1_w + 30,
+                    y = y,
+                    badge_x = wx + col1_w + 350,
+                    badge_y = y - 15,
+                    row = row,
+                    count = tonumber(count) or 0,
+                    name = name and name:gsub("^%s*", ""):gsub("%s*$", "") or "",
+                })
+            end
+        end
+    end
+
+    return result
+end
+
+-- 基于红色徽章直接检测未读（不依赖行识别，对 VLM 失败的场景更鲁棒）
+function M.detect_unread_red(debug)
+    M.activate()
+    local win = M.get_window_rect()
+    if not win then return nil, "no window" end
+
+    local wx, wy, wh = win.x, win.y, win.h
+    local col1_w = 75
+    local col2_w = 445
+
+    os.execute(string.format(
+        "import -window root -crop %dx%d+%d+%d '/tmp/wx_unread_full.png' 2>/dev/null",
+        win.w, win.h, wx, wy))
+    os.execute(string.format(
+        "convert '/tmp/wx_unread_full.png' +repage -crop %dx%d+%d+0 +repage '/tmp/wx_unread_col2.png' 2>/dev/null",
+        col2_w, wh, col1_w))
+
+    if debug then
+        os.execute(string.format("cp '/tmp/wx_unread_col2.png' '%s/wx_unread_debug_col2.png' 2>/dev/null", HOME))
+    end
+
+    local cmd = string.format(
+        "convert '/tmp/wx_unread_col2.png' -fx '(r>0.78&&g<0.47&&b<0.47)?1:0' " ..
+        "-define connected-components:verbose=true -connected-components 4 /dev/null 2>&1 " ..
+        "| grep -v 'bgcolor\\|id:\\|0:.*gray'")
+    local pipe = io.popen(cmd)
+    if not pipe then return nil, "red detection failed" end
+
+    local candidates = {}
+    for line in pipe:lines() do
+        local id, w, h, x, y, area = line:match("(%d+):%s*(%d+)x(%d+)%+(%d+)%+(%d+)%s+[%d.]+,[%d.]+%s+(%d+)")
+        if w and h and x and y and area then
+            local wn, hn, an = tonumber(w), tonumber(h), tonumber(area)
+            local ratio = math.max(wn / hn, hn / wn)
+            if an >= 10 and an <= 300 and wn >= 5 and hn >= 5 and ratio <= 3 then
+                table.insert(candidates, {
+                    x = tonumber(x), y = tonumber(y), w = wn, h = hn, area = an,
+                })
+            end
+        end
+    end
+    pipe:close()
+
+    if debug then
+        flush(string.format("[detect_unread_red] red candidates: %d\n", #candidates))
+    end
+
+    -- 按 x 偏右程度过滤：未读徽章在 col2 右侧（头像右上角）
+    local result = {}
+    for _, c in ipairs(candidates) do
+        if c.x + c.w / 2 > col2_w * 0.55 then
+            local badge_cx = wx + col1_w + math.floor(c.x + c.w / 2)
+            local badge_cy = wy + math.floor(c.y + c.h / 2)
+            table.insert(result, {
+                x = wx + col1_w + 100,        -- 点击行中部
+                y = badge_cy,                 -- 行中心约等于徽章高度
+                badge_x = badge_cx,
+                badge_y = badge_cy,
+                w = c.w,
+                h = c.h,
+                area = c.area,
+            })
+        end
+    end
+
+    table.sort(result, function(a, b) return a.y < b.y end)
+
+    if debug then
+        for i, r in ipairs(result) do
+            flush(string.format("  %d. badge (%d,%d) area=%d\n", i, r.badge_x, r.badge_y, r.area))
+        end
+    end
+
+    return result
+end
+
+-- 优先使用红色检测，未检测到再尝试 VLM
+function M.detect_unread(debug)
+    local rows = M.detect_unread_red(debug)
+    if rows and #rows > 0 then return rows end
+    return M.detect_unread_vlm(debug)
 end
 
 function M.has_unread()
@@ -439,6 +647,10 @@ function M.click_unread(index)
     os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", r.x, r.y))
     sleep(800000)
     return M
+end
+
+function M.debug_unread()
+    return M.detect_unread(true)
 end
 
 -- === OCR 语义定位 ===
