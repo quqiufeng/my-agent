@@ -61,8 +61,8 @@ local cjson = require("cjson")
 local all_text = {}
 local prev_text = ""
 
-for i = 1, 50 do
-    -- 每屏截图保存到 ~/ai_result_01.png, ~/ai_result_02.png ...
+for i = 1, 15 do
+    -- 每屏截图保存
     local seg_path = string.format("%s/ai_result_%02d.png", home, i)
     os.execute(string.format("import -window %s '%s' 2>/dev/null", chrome_wid, seg_path))
     os.execute(string.format("convert '%s' +repage -crop 1500x%d+0+0 +repage '%s' 2>/dev/null", seg_path, ch, seg_path))
@@ -71,22 +71,15 @@ for i = 1, 50 do
     if s and s ~= ffi.NULL then
         local d = cjson.decode(ffi.string(s))
         ocr_lib.ocr_free_string(s)
-        local cur = ""
         for _, b in ipairs(d.boxes or {}) do
             if b.x >= cx and b.x <= cx + 1500 then
                 table.insert(all_text, b.text)
-                cur = cur .. b.text
             end
         end
-        if i > 1 and cur == prev_text then
-            flush(string.format("  到底了（%d 屏）\n", i - 1))
-            break
-        end
-        prev_text = cur
     end
 
-    os.execute("xdotool click 5 2>/dev/null")
-    ffi.C.usleep(300000)
+    for _ = 1, 5 do os.execute("xdotool click 5 2>/dev/null"); ffi.C.usleep(50000) end
+    ffi.C.usleep(500000)
 end
 ocr_lib.ocr_destroy(e)
 
