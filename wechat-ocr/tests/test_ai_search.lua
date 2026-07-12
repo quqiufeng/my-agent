@@ -83,9 +83,47 @@ for i = 1, 15 do
 end
 ocr_lib.ocr_destroy(e)
 
--- 输出
+-- 输出去重文本
 flush(string.format("\n=== OCR 结果 (%d 段文字) ===\n\n", #all_text))
+local seen, combined = {}, {}
 for _, t in ipairs(all_text) do
-    flush(t .. " ")
+    if not seen[t] then
+        seen[t] = true
+        table.insert(combined, t)
+        flush(t .. " ")
+    end
 end
-flush("\n✅\n")
+
+-- 保存到文件并复制到剪贴板
+local out_text = table.concat(combined, " ")
+local fout = io.open("/tmp/ai_ocr_result.txt", "w")
+if fout then fout:write(out_text); fout:close() end
+os.execute("cat /tmp/ai_ocr_result.txt | xclip -selection clipboard 2>/dev/null")
+flush("\n\n已复制到剪贴板\n")
+
+-- 微信搜索 "丰" → 粘贴 → 发送
+flush("微信发送...\n")
+os.execute("xdotool search --name 微信 windowactivate 2>/dev/null")
+ffi.C.usleep(500000)
+
+os.execute("xdotool getactivewindow getwindowgeometry > /tmp/wx_geo.txt 2>/dev/null")
+local fgeo = io.open("/tmp/wx_geo.txt")
+local wgeo = fgeo:read("*a"); fgeo:close()
+local wx = tonumber(wgeo:match("Position: (%d+)"))
+local wy = tonumber(wgeo:match(",(%d+)"))
+if not wx then flush("❌ 获取微信窗口失败\n"); else
+    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", wx + 180, wy + 50))
+    ffi.C.usleep(500000)
+    os.execute("xdotool type --delay 300 '丰' 2>/dev/null")
+    ffi.C.usleep(300000)
+    os.execute("xdotool key Return 2>/dev/null")
+    ffi.C.usleep(1500000)
+    os.execute("xdotool key Return 2>/dev/null")
+    ffi.C.usleep(1500000)
+    os.execute("xdotool key ctrl+v 2>/dev/null")
+    ffi.C.usleep(500000)
+    os.execute("xdotool key Return 2>/dev/null")
+    ffi.C.usleep(2000000)
+    flush("✅ 已发送\n")
+end
+flush("✅\n")

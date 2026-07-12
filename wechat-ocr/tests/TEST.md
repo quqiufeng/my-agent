@@ -105,7 +105,7 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 
 | 脚本 | 功能 | 状态 | 用法 |
 |------|------|------|------|
-| `test_ai_search.lua` | Chrome AI 搜索 → 复制结果 → 输出 | ⚠️ 未验证 | `luajit tests/test_ai_search.lua "马斯克最新身价多少"` |
+| `test_ai_search.lua` | Chrome AI 搜索 → 分段截图+OCR → 微信发送 | ✅ 已验证 | `luajit tests/test_ai_search.lua` |
 | `ai_to_wechat.lua` | Chrome AI 搜索 → OCR 读结果 → 微信发送 | ⚠️ 未验证 | `luajit tests/ai_to_wechat.lua` |
 | `google_ai_qa.lua` | 新标签 → 输入问题 → 截图 + OCR 读结果 | ⚠️ 未验证 | `luajit tests/google_ai_qa.lua` |
 | `google_ai_test.lua` | Chrome AI 搜索 → 截图 → 微信粘贴发送 | ✅ 已验证 | `luajit tests/google_ai_test.lua` |
