@@ -66,9 +66,51 @@ local function type_text(text, delay_ms)
     os.execute(string.format("xdotool type --delay %d '%s' 2>/dev/null", delay_ms, shell_escape(text)))
 end
 
+local function find_wechat_window()
+    local pipe = io.popen("xdotool search --name 微信 2>/dev/null")
+    if not pipe then return nil end
+    local ids = {}
+    for line in pipe:lines() do
+        local id = tonumber(line)
+        if id then table.insert(ids, id) end
+    end
+    pipe:close()
+
+    local best_id, best_area = nil, 0
+    for _, id in ipairs(ids) do
+        local gpipe = io.popen("xdotool getwindowgeometry " .. id .. " 2>/dev/null")
+        if gpipe then
+            local geo = gpipe:read("*a"); gpipe:close()
+            local w = tonumber(geo:match("Geometry: (%d+)"))
+            local h = tonumber(geo:match("x(%d+)"))
+            if w and h then
+                local area = w * h
+                if area > best_area then
+                    best_area = area
+                    best_id = id
+                end
+            end
+        end
+    end
+    return best_id
+end
+
 function M.activate()
-    os.execute("xdotool search --name 微信 windowactivate 2>/dev/null")
-    sleep(500000)
+    local wid = find_wechat_window()
+    if wid then
+        -- 先取消最小化再激活，确保微信真正到前台
+        os.execute("xdotool windowmap " .. wid .. " 2>/dev/null")
+        os.execute("xdotool windowraise " .. wid .. " 2>/dev/null")
+        os.execute("xdotool windowfocus " .. wid .. " 2>/dev/null")
+        os.execute("xdotool windowactivate " .. wid .. " 2>/dev/null")
+    end
+    sleep(800000)
+    -- 点一下标题栏确保真正获取焦点
+    local win = M.get_window_rect()
+    if win then
+        os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", win.x + 100, win.y + 20))
+        sleep(300000)
+    end
     return M
 end
 
@@ -375,6 +417,7 @@ end
 
 local function detect_unread_cv(debug)
     M.activate()
+    M.click_sidebar(1)  -- 先点击微信图标，确保聊天列表显示
     local win = M.get_window_rect()
     if not win then return nil, "no window" end
 
@@ -481,6 +524,7 @@ end
 -- 返回每个未读项的坐标：{ x, y, badge_x, badge_y, row, count, name }
 function M.detect_unread_vlm(debug)
     M.activate()
+    M.click_sidebar(1)  -- 先点击微信图标，确保聊天列表显示
     local win = M.get_window_rect()
     if not win then return nil, "no window" end
 
@@ -548,6 +592,7 @@ end
 -- 基于红色徽章直接检测未读（不依赖行识别，对 VLM 失败的场景更鲁棒）
 function M.detect_unread_red(debug)
     M.activate()
+    M.click_sidebar(1)  -- 先点击微信图标，确保聊天列表显示
     local win = M.get_window_rect()
     if not win then return nil, "no window" end
 
@@ -592,20 +637,46 @@ function M.detect_unread_red(debug)
         flush(string.format("[detect_unread_red] red candidates: %d\n", #candidates))
     end
 
+    -- 合并邻近候选：红底白字会把同一个徽章分成多个红色组件
+    local groups = {}
+    for _, c in ipairs(candidates) do
+        local cx = c.x + c.w / 2
+        local cy = c.y + c.h / 2
+        local merged = false
+        for _, g in ipairs(groups) do
+            local dx = cx - g.cx
+            local dy = cy - g.cy
+            if dx*dx + dy*dy < 900 then  -- 30px 半径内合并
+                g.cx = (g.cx * g.n + cx) / (g.n + 1)
+                g.cy = (g.cy * g.n + cy) / (g.n + 1)
+                g.area = g.area + c.area
+                g.n = g.n + 1
+                merged = true
+                break
+            end
+        end
+        if not merged then
+            table.insert(groups, {cx = cx, cy = cy, area = c.area, n = 1})
+        end
+    end
+
+    if debug then
+        flush(string.format("[detect_unread_red] merged groups: %d\n", #groups))
+    end
+
     -- 按 x 偏右程度过滤：未读徽章在 col2 右侧（头像右上角）
     local result = {}
-    for _, c in ipairs(candidates) do
-        if c.x + c.w / 2 > col2_w * 0.55 then
-            local badge_cx = wx + col1_w + math.floor(c.x + c.w / 2)
-            local badge_cy = wy + math.floor(c.y + c.h / 2)
+    for _, g in ipairs(groups) do
+        if g.cx > col2_w * 0.55 then
+            local badge_cx = wx + col1_w + math.floor(g.cx)
+            local badge_cy = wy + math.floor(g.cy)
             table.insert(result, {
                 x = wx + col1_w + 100,        -- 点击行中部
                 y = badge_cy,                 -- 行中心约等于徽章高度
                 badge_x = badge_cx,
                 badge_y = badge_cy,
-                w = c.w,
-                h = c.h,
-                area = c.area,
+                area = g.area,
+                parts = g.n,
             })
         end
     end
