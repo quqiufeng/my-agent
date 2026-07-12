@@ -101,17 +101,6 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 
 ---
 
-### 4. Chrome AI 搜索
-
-| 脚本 | 功能 | 状态 | 用法 |
-|------|------|------|------|
-| `test_ai_search.lua` | Chrome AI 搜索 → 分段截图+OCR → 微信发送 | ✅ 已验证 | `luajit tests/test_ai_search.lua` |
-| `ai_to_wechat.lua` | Chrome AI 搜索 → OCR 读结果 → 微信发送 | ⚠️ 未验证 | `luajit tests/ai_to_wechat.lua` |
-| `google_ai_qa.lua` | 新标签 → 输入问题 → 截图 + OCR 读结果 | ⚠️ 未验证 | `luajit tests/google_ai_qa.lua` |
-| `google_ai_test.lua` | Chrome AI 搜索 → 截图 → 微信粘贴发送 | ✅ 已验证 | `luajit tests/google_ai_test.lua` |
-
-
-
 ---
 
 ### 5. 监控与自动回复
@@ -180,9 +169,8 @@ tests/
 ├── test_toolbar_labels.lua     # 第三栏小工具图标 VLM 识别
 
 ├── test_unread_detect.lua      # 未读数字检测（旧版）
-├── test_ai_search.lua          # Chrome AI 搜索
+
 ├── google_ai_qa.lua            # Google AI 问答
-├── google_ai_test.lua          # Google AI 测试
 ├── ai_to_wechat.lua            # AI → 微信发送
 ├── monitor.lua                 # 未读监控（Lua版）
 ├── news_execute.lua            # 文件传输助手自动回复
