@@ -340,6 +340,107 @@ function M.return_to_chat()
     return M.click_sidebar(1)
 end
 
+-- === 未读红点检测 ===
+
+-- 检测第二列未读消息，返回未读方块/行的坐标数组
+-- 每个元素: { x, y, badge_x, badge_y, row_y, row_h }
+--  x,y      : 推荐点击位置（联系人行中部）
+--  badge_x,y: 红点徽章中心
+function M.detect_unread()
+    M.activate()
+    local win = M.get_window_rect()
+    if not win then return nil, "no window" end
+
+    local wx, wy, wh = win.x, win.y, win.h
+    local col1_w = 75
+
+    -- 截图并裁出第二列
+    os.execute(string.format(
+        "import -window root -crop %dx%d+%d+%d '/tmp/wx_unread_full.png' 2>/dev/null",
+        win.w, win.h, wx, wy))
+    os.execute(string.format(
+        "convert '/tmp/wx_unread_full.png' +repage -crop %dx%d+%d+0 +repage '/tmp/wx_unread_col2.png' 2>/dev/null",
+        445, wh, col1_w))
+
+    -- 垂直投影找行
+    local pipe = io.popen(string.format(
+        "convert '/tmp/wx_unread_col2.png' -crop 60x+15+0 +repage -colorspace gray -scale 1x%d! txt:- 2>/dev/null | grep -oP 'gray\\(\\K[0-9.]+'",
+        wh))
+    if not pipe then return nil, "row detection failed" end
+
+    local states, prev_v, y = {}, 255, 0
+    for line in pipe:lines() do
+        local v = tonumber(line)
+        if v then
+            if v < 200 and prev_v >= 210 then
+                table.insert(states, {type="start", y=y})
+            elseif v >= 210 and prev_v < 200 then
+                table.insert(states, {type="end", y=y})
+            end
+            prev_v = v; y = y + 1
+        end
+    end
+    pipe:close()
+
+    local rows = {}
+    for i = 1, #states do
+        if states[i].type == "start" and i < #states then
+            local h = states[i+1].y - states[i].y
+            if h >= 50 and h <= 80 then
+                table.insert(rows, {y = states[i].y, h = h})
+            end
+        end
+    end
+
+    local result = {}
+    for _, r in ipairs(rows) do
+        if r.y > 80 then
+            os.execute(string.format(
+                "convert '/tmp/wx_unread_col2.png' +repage -crop 15x15+68+%d +repage '/tmp/wx_unread_badge.png' 2>/dev/null",
+                r.y))
+            local rp = io.popen(
+                "convert /tmp/wx_unread_badge.png -fx '(r>0.78&&g<0.47&&b<0.47)?1:0' -format '%[fx:mean*100]' info: 2>/dev/null")
+            if rp then
+                local pct = tonumber(rp:read("*a"):match("[%d.]+")) or 0
+                rp:close()
+                if pct > 5 then
+                    table.insert(result, {
+                        x = wx + col1_w + 30,
+                        y = wy + r.y + 35,
+                        badge_x = wx + col1_w + 68 + 7,
+                        badge_y = wy + r.y + 7,
+                        row_y = r.y,
+                        row_h = r.h,
+                    })
+                end
+            end
+        end
+    end
+
+    return result
+end
+
+function M.has_unread()
+    local rows = M.detect_unread()
+    return rows and #rows > 0
+end
+
+function M.unread_count()
+    local rows = M.detect_unread()
+    return rows and #rows or 0
+end
+
+function M.click_unread(index)
+    local rows = M.detect_unread()
+    if not rows or #rows == 0 then return M end
+    local r = rows[index]
+    if not r then return M end
+    M.activate()
+    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", r.x, r.y))
+    sleep(800000)
+    return M
+end
+
 -- === OCR 语义定位 ===
 
 function M.capture()
