@@ -39,31 +39,19 @@ os.execute("xdotool key Return 2>/dev/null")
 flush("[2/5] 等待 AI 回答（10s）...\n")
 ffi.C.usleep(10000000)
 
--- [3/5] 滚动到页面最下方（鼠标滚轮多次）
-flush("[3/5] 滚动到页面底部...\n")
-os.execute(string.format("xdotool windowactivate %s 2>/dev/null", chrome_wid))
-ffi.C.usleep(300000)
--- 先点一下页面确保焦点在内容区
-os.execute(string.format("xdotool mousemove --window %s %d %d click 1 2>/dev/null", chrome_wid, cw/2, ch/2))
-ffi.C.usleep(300000)
--- 滚轮多次到底部
-for i = 1, 30 do
-    os.execute("xdotool click 5 2>/dev/null")
-    ffi.C.usleep(100000)
-end
-ffi.C.usleep(500000)
-
--- [4/5] 截图保存到 ~/
-flush("[4/5] 截图...\n")
+-- [3/5] 分段滚动 + OCR 屏幕（只取主内容区域）
+flush("[3/5] 分段滚动 + OCR...\n")
 local home = os.getenv("HOME")
 os.execute(string.format("xdotool windowactivate %s 2>/dev/null", chrome_wid))
-ffi.C.usleep(500000)
-local outpath = home .. "/ai_result.png"
-os.execute(string.format("import -window %s '%s' 2>/dev/null", chrome_wid, outpath))
-flush(string.format("  保存到: %s\n", outpath))
+ffi.C.usleep(300000)
+os.execute(string.format("xdotool mousemove --window %s %d %d click 1 2>/dev/null", chrome_wid, cw/2, ch/2))
+ffi.C.usleep(300000)
 
--- [5/5] OCR 识别
-flush("[5/5] OCR 识别...\n")
+-- 主内容区域边界（左 65%）
+local content_x = math.floor(cw * 0.05)
+local content_w = math.floor(cw * 0.65)
+
+-- OCR 初始化
 ffi.cdef[[
     typedef struct ocr_engine_t ocr_engine_t;
     ocr_engine_t* ocr_create(const char*,const char*,const char*);
@@ -80,15 +68,50 @@ local e = ocr_lib.ocr_create(
 if not e or e == ffi.NULL then flush("❌ OCR 加载失败\n"); os.exit(1) end
 
 local cjson = require("cjson")
-local s = ocr_lib.ocr_capture_all(e)
-if s and s ~= ffi.NULL then
-    local d = cjson.decode(ffi.string(s))
-    ocr_lib.ocr_free_string(s)
-    flush(string.format("\n=== OCR 结果 (%d 个文字框) ===\n\n", #(d.boxes or {})))
-    for _, b in ipairs(d.boxes or {}) do
-        flush(b.text .. " ")
+local all_text = {}
+local prev_mean
+
+for i = 1, 50 do
+    -- OCR 当前屏幕
+    local s = ocr_lib.ocr_capture_all(e)
+    if s and s ~= ffi.NULL then
+        local d = cjson.decode(ffi.string(s))
+        ocr_lib.ocr_free_string(s)
+        for _, b in ipairs(d.boxes or {}) do
+            local bx = b.x - cx  -- 相对 Chrome 窗口的坐标
+            -- 只取主内容区（左 65%，跳过右侧栏）
+            if bx >= content_x and bx <= content_x + content_w then
+                table.insert(all_text, b.text)
+            end
+        end
     end
-    flush("\n")
+
+    -- 检测是否到底：截图比较
+    os.execute(string.format("import -window %s /tmp/_ai_chk.png 2>/dev/null", chrome_wid))
+    local cur = io.popen("convert /tmp/_ai_chk.png -colorspace gray -scale 1x1! -format '%[fx:mean]' info: 2>/dev/null"):read("*a")
+    if prev_mean and cur and math.abs(tonumber(cur) - tonumber(prev_mean)) < 0.001 then
+        flush(string.format("  到底了（%d 屏）\n", i))
+        break
+    end
+    prev_mean = cur
+
+    -- 滚轮
+    os.execute("xdotool click 5 2>/dev/null")
+    ffi.C.usleep(300000)
 end
 ocr_lib.ocr_destroy(e)
+
+-- 保存截图
+os.execute(string.format("import -window %s '%s/ai_result.png' 2>/dev/null", chrome_wid, home))
+flush(string.format("  截图保存: %s/ai_result.png\n", home))
+
+-- 输出结果
+flush(string.format("\n=== OCR 结果 (%d 段文字) ===\n\n", #all_text))
+local seen = {}
+for _, t in ipairs(all_text) do
+    if not seen[t] then
+        flush(t .. " ")
+        seen[t] = true
+    end
+end
 flush("\n✅\n")
