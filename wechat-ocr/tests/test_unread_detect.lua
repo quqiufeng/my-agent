@@ -1,71 +1,67 @@
 #!/usr/bin/env luajit
--- WeChat OCR - 第二列红色未读数检测
--- 用OCR全窗口识别，找第二列中的数字（红色未读标记）
+-- WeChat 第二列红色未读数检测（VLM 语义识别）
+-- 方法: 截图 → VLM 识别 → 输出未读数量
 -- 用法: luajit tests/test_unread_detect.lua
 
-local ffi = require("ffi")
-local cjson = require("cjson")
-ffi.cdef[[void usleep(unsigned int);]]
+package.path = "/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;/opt/my-agent/wechat-ocr/lua/?.lua;" .. (package.path or "")
+package.cpath = "/usr/local/lualib/?.so;/opt/my-agent/wechat-ocr/lib/?.so;;" .. (package.cpath or "")
 
-local lib = ffi.load("libwechat_ocr_core.so")
+local ffi = require("ffi")
 ffi.cdef[[
-    typedef struct ocr_engine_t ocr_engine_t;
-    ocr_engine_t* ocr_create(const char*,const char*,const char*);
-    char* ocr_capture(ocr_engine_t*);
-    char* ocr_capture_all(ocr_engine_t*);
-    void ocr_free_string(char*);
-    void ocr_destroy(ocr_engine_t*);
+    void usleep(unsigned int);
+    int  joycaption_init(const char*, const char*, int);
+    const char* joycaption_analyze(const char*, const char*);
+    void joycaption_free();
 ]]
 
-local dir = "/opt/my-agent/wechat-ocr"
-io.write("=== 第二列红色未读数检测 ===\n\n"); io.flush()
+local function flush(s) io.write(s); io.flush() end
+flush("=== 第二列红色未读数检测（VLM）===\n\n")
 
+-- 截图
 os.execute("xdotool search --name 微信 windowactivate 2>/dev/null")
 ffi.C.usleep(500000)
+os.execute("xdotool getactivewindow getwindowgeometry > /tmp/wx_geo.txt 2>/dev/null")
+local f = io.open("/tmp/wx_geo.txt")
+local geo = f:read("*a"); f:close()
+local wx = tonumber(geo:match("Position: (%d+)"))
+local wy = tonumber(geo:match(",(%d+)"))
+local ww = tonumber(geo:match("Geometry: (%d+)"))
+local wh = tonumber(geo:match("x(%d+)"))
+if not wx then flush("❌ 获取窗口失败\n"); os.exit(1) end
+flush(string.format("窗口: (%d,%d) %dx%d\n\n", wx, wy, ww, wh))
 
-local e = lib.ocr_create(dir.."/models/ch_PP-OCRv4_det_infer.onnx",
-                          dir.."/models/ch_PP-OCRv4_rec_infer.onnx",
-                          dir.."/ppocr_keys_v1.txt")
-if not e or e == ffi.NULL then io.write("❌ OCR失败\n"); os.exit(1) end
+os.execute(string.format("import -window root -crop %dx%d+%d+%d '/tmp/full.png' 2>/dev/null", ww, wh, wx, wy))
+os.execute("convert '/tmp/full.png' +repage -crop 445x" .. wh .. "+75+0 +repage '/tmp/col2.png' 2>/dev/null")
 
--- 先跑一次 ocr_capture 获取真实第三列边界
-local s0 = lib.ocr_capture(e)
-local col3_x = 0
-if s0 and s0 ~= ffi.NULL then
-    col3_x = cjson.decode(ffi.string(s0)).win.x
-    lib.ocr_free_string(s0)
-end
+-- VLM
+flush("[1/2] VLM 识别未读...\n")
+local lib = ffi.load("libjoycaption")
+local ok = lib.joycaption_init("/data/models/Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf", "/data/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf", 1)
+if ok ~= 0 then flush("❌ VLM 加载失败\n"); os.exit(1) end
 
--- 再跑全窗口获取文字
-local s = lib.ocr_capture_all(e)
-if not s or s == ffi.NULL then io.write("❌ 捕获失败\n"); os.exit(1) end
+local prompt = [[Look at the chat list on the left side. Find each chat item that has a RED badge with a NUMBER on the avatar's top-right corner.
+For each one with a red badge, output: "name: number"
+If no red badge found, output: "none"]]
+local result = ffi.string(lib.joycaption_analyze("/tmp/col2.png", prompt))
+lib.joycaption_free()
 
-local d = cjson.decode(ffi.string(s))
-lib.ocr_free_string(s)
+flush(string.format("VLM: %s\n\n", result:gsub("\n", " | ")))
 
-local win = d.win
-local boxes = d.boxes or {}
-if col3_x == 0 then
-    col3_x = win.x + math.floor(win.w * 0.40)
-end
-
-io.write(string.format("全窗口 %d 个文字框\n", #boxes))
-io.write(string.format("第三列约从 x=%d\n\n", col3_x)); io.flush()
-
--- 在第二列中找数字
+-- 解析
+flush("[2/2] 结果\n")
 local count = 0
-for _, b in ipairs(boxes) do
-    local cx = b.x + b.w / 2
-    if cx > 10 and cx < col3_x and b.text:match("^%d+$") then
+for line in result:gmatch("[^\n]+") do
+    local name, num = line:match("^(.+):%s*(%d+)$")
+    if name and num then
         count = count + 1
-        io.write(string.format("  🔴 #%d: \"%s\"  (%d,%d) %dx%d\n", count, b.text, b.x, b.y, b.w, b.h))
+        flush(string.format("  %s → %s\n", name, num))
     end
 end
-
 if count == 0 then
-    io.write("  未检测到红色数字（可能没有未读消息）\n")
-else
-    io.write(string.format("\n共 %d 个未读\n", count))
+    if result:lower():find("none") then
+        flush("  无未读消息\n")
+    else
+        flush(string.format("  %s\n", result))
+    end
 end
-io.write("✅\n"); io.flush()
-lib.ocr_destroy(e)
+flush("\n✅\n")
