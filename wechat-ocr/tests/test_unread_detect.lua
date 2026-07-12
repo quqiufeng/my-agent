@@ -1,6 +1,6 @@
 #!/usr/bin/env luajit
--- WeChat 第二列红色未读数检测（VLM 语义识别）
--- 方法: 截图 → VLM 识别 → 输出未读数量
+-- WeChat 第二列红色未读数检测
+-- 方法: 截图 → 投影找行 → VLM 逐行确认数字
 -- 用法: luajit tests/test_unread_detect.lua
 
 package.path = "/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;/opt/my-agent/wechat-ocr/lua/?.lua;" .. (package.path or "")
@@ -15,7 +15,7 @@ ffi.cdef[[
 ]]
 
 local function flush(s) io.write(s); io.flush() end
-flush("=== 第二列红色未读数检测（VLM）===\n\n")
+flush("=== 第二列红色未读数检测 ===\n\n")
 
 -- 截图
 os.execute("xdotool search --name 微信 windowactivate 2>/dev/null")
@@ -28,41 +28,65 @@ local wy = tonumber(geo:match(",(%d+)"))
 local ww = tonumber(geo:match("Geometry: (%d+)"))
 local wh = tonumber(geo:match("x(%d+)"))
 if not wx then flush("❌ 获取窗口失败\n"); os.exit(1) end
-flush(string.format("窗口: (%d,%d) %dx%d\n\n", wx, wy, ww, wh))
 
 os.execute(string.format("import -window root -crop %dx%d+%d+%d '/tmp/full.png' 2>/dev/null", ww, wh, wx, wy))
 os.execute("convert '/tmp/full.png' +repage -crop 445x" .. wh .. "+75+0 +repage '/tmp/col2.png' 2>/dev/null")
 
--- VLM
-flush("[1/2] VLM 识别未读...\n")
+-- 垂直投影找行
+flush("[1/3] 垂直投影找行...\n")
+local pipe = io.popen("convert '/tmp/col2.png' -crop 60x+15+0 +repage -colorspace gray -scale 1x" .. wh .. "! txt:- 2>/dev/null | grep -oP 'gray\\(\\K[0-9.]+'")
+local states, prev_v, y = {}, 255, 0
+for line in pipe:lines() do
+    local v = tonumber(line)
+    if v then
+        if v < 200 and prev_v >= 210 then table.insert(states, {type="start", y=y})
+        elseif v >= 210 and prev_v < 200 then table.insert(states, {type="end", y=y}) end
+        prev_v = v; y = y + 1
+    end
+end
+pipe:close()
+
+local rows = {}
+for i = 1, #states do
+    if states[i].type == "start" and i < #states then
+        local h = states[i+1].y - states[i].y
+        if h >= 50 and h <= 80 then table.insert(rows, {y=states[i].y, h=h}) end
+    end
+end
+local avatars = {}
+for _, r in ipairs(rows) do if r.y > 80 then table.insert(avatars, r) end end
+flush(string.format("  找到 %d 行\n", #avatars))
+
+-- VLM 逐行
+flush("[2/3] VLM 逐行识别...\n")
 local lib = ffi.load("libjoycaption")
 local ok = lib.joycaption_init("/data/models/Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf", "/data/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf", 1)
 if ok ~= 0 then flush("❌ VLM 加载失败\n"); os.exit(1) end
 
-local prompt = [[List all chat items and their unread message counts in format: "name: number"
-If a chat has no unread, skip it.
-Example: 张三: 3]]
-local result = ffi.string(lib.joycaption_analyze("/tmp/col2.png", prompt))
+local results = {}
+for i, a in ipairs(avatars) do
+    -- 提取单行
+    os.execute(string.format("convert '/tmp/col2.png' +repage -crop 445x%d+0+%d +repage '/tmp/_row.png' 2>/dev/null", a.h, a.y))
+    local prompt = "What number is in the red badge on the avatar's top-right corner? Answer only the number, or 'none' if no badge."
+
+    -- 获取每行原始图片的 VLM 分析
+    local s = ffi.string(lib.joycaption_analyze("/tmp/_row.png", prompt))
+    local num = s:match("(%d+)")
+    if num and tonumber(num) > 0 and tonumber(num) <= 9 then
+        table.insert(results, {idx=i, num=num})
+        flush(string.format("  #%d: %s\n", i, num))
+    else
+        flush(string.format("  #%d: -\n", i))
+    end
+end
 lib.joycaption_free()
 
-flush(string.format("VLM: %s\n\n", result:gsub("\n", " | ")))
-
--- 解析
-flush("[2/2] 结果\n")
-local count = 0
-result = result:gsub("<|im_end|>", ""):gsub("<|im_start|>.-$", "")
-for line in result:gmatch("[^|\n]+") do
-    local name, num = line:match("^%s*(.+):%s*(%d+)%s*$")
-    if name and num and tonumber(num) > 0 then
-        count = count + 1
-        flush(string.format("  %s → %s\n", name, num))
-    end
+-- 统计
+flush("\n[3/3] 结果\n")
+if #results == 0 then
+    flush("  无未读消息\n")
+else
+    flush(string.format("  %d 个未读:\n", #results))
+    for _, r in ipairs(results) do flush(string.format("    #%d → %s\n", r.idx, r.num)) end
 end
-if count == 0 then
-    if result:lower():find("none") then
-        flush("  无未读消息\n")
-    else
-        flush(string.format("  %s\n%s\n", result, "  (可改成更精确的 prompt)"))
-    end
-end
-flush("\n✅\n")
+flush("✅\n")
