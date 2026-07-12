@@ -39,16 +39,28 @@ os.execute("xdotool key Return 2>/dev/null")
 flush("[2/5] 等待 AI 回答（10s）...\n")
 ffi.C.usleep(10000000)
 
--- [3/5] 滚动到页面最下方
+-- [3/5] 滚动到页面最下方（鼠标滚轮多次）
 flush("[3/5] 滚动到页面底部...\n")
-os.execute("xdotool key --window " .. chrome_wid .. " End 2>/dev/null")
-ffi.C.usleep(1000000)
+os.execute(string.format("xdotool windowactivate %s 2>/dev/null", chrome_wid))
+ffi.C.usleep(300000)
+-- 先点一下页面确保焦点在内容区
+os.execute(string.format("xdotool mousemove --window %s %d %d click 1 2>/dev/null", chrome_wid, cw/2, ch/2))
+ffi.C.usleep(300000)
+-- 滚轮多次到底部
+for i = 1, 30 do
+    os.execute("xdotool click 5 2>/dev/null")
+    ffi.C.usleep(100000)
+end
+ffi.C.usleep(500000)
 
--- [4/5] 截图（用窗口 ID 确保截到 Chrome）
+-- [4/5] 截图保存到 ~/
 flush("[4/5] 截图...\n")
+local home = os.getenv("HOME")
 os.execute(string.format("xdotool windowactivate %s 2>/dev/null", chrome_wid))
 ffi.C.usleep(500000)
-os.execute(string.format("import -window %s /tmp/ai_result.png 2>/dev/null", chrome_wid))
+local outpath = home .. "/ai_result.png"
+os.execute(string.format("import -window %s '%s' 2>/dev/null", chrome_wid, outpath))
+flush(string.format("  保存到: %s\n", outpath))
 
 -- [5/5] OCR 识别
 flush("[5/5] OCR 识别...\n")
