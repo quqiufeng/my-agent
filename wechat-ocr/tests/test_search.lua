@@ -8,7 +8,7 @@ local ffi = require("ffi")
 ffi.cdef[[int usleep(unsigned int);]]
 math.randomseed(os.time())
 
-local keyword = arg[1] or "小王"
+local keyword = arg[1] or "丰"
 local msg = arg[2]
 
 local function flush(s) io.write(s); io.flush() end
