@@ -110,7 +110,7 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 | `google_ai_qa.lua` | 新标签 → 输入问题 → 截图 + OCR 读结果 | ⚠️ 未验证 | `luajit tests/google_ai_qa.lua` |
 | `google_ai_test.lua` | 打开 Google → 输入问题 → 点 AI 模式按钮 → 截图 | ⚠️ 未验证 | `luajit tests/google_ai_test.lua` |
 | `test_open_chrome.lua` | 启动 Chrome | ⚠️ 未验证 | `luajit tests/test_open_chrome.lua` |
-| `chrome_bridge.lua` | 通过 JSON-RPC 与 Chrome DevTools MCP 交互 | ⚠️ 未验证 | `luajit tests/chrome_bridge.lua "打开 https://example.com 并截图"` |
+
 
 ---
 
@@ -156,10 +156,7 @@ robot.destroy()
 2. **`news_execute.lua` 依赖缺失模块**：
    - 依赖 `wechat_ocr.badge_detect`，当前项目目录中未找到该模块。
 
-3. **`chrome_bridge.lua` 未读取响应**：
-   - 只发送 JSON-RPC 请求，未读取 MCP 服务器返回。
-
-4. **坐标硬编码**：
+3. **坐标硬编码**：
    - 多数脚本假设 2560×1440 分辨率、100% 缩放、固定微信布局。
    - 更换分辨率或微信版本后可能需要调整偏移量。
 
@@ -190,7 +187,6 @@ tests/
 ├── ai_to_wechat.lua            # AI → 微信发送
 ├── monitor.lua                 # 未读监控（Lua版）
 ├── news_execute.lua            # 文件传输助手自动回复
-├── chrome_bridge.lua           # Chrome DevTools MCP 桥
 └── monitor.c                   # 未读监控 C 源码
 ```
 
