@@ -86,7 +86,7 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 |------|------|------|------|
 | `test_search.lua` | 搜索联系人→回车开聊天→输入消息→回车发送 | ✅ 已验证 | `luajit tests/test_search.lua "丰" "你好"` |
 
-| `test_send_file.lua` | 点文件图标 → 粘贴文件名 → 发送 | ⚠️ 未验证 | `luajit tests/test_send_file.lua ~/video.mp4` |
+| `test_send_file.lua` | 点文件图标 → 粘贴文件名 → 发送 | ✅ 已验证 | `luajit tests/test_send_file.lua ~/video.mp4` |
 | `test_screenshot.lua` | 点截图图标 → 框选全屏 → 发送 | ⚠️ 未验证 | `luajit tests/test_screenshot.lua` |
 
 搜索框默认位置：`(wx+180, wy+50)`。
