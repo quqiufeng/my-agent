@@ -1,5 +1,5 @@
 #!/usr/bin/env luajit
--- WeChat OCR - 搜索"丰"→回车开聊天→输入"1"→回车发送
+-- WeChat OCR - 搜索"丰"→回车开聊天→输入"今天天气真好"→回车发送
 -- 用法: luajit tests/test_search.lua
 
 local ffi = require("ffi")
@@ -39,8 +39,8 @@ ffi.C.usleep(1500000)
 os.execute("xdotool key Return 2>/dev/null")
 ffi.C.usleep(1500000)
 
--- 输入"1"
-os.execute("xdotool type '1' 2>/dev/null")
+-- 输入"今天天气真好"
+os.execute("xdotool type '今天天气真好' 2>/dev/null")
 ffi.C.usleep(300000)
 
 -- 回车发送
