@@ -39,8 +39,8 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 
 | 脚本 | 功能 | 状态 | 用法 |
 |------|------|------|------|
-| `test_3columns.lua` | 检测微信窗口三列结构，输出分界位置和标注图 | ⚠️ 未验证 | `luajit tests/test_3columns.lua` |
-| `test_first_icons.lua` | 第一列 7 个图标检测，输出标注图 | ⚠️ 未验证 | `luajit tests/test_first_icons.lua` |
+| `test_3columns.lua` | 检测微信窗口三列结构，输出分界位置和标注图 | ✅ 已验证（全屏+非全屏） | `luajit tests/test_3columns.lua` |
+| `test_first_icons.lua` | 第一列图标检测（Canny边缘+动态背景色），输出标注图 | ✅ 已验证 | `luajit tests/test_first_icons.lua` |
 | `test_first_column.lua` | 依次点击第一列 7 个图标 | ⚠️ 未验证 | `luajit tests/test_first_column.lua` |
 | `test_third_icons.lua` | 第三列工具栏图标检测 | ⚠️ 未验证 | `luajit tests/test_third_icons.lua` |
 

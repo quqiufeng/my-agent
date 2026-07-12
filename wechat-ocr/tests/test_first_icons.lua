@@ -79,30 +79,41 @@ end
 -- 4. 检测第一列图标（ImageMagick多阈值）
 io.write("[3/5] 检测第一列图标...\n"); io.flush()
 
+-- 动态检测第一列宽度：扫描左边缘，用垂直投影找图标区右边界
 local COL1 = 75
-local all_lines = {}
--- 方法: 找所有和背景色不同的区域 + 传统阈值补漏
-for _, sep in ipairs({1, 2, 3, 5, 8, 12}) do
-    local diff = sep * 100 / 255  -- 转为百分比
-    local cmd = string.format(
-        "convert '/tmp/wx_first_raw.png' -crop %dx%d+0+0 -colorspace gray " ..
-        "-fx 'abs(u - 237/255)' -threshold %.1f%%%% " ..
-        "-define connected-components:verbose=true -connected-components 4 /dev/null 2>&1 " ..
-        "| grep -v 'bgcolor\\|id:\\|0:.*gray'",
-        COL1, wh, diff)
-    local pipe = io.popen(cmd)
-    if pipe then
-        for line in pipe:lines() do
-            local id, w, h, x, y, area = line:match("(%d+):%s*(%d+)x(%d+)%+(%d+)%+(%d+)%s+[%d.]+,[%d.]+%s+(%d+)")
-            if w and h and x and y and area then
-                table.insert(all_lines, {x=tonumber(x), y=tonumber(y), w=tonumber(w), h=tonumber(h), area=tonumber(area)})
+local bg_val = 237
+do
+    -- 取左上角 8x8 区域的均值作为背景色参考
+    local bg_pipe = io.popen(string.format(
+        "convert '/tmp/wx_first_raw.png' -crop 8x8+0+0 -colorspace gray -format '%%[fx:mean*255]' info: 2>/dev/null"))
+    if bg_pipe then
+        local s = bg_pipe:read("*a"); bg_pipe:close()
+        bg_val = tonumber(s:match("[%d.]+")) or bg_val
+    end
+
+    -- 水平投影：压缩到 1px 高，找最右的亮色列
+    local proj_cmd = string.format(
+        "convert '/tmp/wx_first_raw.png' -crop 120x%d+0+0 -colorspace gray " ..
+        "-fx 'abs(u - %d/255) > 0.04' -scale 1x%d! -scale 120x%d! " ..
+        "txt:- 2>/dev/null | awk -F'[,:]' '/#FFFFFF/{print $1}' | sort -rn | head -1",
+        wh, bg_val, wh, wh)
+    local spipe = io.popen(proj_cmd, "r")
+    if spipe then
+        local last_col = spipe:read("*a"):match("(%d+)")
+        spipe:close()
+        if last_col then
+            local detected = tonumber(last_col) + 5
+            if detected >= 30 and detected <= 110 then
+                COL1 = detected
             end
         end
-        pipe:close()
     end
 end
--- 补漏：Canny边缘检测（抓和底色几乎一样的图标轮廓）
-for _, thr in ipairs({10, 20, 30, 40}) do
+io.write(string.format("  第一列宽度: %dpx (背景参考值: %d)\n\n", COL1, bg_val)); io.flush()
+
+local all_lines = {}
+-- 方法: Canny 边缘检测为主（不依赖背景色值）
+for _, thr in ipairs({5, 10, 20, 30}) do
     local cmd = string.format(
         "convert '/tmp/wx_first_raw.png' -crop %dx%d+0+0 -colorspace gray -canny 0x1+%d%%%%+%d%%%% " ..
         "-negate -define connected-components:verbose=true -connected-components 4 /dev/null 2>&1 " ..
@@ -119,12 +130,32 @@ for _, thr in ipairs({10, 20, 30, 40}) do
         pipe:close()
     end
 end
+-- 补漏：基于动态背景色的色差检测
+for _, sep in ipairs({2, 4, 6, 10}) do
+    local diff = sep * 100 / 255
+    local cmd = string.format(
+        "convert '/tmp/wx_first_raw.png' -crop %dx%d+0+0 -colorspace gray " ..
+        "-fx 'abs(u - %d/255)' -threshold %.1f%%%% " ..
+        "-define connected-components:verbose=true -connected-components 4 /dev/null 2>&1 " ..
+        "| grep -v 'bgcolor\\|id:\\|0:.*gray'",
+        COL1, wh, bg_val, diff)
+    local pipe = io.popen(cmd)
+    if pipe then
+        for line in pipe:lines() do
+            local id, w, h, x, y, area = line:match("(%d+):%s*(%d+)x(%d+)%+(%d+)%+(%d+)%s+[%d.]+,[%d.]+%s+(%d+)")
+            if w and h and x and y and area then
+                table.insert(all_lines, {x=tonumber(x), y=tonumber(y), w=tonumber(w), h=tonumber(h), area=tonumber(area)})
+            end
+        end
+        pipe:close()
+    end
+end
 
--- 基础过滤
+-- 基础过滤（放宽条件，Canny产生的组件通常较小）
 local tmp = {}
 for _, b in ipairs(all_lines) do
     local ratio = b.w / b.h
-    if b.h >= 5 and b.w >= 5 and ratio >= 0.25 and ratio <= 3.0 and b.area >= 25 and b.area <= 4000 then
+    if b.h >= 4 and b.w >= 3 and ratio >= 0.2 and ratio <= 4.0 and b.area >= 12 and b.area <= 5000 then
         b.cx = b.x + b.w / 2
         b.cy = b.y + b.h / 2
         table.insert(tmp, b)

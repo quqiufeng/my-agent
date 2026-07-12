@@ -129,6 +129,83 @@ robot.destroy()
 ./agent.sh destroy <name>
 ```
 
+## 图标识别（通用技术）
+
+WeChat 侧边栏图标识别使用完全通用的 pipeline，**不依赖微信特定特征**，可直接复用于任何 GUI 应用的图标检测与语义识别。
+
+### 流程
+
+```
+屏幕截图 → ImageMagick 检测 → 裁图标区域 → VLM 语义识别 → 名称-位置-动作映射
+```
+
+### 步骤详解
+
+**1. 截图（通用）**
+```bash
+import -window root -crop WxH+X+Y /tmp/screen.png
+```
+任何桌面应用的窗口截图，无微信绑定。
+
+**2. ImageMagick 图标检测（通用）**
+```bash
+# 自动检测图标列宽（投影法）
+convert screen.png -crop 120xH+0+0 -colorspace gray \
+  -fx 'abs(u - bg/255) > 0.04' -scale 1xH! -scale 120xH! \
+  txt:- | awk '/#FFFFFF/{print $1}' | sort -rn | head -1
+
+# Connected Components 提取图标
+convert screen.png -crop WxH+0+0 -colorspace gray \
+  -canny 0x1+5%+10% -negate \
+  -define connected-components:verbose=true \
+  -connected-components 4 /dev/null
+```
+Canny 边缘检测 + 连通域分析，提取所有独立视觉元素。自动过滤过小/过大/畸形组件。**不需要图标库、不需要模板匹配、不需要 OCR**。
+
+**3. VLM 语义识别（通用）**
+```cpp
+// 裁出图标列 → Qwen2.5-VL-3B 识别
+std::string prompt = "List each icon from top to bottom. "
+                     "Give: number, name, brief description.";
+```
+通过 llama.cpp mtmd 接口加载视觉语言模型（Qwen2.5-VL-3B），对图标列截图直接做语义理解。零样本识别，**无需训练数据**，换任何应用的图标都能识别。
+
+**4. 名称-动作映射（通用）**
+```lua
+-- icon_actions.lua
+local map = {
+  Chats   = { name_cn = "聊天",   action = "open_chats" },
+  Moments = { name_cn = "朋友圈", action = "open_moments" },
+}
+```
+将 VLM 输出的英文/中文图标名称映射到具体操作函数。**只需更新映射表即可适配新应用**。
+
+### 为什么是通用的
+
+| 组件 | 通用性 |
+|------|--------|
+| 截图 | `import` / `xdotool`，任何 X11 窗口 |
+| 图标检测 | Connected Components + 几何过滤，不依赖特定 UI 布局 |
+| 语义识别 | VLM 零样本，换应用只需改 prompt 和映射表 |
+| 点击执行 | `xdotool mousemove + click`，通用鼠标操作 |
+| 模型 | Qwen2.5-VL-3B，可替换为任何 MTMD 兼容的 VLM |
+
+### 已知限制
+
+1. **速度**：VLM 推理约 5s，不适合高频实时交互
+2. **LLM 幻觉**：高 token 限制下会重复已识别图标（通过限制 128 token 解决）
+3. **GPU 依赖**：CPU 推理极慢（>30s），需至少 4GB VRAM
+
+### 相关文件
+
+| 文件 | 作用 |
+|------|------|
+| `wechat-ocr/wechat_robot.lua` | 集成 `scan_icons()`/`click_icon()` API |
+| `wechat-ocr/lua/icon_actions.lua` | 图标名称→功能映射表 |
+| `wechat-ocr/tests/test_llm_icons.lua` | 独立测试脚本 |
+| `joycaption-wrapper/joycaption_wrapper.cpp` | VLM C 推理接口 |
+| `joycaption-wrapper/libjoycaption.so` | 编译产物 |
+
 ## 注意事项
 
 1. **Slave 不直接通信**：所有协调通过 Master 完成；

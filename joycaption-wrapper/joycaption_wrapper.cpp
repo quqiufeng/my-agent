@@ -156,16 +156,19 @@ const char* joycaption_analyze(const char* image_path, const char* prompt) {
     }
 
     // 1. 加载图片
-    mtmd_bitmap* bitmap = mtmd_helper_bitmap_init_from_file(g_state.ctx_vision, image_path);
+    auto bitmap_wrapper = mtmd_helper_bitmap_init_from_file(g_state.ctx_vision, image_path, false);
+    mtmd_bitmap* bitmap = bitmap_wrapper.bitmap;
     if (bitmap == nullptr) {
         snprintf(g_result_buffer, sizeof(g_result_buffer), 
                  "[错误] 无法加载图片: %s", image_path);
         return g_result_buffer;
     }
 
-    // 2. 构建提示词（添加 image marker）
-    std::string full_prompt = mtmd_default_marker();
+    // 2. 构建提示词（添加 image marker + 聊天模板）
+    std::string full_prompt = "<|im_start|>user\n";
+    full_prompt += mtmd_default_marker();
     full_prompt += prompt;
+    full_prompt += "\n<|im_end|>\n<|im_start|>assistant\n";
 
     // 3. 创建输入文本
     mtmd_input_text text;
@@ -206,7 +209,7 @@ const char* joycaption_analyze(const char* image_path, const char* prompt) {
     llama_tokens generated_tokens;
     llama_batch batch = llama_batch_init(1, 0, 1);
     
-    for (int i = 0; i < 200; i++) {  // 最多 200 tokens
+    for (int i = 0; i < 128; i++) {  // 最多 128 tokens
         llama_token token_id = common_sampler_sample(g_state.smpl, g_state.lctx, -1);
         generated_tokens.push_back(token_id);
         common_sampler_accept(g_state.smpl, token_id, true);
