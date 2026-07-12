@@ -463,37 +463,28 @@ Format: "1. Chats - speech bubble icon"]]
         local name, desc = line:match("^%d+%.%s*(%w+)%s*[-–—]%s*(.+)$")
         if not name then name = line:match("^%d+%.%s*(%w+)") end
         if name then
-            local ok_entry, entry = pcall(icon_actions.verify, name, desc)
-            local entry_ok = ok_entry and entry
+            local ok, entry = icon_actions.verify(name, desc)
             table.insert(icons, {
                 name     = name,
                 desc     = desc or "",
-                name_cn  = entry_ok and entry.name_cn or name,
-                name_en  = entry_ok and entry.name_en or name,
-                action   = entry_ok and entry.desc or "",
-                matched  = (entry_ok ~= nil),
-                pos      = nil, -- will match to y below
+                name_cn  = ok and entry.name_cn or name,
+                name_en  = ok and entry.name_en or name,
+                action   = ok and entry.desc or "",
+                matched  = ok,
+                pos      = nil,
             })
         end
     end
 
-    -- 匹配 LLM 名次和实际 y 坐标（取最近的框）
-    for _, icon in ipairs(icons) do
-        local best_dist = 99999
-        local best_box = nil
-        for _, b in ipairs(merged) do
-            local dist = math.abs(b.cy - (icon._y or 0))
-            if dist < best_dist then
-                best_dist = dist
-                best_box = b
-            end
-        end
-        if best_box then
+    -- 匹配 LLM 名次和实际 y 坐标（按顺序一一对应）
+    for i, icon in ipairs(icons) do
+        local b = merged[i]
+        if b then
             icon.pos = {
-                x = wx + math.floor(best_box.x + best_box.w / 2),
-                y = wy + math.floor(best_box.y + best_box.h / 2),
-                w = best_box.w,
-                h = best_box.h,
+                x = wx + math.floor(b.x + b.w / 2),
+                y = wy + math.floor(b.y + b.h / 2),
+                w = b.w,
+                h = b.h,
             }
         end
     end
