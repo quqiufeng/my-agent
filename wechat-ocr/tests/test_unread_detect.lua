@@ -39,9 +39,7 @@ local lib = ffi.load("libjoycaption")
 local ok = lib.joycaption_init("/data/models/Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf", "/data/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf", 1)
 if ok ~= 0 then flush("❌ VLM 加载失败\n"); os.exit(1) end
 
-local prompt = [[Look at the chat list on the left side. Find each chat item that has a RED badge with a NUMBER on the avatar's top-right corner.
-For each one with a red badge, output: "name: number"
-If no red badge found, output: "none"]]
+local prompt = [[Describe each chat item in this WeChat list. For each, tell me the name and if there are any unread message numbers visible.]]
 local result = ffi.string(lib.joycaption_analyze("/tmp/col2.png", prompt))
 lib.joycaption_free()
 
@@ -51,17 +49,25 @@ flush(string.format("VLM: %s\n\n", result:gsub("\n", " | ")))
 flush("[2/2] 结果\n")
 local count = 0
 for line in result:gmatch("[^\n]+") do
+    -- Try "name: number" format
     local name, num = line:match("^(.+):%s*(%d+)$")
     if name and num then
         count = count + 1
         flush(string.format("  %s → %s\n", name, num))
     end
+    -- Also look for "unread messages" with number
+    local num2, name2 = line:match("(%d+).-unread.-(.+)")
+    local num3 = line:match("(%d+).-unread")
+    if num3 and not name then
+        count = count + 1
+        flush(string.format("  %s (from: %s)\n", num3, line:gsub("^%s*", "")))
+    end
 end
 if count == 0 then
-    if result:lower():find("none") then
+    if result:lower():find("none") or result:lower():find("no.*unread") or result:lower():find("no.*badge") then
         flush("  无未读消息\n")
     else
-        flush(string.format("  %s\n", result))
+        flush(string.format("  %s\n", result:gsub("\n", "\n  ")))
     end
 end
 flush("\n✅\n")
