@@ -21,18 +21,27 @@ end
 
 flush(string.format("=== 搜索: %s ===\n", keyword))
 
+-- 获取微信窗口ID
+local win_pipe = io.popen("xdotool search --name 微信 2>/dev/null | head -1")
+local wxwin = win_pipe:read("*a"):match("%d+")
+win_pipe:close()
+if not wxwin then flush("❌ 找不到微信窗口\n"); os.exit(1) end
+
 -- 激活微信
-os.execute("xdotool search --name 微信 windowactivate 2>/dev/null")
+os.execute("xdotool windowactivate " .. wxwin .. " 2>/dev/null")
 ffi.C.usleep(500000)
 
 -- 获取窗口位置
-os.execute("xdotool getactivewindow getwindowgeometry > /tmp/wx_geo.txt 2>/dev/null")
-local f = io.open("/tmp/wx_geo.txt")
-local geo = f:read("*a"); f:close()
+local geo_pipe = io.popen("xdotool getwindowgeometry " .. wxwin .. " 2>/dev/null")
+local geo = geo_pipe:read("*a"); geo_pipe:close()
 local _, _, wx = geo:find("Position: (%d+)")
 local _, _, wy = geo:find(",(%d+)")
 wx, wy = tonumber(wx), tonumber(wy)
-if not wx then flush("❌ 获取窗口失败\n"); os.exit(1) end
+if not wx then flush("❌ 获取窗口位置失败\n"); os.exit(1) end
+
+local function key_enter()
+    os.execute("xdotool key --window " .. wxwin .. " Return 2>/dev/null")
+end
 
 -- 点搜索框
 os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", wx + 180, wy + 50))
@@ -43,11 +52,11 @@ os.execute(string.format("xdotool type --delay 300 '%s' 2>/dev/null", keyword))
 ffi.C.usleep(300000)
 
 -- 回车搜索
-os.execute("xdotool key Return 2>/dev/null")
+key_enter()
 ffi.C.usleep(1500000)
 
 -- 再回车打开第一个结果（进入聊天）
-os.execute("xdotool key Return 2>/dev/null")
+key_enter()
 ffi.C.usleep(1500000)
 
 if msg then
@@ -56,7 +65,7 @@ if msg then
     ffi.C.usleep(300000)
 
     -- 回车发送
-    os.execute("xdotool key Return 2>/dev/null")
+    key_enter()
     ffi.C.usleep(500000)
     flush(string.format("✅ 已发送: %s\n", msg))
 else
