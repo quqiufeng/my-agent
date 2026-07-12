@@ -71,6 +71,7 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 | `test_first_icons.lua` | 第一列图标检测（Canny边缘+动态背景色），输出标注图 | ✅ 已验证 | `luajit tests/test_first_icons.lua` |
 | `test_first_column.lua` | 依次点击第一列 7 个图标 | ✅ 已验证 | `luajit tests/test_first_column.lua` |
 | `test_third_icons.lua` | 第三列工具栏图标检测（x≥525） | ✅ 已验证 | `luajit tests/test_third_icons.lua` |
+| `test_toolbar_labels.lua` | 第三栏小工具图标 VLM 语义识别（底部格式栏） | ✅ 已验证 | `luajit tests/test_toolbar_labels.lua` |
 
 **输出文件**：
 - `~/wechat_3cols_*.png`
@@ -182,6 +183,7 @@ tests/
 ├── test_send_file.lua          # 发送文件
 ├── test_screenshot.lua         # 截图发送
 ├── test_search.lua             # 搜索联系人
+├── test_toolbar_labels.lua     # 第三栏小工具图标 VLM 识别
 
 ├── test_unread_detect.lua      # 未读数字检测（旧版）
 ├── test_two_lines.lua          # 第二列条目+自动点击
@@ -200,5 +202,5 @@ tests/
 
 ---
 
-*更新日期: 2026-06-21*
+*更新日期: 2026-07-12*
 *状态: 全部未验证，需在当前环境重新测试*
