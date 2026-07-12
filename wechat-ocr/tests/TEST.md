@@ -98,9 +98,6 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 | 脚本 | 功能 | 状态 | 用法 |
 |------|------|------|------|
 | `test_unread_detect.lua` | 第二列红色未读检测（红圈检测） | ✅ 已验证 | `luajit tests/test_unread_detect.lua` |
-| `test_two_lines.lua` | 第二列聊天条目等距标注 + 自动点击 | ⚠️ 未验证 | `luajit tests/test_two_lines.lua` |
-| `test_avatar_badges.lua` | 头像红点/红底白字数字检测 | ⚠️ 未验证 | `luajit tests/test_avatar_badges.lua` |
-| `test_avatars.lua` | 第二列头像 OCR 检测 | ⚠️ 未验证 | `luajit tests/test_avatars.lua` |
 
 ---
 
@@ -186,9 +183,6 @@ tests/
 ├── test_toolbar_labels.lua     # 第三栏小工具图标 VLM 识别
 
 ├── test_unread_detect.lua      # 未读数字检测（旧版）
-├── test_two_lines.lua          # 第二列条目+自动点击
-├── test_avatar_badges.lua      # 头像红点检测
-├── test_avatars.lua            # 头像 OCR 检测
 ├── test_ai_search.lua          # Chrome AI 搜索
 ├── test_open_chrome.lua        # 打开 Chrome
 ├── google_ai_qa.lua            # Google AI 问答
