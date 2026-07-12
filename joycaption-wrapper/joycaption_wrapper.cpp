@@ -209,7 +209,7 @@ const char* joycaption_analyze(const char* image_path, const char* prompt) {
     llama_tokens generated_tokens;
     llama_batch batch = llama_batch_init(1, 0, 1);
     
-    for (int i = 0; i < 128; i++) {  // 最多 128 tokens
+    for (int i = 0; i < 1024; i++) {  // 最多 1024 tokens
         llama_token token_id = common_sampler_sample(g_state.smpl, g_state.lctx, -1);
         generated_tokens.push_back(token_id);
         common_sampler_accept(g_state.smpl, token_id, true);
