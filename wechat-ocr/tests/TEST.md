@@ -8,6 +8,34 @@
 
 ---
 
+## LLM 图标识别（VLM）
+
+基于 Qwen2.5-VL-3B 的图标语义识别 pipeline。
+
+### 模型路径
+
+```bash
+/data/models/Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf       # LLM 模型 (1.8GB)
+/data/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf  # 视觉投影 (806MB)
+```
+
+### 启动命令
+
+```bash
+cd /opt/my-agent/wechat-ocr
+
+# 基础环境
+export LD_LIBRARY_PATH="./lib:/data/venv/onnxruntime-linux-x64-gpu-1.26.0/lib:/opt/my-agent/joycaption-wrapper:/opt/llama.cpp/build/bin"
+
+# 扫描并逐个点击所有侧边栏图标
+./tests/run_click_all_icons.sh
+
+# 独立 VLM 测试
+./tests/run_llm_icons.sh
+```
+
+---
+
 ## 环境准备
 
 ```bash
