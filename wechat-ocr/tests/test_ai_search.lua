@@ -26,7 +26,7 @@ flush(string.format("  Chrome: (%d,%d) %dx%d\n", cx, cy, cw, ch))
 
 os.execute("xdotool key --window " .. chrome_wid .. " ctrl+t 2>/dev/null")
 ffi.C.usleep(500000)
-os.execute("xdotool type --delay 80 '2008年金融危机详细过程？' 2>/dev/null")
+os.execute("xdotool type --delay 80 '阿波罗登月计划的详细过程' 2>/dev/null")
 ffi.C.usleep(300000)
 os.execute("xdotool key Tab 2>/dev/null")
 ffi.C.usleep(200000)
