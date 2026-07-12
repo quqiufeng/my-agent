@@ -26,6 +26,8 @@ local M = {}
 local _recording_pid = nil
 local _record_enabled = false
 local _record_output = "/tmp/wx_robot_record.mp4"
+local _calib_cache = nil
+local CALIB_FILE = os.getenv("HOME") .. "/.wechat_icons.json"
 
 -- === 录像控制 ===
 
@@ -97,6 +99,63 @@ function M.get_window_rect()
     local _, _, wh = geo:find("x(%d+)")
     if not wx then return nil end
     return {x=tonumber(wx), y=tonumber(wy), w=tonumber(ww), h=tonumber(wh)}
+end
+
+-- ======== 图标坐标缓存（一次性校准）========
+
+local function load_calibration()
+    if _calib_cache then return _calib_cache end
+    local f = io.open(CALIB_FILE, "r")
+    if not f then return nil end
+    local s = f:read("*a"); f:close()
+    local ok, data = pcall(cjson.decode, s)
+    if not ok or not data then return nil end
+    _calib_cache = data
+    return data
+end
+
+function M.calibrate_icons()
+    _calib_cache = nil
+    local cmd = string.format("cd '%s' && luajit tests/calibrate_icons.lua", dir)
+    local ret = os.execute(cmd)
+    if ret ~= 0 then return false, "calibration failed" end
+    return true
+end
+
+function M.clear_calibration()
+    _calib_cache = nil
+    os.execute("rm -f " .. CALIB_FILE)
+end
+
+function M.get_icon_pos(name, area)
+    local data = load_calibration()
+    if not data then return nil, "no calibration cache" end
+    local list = data[area or "toolbar"]
+    if not list then return nil, "area not found" end
+    for _, icon in ipairs(list) do
+        if icon.name == name or icon.name_cn == name then
+            M.activate()
+            local win = M.get_window_rect()
+            if not win then return nil, "no window" end
+            return {
+                x = win.x + icon.rel_x,
+                y = win.y + icon.rel_y,
+                rel_x = icon.rel_x,
+                rel_y = icon.rel_y,
+                w = icon.w,
+                h = icon.h,
+            }
+        end
+    end
+    return nil, "icon not found: " .. tostring(name)
+end
+
+function M.click_icon_rel(name, area)
+    local pos, err = M.get_icon_pos(name, area)
+    if not pos then return false, err end
+    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", pos.x, pos.y))
+    ffi.C.usleep(500000)
+    return true
 end
 
 -- ======== OCR 语义定位 ========
@@ -185,8 +244,16 @@ function M.send_file(filepath)
     if not data then return false, "OCR failed" end
     local col3 = data.win.x
     local input_y = data.win.y + data.win.h - 175
-    local icon_x = col3 + 130
-    local icon_y = input_y - 40
+
+    local icon_x, icon_y
+    local pos = M.get_icon_pos("Folder", "toolbar")
+    if pos then
+        icon_x, icon_y = pos.x, pos.y
+    else
+        icon_x = col3 + 130
+        icon_y = input_y - 40
+    end
+
     os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", icon_x, icon_y))
     ffi.C.usleep(800000)
     local filename = filepath:match("([^/]+)$")
@@ -210,8 +277,16 @@ function M.screenshot()
     if not data then return false end
     local col3 = data.win.x
     local input_y = data.win.y + data.win.h - 175
-    local icon_x = col3 + 130 + 38
-    local icon_y = input_y - 40
+
+    local icon_x, icon_y
+    local pos = M.get_icon_pos("Scissors", "toolbar")
+    if pos then
+        icon_x, icon_y = pos.x, pos.y
+    else
+        icon_x = col3 + 130 + 38
+        icon_y = input_y - 40
+    end
+
     os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", icon_x, icon_y))
     ffi.C.usleep(500000)
     os.execute("xdotool mousemove 0 0 2>/dev/null")
@@ -278,12 +353,21 @@ function M.contacts_search(keyword)
     end
 
     -- 点击通讯录图标 → 搜索框搜索
+    local cpos = M.get_icon_pos("Contacts", "sidebar")
+    if cpos then
+        os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", cpos.x, cpos.y))
+        ffi.C.usleep(800000)
+    else
+        local win = M.get_window_rect()
+        if not win then return false end
+        local icon_x = win.x + 40
+        local icon_y = win.y + 110 + 60
+        os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", icon_x, icon_y))
+        ffi.C.usleep(800000)
+    end
+
     local win = M.get_window_rect()
     if not win then return false end
-    local icon_x = win.x + 40
-    local icon_y = win.y + 110 + 60
-    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", icon_x, icon_y))
-    ffi.C.usleep(800000)
     local sx = win.x + 160
     local sy = win.y + 50
     os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", sx, sy))
@@ -300,9 +384,29 @@ end
 
 -- ======== 侧边栏 ========
 
+local SIDEBAR_INDEX_MAP = {
+    [1] = "WeChat",
+    [2] = "Contacts",
+    [3] = "Favorites",
+    [4] = "Moments",
+    [5] = "Channels",
+    [6] = "Search",
+    [7] = "MiniProgram",
+}
+
 function M.click_sidebar(index)
     index = index or 1
     M.activate()
+    local name = SIDEBAR_INDEX_MAP[index]
+    if name then
+        local pos = M.get_icon_pos(name, "sidebar")
+        if pos then
+            os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", pos.x, pos.y))
+            ffi.C.usleep(800000)
+            return true
+        end
+    end
+    -- fallback
     local win = M.get_window_rect()
     if not win then return false end
     local icon_x = win.x + 40
