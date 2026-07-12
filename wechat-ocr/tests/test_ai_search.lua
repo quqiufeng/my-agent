@@ -62,6 +62,11 @@ local all_text = {}
 local prev_text = ""
 
 for i = 1, 50 do
+    -- 每屏截图保存到 ~/ai_result_01.png, ~/ai_result_02.png ...
+    local seg_path = string.format("%s/ai_result_%02d.png", home, i)
+    os.execute(string.format("import -window %s '%s' 2>/dev/null", chrome_wid, seg_path))
+    os.execute(string.format("convert '%s' +repage -crop 1500x%d+0+0 +repage '%s' 2>/dev/null", seg_path, ch, seg_path))
+
     local s = ocr_lib.ocr_capture_all(e)
     if s and s ~= ffi.NULL then
         local d = cjson.decode(ffi.string(s))
@@ -73,7 +78,6 @@ for i = 1, 50 do
                 cur = cur .. b.text
             end
         end
-        -- 内容没变 → 到底了
         if i > 1 and cur == prev_text then
             flush(string.format("  到底了（%d 屏）\n", i - 1))
             break
@@ -85,10 +89,6 @@ for i = 1, 50 do
     ffi.C.usleep(300000)
 end
 ocr_lib.ocr_destroy(e)
-
--- 保存截图
-os.execute(string.format("import -window %s '%s/ai_result.png' 2>/dev/null", chrome_wid, home))
-flush(string.format("  截图保存: %s/ai_result.png\n", home))
 
 -- 输出
 flush(string.format("\n=== OCR 结果 (%d 段文字) ===\n\n", #all_text))
