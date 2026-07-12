@@ -109,7 +109,7 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 | `ai_to_wechat.lua` | Chrome AI 搜索 → OCR 读结果 → 微信发送 | ⚠️ 未验证 | `luajit tests/ai_to_wechat.lua` |
 | `google_ai_qa.lua` | 新标签 → 输入问题 → 截图 + OCR 读结果 | ⚠️ 未验证 | `luajit tests/google_ai_qa.lua` |
 | `google_ai_test.lua` | 打开 Google → 输入问题 → 点 AI 模式按钮 → 截图 | ⚠️ 未验证 | `luajit tests/google_ai_test.lua` |
-| `test_open_chrome.lua` | 启动 Chrome | ⚠️ 未验证 | `luajit tests/test_open_chrome.lua` |
+
 
 
 ---
@@ -181,7 +181,6 @@ tests/
 
 ├── test_unread_detect.lua      # 未读数字检测（旧版）
 ├── test_ai_search.lua          # Chrome AI 搜索
-├── test_open_chrome.lua        # 打开 Chrome
 ├── google_ai_qa.lua            # Google AI 问答
 ├── google_ai_test.lua          # Google AI 测试
 ├── ai_to_wechat.lua            # AI → 微信发送
