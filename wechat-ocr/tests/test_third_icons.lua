@@ -1,8 +1,8 @@
 #!/usr/bin/env luajit
 -- ============================================================
--- WeChat OCR - 第三列小图标检测（基于三列分割）
+-- WeChat OCR - 第三列小图标检测（基于三列分割 + OCR文本过滤）
 -- ============================================================
--- 功能: OCR定位第三列 → 背景差值+Canny检测图标 → 标注输出
+-- 功能: OCR定位第三列 → 全高度扫描 → OCR文本框过滤 → 标注输出
 --
 -- 一键测试命令:
 --   cd /opt/my-agent/wechat-ocr && \
@@ -47,7 +47,7 @@ local wh = tonumber(geo:match("x(%d+)"))
 if not wx then io.write("❌ 获取窗口失败\n"); os.exit(1) end
 io.write(string.format("  窗口: (%d,%d) %dx%d\n\n", wx, wy, ww, wh)); io.flush()
 
--- 3. OCR 获取第三列边界 + 截图
+-- 3. OCR 获取第三列边界 + 文本框
 io.write("[2/5] OCR分析三列结构...\n"); io.flush()
 local engine = lib.ocr_create(
     dir.."/models/ch_PP-OCRv4_det_infer.onnx",
@@ -55,6 +55,7 @@ local engine = lib.ocr_create(
     dir.."/ppocr_keys_v1.txt")
 
 local col3_abs, col3_w = 0, ww
+local text_boxes = {}
 local ocr_ok = false
 if engine and engine ~= ffi.NULL then
     local s = lib.ocr_capture(engine)
@@ -63,6 +64,7 @@ if engine and engine ~= ffi.NULL then
         lib.ocr_free_string(s)
         col3_abs = d.win.x
         col3_w = d.win.w
+        text_boxes = d.boxes or {}
         ocr_ok = true
     end
     lib.ocr_destroy(engine)
@@ -70,49 +72,83 @@ end
 
 local col3_x = ocr_ok and (col3_abs - wx) or 0
 if ocr_ok then
-    io.write(string.format("  第三列: x=%d 宽度=%dpx (%.0f%%)\n\n", col3_x, col3_w, col3_w/ww*100))
+    io.write(string.format("  第三列: x=%d 宽度=%dpx (%.0f%%), OCR文字框%d个\n\n", col3_x, col3_w, col3_w/ww*100, #text_boxes))
 else
     io.write("  OCR跳过，使用全窗口\n\n")
 end
 io.flush()
 
--- 截图（只截第三列底部工具区，全窗口用于标注）
+-- 截图（全窗口用于标注 + 第三列全高度用于检测）
 local ts = os.date("%Y%m%d_%H%M%S")
 local home = os.getenv("HOME")
 local raw_full = "/tmp/wx_third_full.png"
-local raw_tool = "/tmp/wx_third_tool.png"
 local outfile = home .. "/wechat_third_icons_" .. ts .. ".png"
-os.execute(string.format("import -window root -crop %dx%d+%d+%d '%s' 2>/dev/null", ww, wh, wx, wy, raw_full))
+os.execute(string.format("import -window root -crop %dx%d+%d+%d +repage '%s' 2>/dev/null", ww, wh, wx, wy, raw_full))
 
--- 工具栏图标行在底部 430px 区域的上方 55px
-local bar_h = 55
-local bar_y = wy + wh - 430
-os.execute(string.format("import -window root -crop %dx%d+%d+%d '%s' 2>/dev/null",
-    ww, bar_h, wx, bar_y, raw_tool))
+-- 过滤：只保留第三列内的文字框（转换为窗口相对坐标）
+local function box_overlap(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2)
+    return ax1 < bx2 and ax2 > bx1 and ay1 < by2 and ay2 > by1
+end
 
--- 4. 检测第三列工具栏图标
-io.write("[3/5] 检测第三列图标...\n"); io.flush()
+local col3_texts = {}
+for _, tb in ipairs(text_boxes) do
+    local tx, ty, tw, th = tb.x or 0, tb.y or 0, tb.w or 0, tb.h or 0
+    if tx + tw > col3_x and tx < col3_x + col3_w then
+        table.insert(col3_texts, {x=tx, y=ty, w=tw, h=th})
+    end
+end
+io.write(string.format("  第三列内文字框: %d个\n\n", #col3_texts)); io.flush()
+
+-- 4. 分区检测图标：顶部图标(0-80px) + 底部格式工具栏(430px~485px)
+io.write("[3/5] 检测第三列图标（分区扫描）...\n"); io.flush()
 
 local all_lines = {}
+local raw_col3 = "/tmp/wx_col3_full.png"
+os.execute(string.format("import -window root -crop %dx%d+%d+%d +repage '%s' 2>/dev/null",
+    col3_w, wh, wx + col3_x, wy, raw_col3))
 
--- 只在第三列的工具栏图标行检测
-for thr = 220, 80, -15 do
-    local pct = thr / 255 * 100
-    local cmd = string.format(
-        "convert '%s' +repage -crop %dx%d+%d+0 -colorspace gray -threshold %.1f%%%% -negate " ..
-        "-define connected-components:verbose=true -connected-components 4 /dev/null 2>&1 " ..
-        "| grep -v 'bgcolor\\|id:\\|0:.*srgb'",
-        raw_tool, col3_w, bar_h, col3_x, pct)
-    local pipe = io.popen(cmd)
-    if pipe then
-        for line in pipe:lines() do
-            local id, w, h, x, y, area = line:match("(%d+):%s*(%d+)x(%d+)%+(%d+)%+(%d+)%s+[%d.]+,[%d.]+%s+(%d+)")
-            if w and h and x and y and area then
-                table.insert(all_lines, {x=col3_x+tonumber(x), y=tonumber(y) + bar_y - wy,
-                                         w=tonumber(w), h=tonumber(h), area=tonumber(area)})
+local toolbar_y = math.max(wh - 430, 0)
+local zones = {
+    { name="顶部图标", y1=0, y2=80 },
+    { name="格式工具栏", y1=toolbar_y, y2=toolbar_y + 55 },
+}
+
+local raw_strips = {}
+for _, zone in ipairs(zones) do
+    local zh = zone.y2 - zone.y1
+    local strip_name = "/tmp/wx_strip_" .. zone.y1 .. ".png"
+    raw_strips[zone.name] = strip_name
+    os.execute(string.format("convert '%s' -crop %dx%d+0+%d +repage '%s' 2>/dev/null",
+        raw_col3, col3_w, zh, zone.y1, strip_name))
+    local fh = io.open(strip_name, "r")
+    if fh then
+        local sz = fh:seek("end"); fh:close()
+        io.write(string.format("  分区 %s: %dx%d (%d KB)\n", zone.name, col3_w, zh, sz/1024))
+    end
+end
+io.flush()
+
+for _, zone in ipairs(zones) do
+    local raw_strip = raw_strips[zone.name]
+
+    for _, thr in ipairs({180, 140, 100, 60}) do
+        local pct = thr / 255 * 100
+        local cmd = string.format(
+            "convert '%s' -colorspace gray -threshold %.1f%%%% -negate " ..
+            "-define connected-components:verbose=true -connected-components 4 /dev/null 2>&1 " ..
+            "| grep -v 'bgcolor\\|id:\\|0:.*srgb'",
+            raw_strip, pct)
+        local pipe = io.popen(cmd)
+        if pipe then
+            for line in pipe:lines() do
+                local id, w, h, x, y, area = line:match("(%d+):%s*(%d+)x(%d+)%+(%d+)%+(%d+)%s+[%d.]+,[%d.]+%s+(%d+)")
+                if w and h and x and y and area then
+                    table.insert(all_lines, {x=col3_x+tonumber(x), y=zone.y1+tonumber(y),
+                                             w=tonumber(w), h=tonumber(h), area=tonumber(area)})
+                end
             end
+            pipe:close()
         end
-        pipe:close()
     end
 end
 
@@ -120,14 +156,15 @@ end
 local tmp = {}
 for _, b in ipairs(all_lines) do
     local ratio = b.w / b.h
-    if b.h >= 5 and b.w >= 5 and ratio >= 0.25 and ratio <= 3.0 and b.area >= 25 and b.area <= 4000 then
+    -- 图标一般是近正方形，放宽到 0.4~2.5；最小面积 100（~10x10），最大 6000
+    if ratio >= 0.3 and ratio <= 4.0 and b.area >= 25 and b.area <= 8000 then
         b.cx = b.x + b.w / 2
         b.cy = b.y + b.h / 2
         table.insert(tmp, b)
     end
 end
 
--- 按面积排序，中心距离合并（22px半径）
+-- 按面积排序，中心距离合并（25px半径）
 table.sort(tmp, function(a,b) return b.area < a.area end)
 local merged = {}
 for _, b in ipairs(tmp) do
@@ -135,38 +172,30 @@ for _, b in ipairs(tmp) do
     for _, m in ipairs(merged) do
         local dx = b.cx - m.cx
         local dy = b.cy - m.cy
-        if dx*dx + dy*dy < 500 then dup = true; break end
+        if dx*dx + dy*dy < 625 then dup = true; break end
     end
     if not dup then table.insert(merged, b) end
 end
 table.sort(merged, function(a,b) return a.y < b.y end)
 
--- 文字行过滤（第三列有文字）
-local is_text = {}
-for i = 1, #merged do is_text[i] = false end
-for i = 1, #merged do
-    if is_text[i] then goto continue end
-    local a, neighbors = merged[i], {}
-    for j = 1, #merged do
-        if i ~= j and not is_text[j] then
-            local b = merged[j]
-            if math.abs(a.cy - b.cy) <= 15 and math.abs(a.cx - b.cx) <= 25 then
-                table.insert(neighbors, j)
-            end
+-- OCR文本框过滤
+local icons = {}
+for _, b in ipairs(merged) do
+    local is_text = false
+    local bx1, by1, bx2, by2 = b.x, b.y, b.x + b.w, b.y + b.h
+    for _, tb in ipairs(col3_texts) do
+        local tx1, ty1, tx2, ty2 = tb.x, tb.y, tb.x + tb.w, tb.y + tb.h
+        if box_overlap(bx1, by1, bx2, by2, tx1, ty1, tx2, ty2) then
+            is_text = true
+            break
         end
     end
-    if #neighbors >= 4 then
-        is_text[i] = true
-        for _, j in ipairs(neighbors) do is_text[j] = true end
+    if not is_text then
+        table.insert(icons, b)
     end
-    ::continue::
 end
 
-local icons = {}
-for i, b in ipairs(merged) do
-    if not is_text[i] then table.insert(icons, b) end
-end
-io.write(string.format("  第三列图标: %d\n\n", #icons)); io.flush()
+io.write(string.format("  第三列非文字组件: %d\n\n", #icons)); io.flush()
 
 -- 5. 标注输出
 io.write("[4/5] 标注输出...\n"); io.flush()
@@ -180,7 +209,7 @@ if ocr_ok then
 end
 -- 标题
 table.insert(cmds, string.format(
-    '-fill "rgb(0,255,0)" -pointsize 16 -annotate +10+10 "第三列 %d 个小图标"', #icons))
+    '-fill "rgb(0,255,0)" -pointsize 16 -annotate +10+10 "第三列 %d 个非文字组件"', #icons))
 
 for i, b in ipairs(icons) do
     table.insert(cmds, string.format(
