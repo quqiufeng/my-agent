@@ -3,6 +3,9 @@
 -- 用法:
 --   luajit tests/test_search.lua                        搜索"丰"+发送"今天天气真好"
 --   luajit tests/test_search.lua [人名] [消息]
+--
+-- 提示词:
+-- 先开启录屏 打开微信在搜索栏 搜索 小王  发送  台风一点都不大 真凉快 小王辛苦了 爱你哦 __来自ai  2秒后 录屏停止  保存到～
 
 local ffi = require("ffi")
 ffi.cdef[[int usleep(unsigned int);]]
