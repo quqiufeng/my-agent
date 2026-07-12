@@ -90,6 +90,74 @@ function M.get_window_rect()
     return {x=tonumber(wx), y=tonumber(wy), w=tonumber(ww), h=tonumber(wh)}
 end
 
+-- ======== OCR 语义定位 ========
+
+function M.find_text(target)
+    local data, err = ocr.capture_raw()
+    if not data then return nil, err end
+    local boxes = data.boxes or {}
+    for _, b in ipairs(boxes) do
+        if b.text == target then
+            local cx = math.floor(b.x + b.w / 2)
+            local cy = math.floor(b.y + b.h / 2)
+            return {x = cx, y = cy, box = b}
+        end
+    end
+    return nil, "not found: " .. target
+end
+
+function M.find_texts(target, limit)
+    limit = limit or 10
+    local data, err = ocr.capture_raw()
+    if not data then return nil, err end
+    local results = {}
+    local boxes = data.boxes or {}
+    for _, b in ipairs(boxes) do
+        if b.text == target and #results < limit then
+            table.insert(results, {
+                x = math.floor(b.x + b.w / 2),
+                y = math.floor(b.y + b.h / 2),
+                box = b
+            })
+        end
+    end
+    return results
+end
+
+function M.find_text_partial(partial)
+    local data, err = ocr.capture_raw()
+    if not data then return nil, err end
+    local boxes = data.boxes or {}
+    for _, b in ipairs(boxes) do
+        if b.text:find(partial, 1, true) then
+            local cx = math.floor(b.x + b.w / 2)
+            local cy = math.floor(b.y + b.h / 2)
+            return {x = cx, y = cy, box = b}
+        end
+    end
+    return nil, "not found: " .. partial
+end
+
+function M.click_text(target)
+    local pos, err = M.find_text(target)
+    if not pos then return false, err end
+    M.activate()
+    ffi.C.usleep(200000)
+    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", pos.x, pos.y))
+    ffi.C.usleep(500000)
+    return true
+end
+
+function M.click_text_partial(partial)
+    local pos, err = M.find_text_partial(partial)
+    if not pos then return false, err end
+    M.activate()
+    ffi.C.usleep(200000)
+    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", pos.x, pos.y))
+    ffi.C.usleep(500000)
+    return true
+end
+
 -- ======== 消息 ========
 
 function M.capture()
@@ -160,6 +228,16 @@ end
 function M.search(keyword)
     keyword = keyword or "小王"
     M.activate()
+
+    -- OCR 优先：直接点击联系人名称
+    local pos, err = M.find_text_partial(keyword)
+    if pos then
+        os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", pos.x, pos.y))
+        ffi.C.usleep(500000)
+        return true
+    end
+
+    -- 找不到联系人，回退搜索框
     local win = M.get_window_rect()
     if not win then return false end
     local sx = win.x + 180
@@ -181,6 +259,16 @@ end
 function M.contacts_search(keyword)
     keyword = keyword or "小王"
     M.activate()
+
+    -- OCR 优先：直接点击联系人名称
+    local pos, err = M.find_text_partial(keyword)
+    if pos then
+        os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", pos.x, pos.y))
+        ffi.C.usleep(500000)
+        return true
+    end
+
+    -- 点击通讯录图标 → 搜索框搜索
     local win = M.get_window_rect()
     if not win then return false end
     local icon_x = win.x + 40

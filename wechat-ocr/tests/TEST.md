@@ -3,8 +3,7 @@
 本目录包含「微信机器人」框架的各类测试脚本，用于验证截图、OCR、窗口定位、消息发送、Chrome 搜索等能力。
 
 > **状态说明**
-> - ✅ 已验证：曾经在对应环境下跑通过，但因微信版本、分辨率、主题变化可能仍需重测。
-> - ⚠️ 未验证：已编写但尚未在目标环境充分测试。
+> - ⚠️ 未验证：所有测试用例均未在当前环境验证，需要重新测试。
 > - 所有脚本都需要先完成 [环境准备](#环境准备)。
 
 ---
@@ -40,10 +39,10 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 
 | 脚本 | 功能 | 状态 | 用法 |
 |------|------|------|------|
-| `test_3columns.lua` | 检测微信窗口三列结构，输出分界位置和标注图 | ✅ 已验证 | `luajit tests/test_3columns.lua` |
-| `test_first_icons.lua` | 第一列 7 个图标检测，输出标注图 | ✅ 已验证 | `luajit tests/test_first_icons.lua` |
+| `test_3columns.lua` | 检测微信窗口三列结构，输出分界位置和标注图 | ⚠️ 未验证 | `luajit tests/test_3columns.lua` |
+| `test_first_icons.lua` | 第一列 7 个图标检测，输出标注图 | ⚠️ 未验证 | `luajit tests/test_first_icons.lua` |
 | `test_first_column.lua` | 依次点击第一列 7 个图标 | ⚠️ 未验证 | `luajit tests/test_first_column.lua` |
-| `test_third_icons.lua` | 第三列工具栏图标检测 | ✅ 已验证 | `luajit tests/test_third_icons.lua` |
+| `test_third_icons.lua` | 第三列工具栏图标检测 | ⚠️ 未验证 | `luajit tests/test_third_icons.lua` |
 
 **输出文件**：
 - `~/wechat_3cols_*.png`
@@ -139,7 +138,7 @@ robot.destroy()
    - 更换分辨率或微信版本后可能需要调整偏移量。
 
 5. **状态验证 disclaimer**：
-   - 标记为 ✅ 的脚本仅代表曾经在特定环境跑通，不保证当前环境一定可用。
+   - 所有脚本均为 ⚠️ 未验证状态，使用前需要在当前环境重新测试。
 
 ---
 
@@ -174,4 +173,4 @@ tests/
 ---
 
 *更新日期: 2026-06-21*
-*状态: 已整理，多数脚本待验证*
+*状态: 全部未验证，需在当前环境重新测试*
