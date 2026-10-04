@@ -313,7 +313,6 @@ LUA_CPATH="/usr/local/lualib/?.so;;" \
 wechat-ocr/
 ├── WECHAT_OCR.md              # 本文档
 ├── README.md                  # 微信机器人快速入门
-├── CLAUDE.md                  # Chrome 控制规则
 ├── run.lua                    # Lua 入口脚本
 ├── run.sh                     # Shell 启动脚本
 ├── build_final.sh             # 构建脚本

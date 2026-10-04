@@ -298,7 +298,6 @@ robot.monitor({
 wechat-ocr/
 ├── README.md              # 本文档
 ├── WECHAT_OCR.md          # 技术实现文档
-├── CLAUDE.md              # Chrome 控制规则
 ├── wechat_robot.lua       # 统一 API 库（含坐标缓存）
 ├── run.lua                # 入口脚本
 ├── run_ops.lua            # 演示脚本
@@ -364,7 +363,7 @@ wechat-ocr/
 1. **坐标缓存**：运行 `calibrate_icons.lua` 后，所有图标操作优先使用 `~/.wechat_icons.json`；仓库内附带的 `wechat-ocr/wechat_icons.json` 仅作为兜底。若窗口缩放或微信布局改变，需重新校准。
 2. **第一列宽度固定**：侧边栏图标布局稳定，是缓存可靠的基础。
 3. **VLM 速度**：图标语义识别约 5 秒，因此只在一次性校准时使用，运行时不再调用 LLM。
-4. **Chrome 控制**：通过浏览器操作时必须遵守 `CLAUDE.md` 中的规则，只能用 Lua、`wechat_ocr.chrome` 模块，不得启动新 Chrome 进程，不得用 OCR 识别网页。
+4. **Chrome 控制**：网页交互/读取走 `chrome-devtools` MCP（由 opencode 调用），粗动作（开标签/搜索/截图）可用 `wechat_ocr.chrome`；不得启动新 Chrome 进程，不得用 OCR 识别网页。详见 `../chrome.md`。
 5. **后台守护**：生产环境建议用 systemd 或 nohup 运行 `monitor()`。
 
 ---

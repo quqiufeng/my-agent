@@ -141,7 +141,7 @@ robot.destroy()
 
 1. **Chrome API 已补齐**：
    - `chrome.type(...)` / `chrome.open(...)` / `chrome.search(...)` 均已在 `lua/wechat_ocr/chrome.lua` 中实现。
-   - 规则仍以 `../CLAUDE.md` 为准（不新开浏览器、不用 OCR 识别网页）。
+   - 规则以根目录 `chrome.md` 为准（不新开浏览器、不用 OCR 识别网页）。
 
 2. **`badge_detect` 模块已纳入仓库**：
    - `wechat_ocr.badge_detect` 现位于 `lua/wechat_ocr/badge_detect.lua`，`news_execute.lua` 可直接使用。
