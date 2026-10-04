@@ -136,7 +136,12 @@ std::string json_escape(const std::string &s) {
     return esc;
 }
 
-// 获取（或首次创建）大脑会话，返回 session id
+// TUI 是否在线（有 opencode attach 进程）
+bool tui_attached() {
+    return system("pgrep -f 'opencode attach' >/dev/null 2>&1") == 0;
+}
+
+// 获取（或创建）大脑会话 id（headless 用）
 std::string ensure_session(const Config &cfg) {
     static std::string sid;
     if (!sid.empty()) return sid;
@@ -144,8 +149,7 @@ std::string ensure_session(const Config &cfg) {
     std::string cmd = "curl -sf -X POST -H 'Content-Type: application/json' -d '{}' '" + url + "' 2>/dev/null";
     FILE *p = popen(cmd.c_str(), "r");
     if (!p) return "";
-    std::string out;
-    char buf[2048];
+    std::string out; char buf[2048];
     while (fgets(buf, sizeof(buf), p)) out += buf;
     pclose(p);
     std::smatch m;
@@ -154,24 +158,30 @@ std::string ensure_session(const Config &cfg) {
     return sid;
 }
 
-// 通过 /session/{id}/message 把 [语音输入] 转发到大脑
+// 转发 [语音输入]：有 TUI 走 /tui（实时可见），否则走 session API（后台，headless）
 void forward(const Config &cfg, const std::string &text) {
-    std::string sid = ensure_session(cfg);
-    if (sid.empty()) return;
-
-    std::string body = "{\"parts\":[{\"type\":\"text\",\"text\":\"" +
-                       json_escape("[语音输入] " + text) + "\"}]}";
     std::string path = "/tmp/voice_listen_" + std::to_string(getpid()) + ".json";
-    FILE *f = fopen(path.c_str(), "wb");
-    if (!f) return;
-    fwrite(body.data(), 1, body.size(), f);
-    fclose(f);
-
-    std::string cmd = "sh -c 'curl -s --max-time 300 -X POST -H \"Content-Type: application/json\" "
-                      "--data-binary @" + path + " \"" + cfg.agent_url + "/session/" + sid + "/message\" "
-                      ">/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1 &";
-    if (system(cmd.c_str()) == -1)
-        fprintf(stderr, "[voice] 后台转发启动失败\n");
+    if (tui_attached()) {
+        std::string body = "{\"text\": \"" + json_escape("[语音输入] " + text) + "\"}";
+        FILE *f = fopen(path.c_str(), "wb"); if (!f) return;
+        fwrite(body.data(), 1, body.size(), f); fclose(f);
+        std::string cmd = "sh -c '"
+            "curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" --data-binary @" + path +
+            " \"" + cfg.agent_url + "/tui/append-prompt\" >/dev/null 2>&1;"
+            "curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" -d \"{}\" \"" +
+            cfg.agent_url + "/tui/submit-prompt\" >/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1";
+        if (system(cmd.c_str()) == -1) fprintf(stderr, "[voice] 转发启动失败\n");
+    } else {
+        std::string sid = ensure_session(cfg);
+        if (sid.empty()) return;
+        std::string body = "{\"parts\":[{\"type\":\"text\",\"text\":\"" + json_escape("[语音输入] " + text) + "\"}]}";
+        FILE *f = fopen(path.c_str(), "wb"); if (!f) return;
+        fwrite(body.data(), 1, body.size(), f); fclose(f);
+        std::string cmd = "sh -c 'curl -s --max-time 300 -X POST -H \"Content-Type: application/json\" "
+            "--data-binary @" + path + " \"" + cfg.agent_url + "/session/" + sid + "/message\" "
+            ">/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1 &";
+        if (system(cmd.c_str()) == -1) fprintf(stderr, "[voice] 后台转发启动失败\n");
+    }
     printf("[voice] 已转发: %s\n", text.c_str());
 }
 

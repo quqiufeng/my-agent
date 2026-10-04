@@ -43,17 +43,30 @@ local function ensure_session()
     return SESSION_ID
 end
 
--- 后台转发，不等模型跑完
+-- TUI 是否在线
+local function tui_attached()
+    return os.execute("pgrep -f 'opencode attach' >/dev/null 2>&1") == 0
+end
+
+-- 转发：有 TUI 走 /tui（实时可见），否则 session API（后台）
 local function forward(text)
-    local sid = ensure_session()
-    if not sid then return end
     local tmp = os.tmpname()
-    local f = io.open(tmp, "w")
-    f:write(cjson.encode({ parts = { { type = "text", text = "[微信输入] " .. text } } }))
-    f:close()
-    os.execute(string.format(
-        "sh -c 'curl -s --max-time 300 -X POST -H \"Content-Type: application/json\" --data-binary @%s \"%s/session/%s/message\" >/dev/null 2>&1; rm -f %s' >/dev/null 2>&1 &",
-        tmp, AGENT_URL, sid, tmp))
+    if tui_attached() then
+        local f = io.open(tmp, "w"); f:write(cjson.encode({ text = "[微信输入] " .. text })); f:close()
+        os.execute(string.format(
+            "sh -c 'curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" --data-binary @%s \"%s/tui/append-prompt\" >/dev/null 2>&1; "
+            .. "curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" -d \"{}\" \"%s/tui/submit-prompt\" >/dev/null 2>&1; rm -f %s' >/dev/null 2>&1",
+            tmp, AGENT_URL, AGENT_URL, tmp))
+    else
+        local sid = ensure_session()
+        if not sid then return end
+        local f = io.open(tmp, "w")
+        f:write(cjson.encode({ parts = { { type = "text", text = "[微信输入] " .. text } } }))
+        f:close()
+        os.execute(string.format(
+            "sh -c 'curl -s --max-time 300 -X POST -H \"Content-Type: application/json\" --data-binary @%s \"%s/session/%s/message\" >/dev/null 2>&1; rm -f %s' >/dev/null 2>&1 &",
+            tmp, AGENT_URL, sid, tmp))
+    end
 end
 
 -- 大脑回程发出去的消息（含本机自己发的）记在日志里，避免被当成新消息再次处理

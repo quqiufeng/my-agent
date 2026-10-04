@@ -172,21 +172,33 @@ std::string ensure_session(const Config &cfg) {
     return sid;
 }
 
+bool tui_attached() {
+    return system("pgrep -f 'opencode attach' >/dev/null 2>&1") == 0;
+}
+
 void forward(const Config &cfg, const std::string &text) {
-    std::string sid = ensure_session(cfg);
-    if (sid.empty()) { g_ui.set_reply("未连接大脑"); return; }
-    std::string body = "{\"parts\":[{\"type\":\"text\",\"text\":\"" +
-                       json_escape("[语音输入] " + text) + "\"}]}";
     std::string path = "/tmp/friday_app_" + std::to_string(getpid()) + ".json";
-    FILE *f = fopen(path.c_str(), "wb");
-    if (!f) return;
-    fwrite(body.data(), 1, body.size(), f);
-    fclose(f);
-    std::string cmd = "sh -c 'curl -s --max-time 300 -X POST -H \"Content-Type: application/json\" "
-                      "--data-binary @" + path + " \"" + cfg.agent_url + "/session/" + sid + "/message\" "
-                      ">/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1 &";
-    if (system(cmd.c_str()) == -1)
-        fprintf(stderr, "[app] 后台转发启动失败\n");
+    if (tui_attached()) {
+        std::string body = "{\"text\": \"" + json_escape("[语音输入] " + text) + "\"}";
+        FILE *f = fopen(path.c_str(), "wb"); if (!f) return;
+        fwrite(body.data(), 1, body.size(), f); fclose(f);
+        std::string cmd = "sh -c '"
+            "curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" --data-binary @" + path +
+            " \"" + cfg.agent_url + "/tui/append-prompt\" >/dev/null 2>&1;"
+            "curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" -d \"{}\" \"" +
+            cfg.agent_url + "/tui/submit-prompt\" >/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1";
+        if (system(cmd.c_str()) == -1) fprintf(stderr, "[app] 转发启动失败\n");
+    } else {
+        std::string sid = ensure_session(cfg);
+        if (sid.empty()) { g_ui.set_reply("未连接大脑"); return; }
+        std::string body = "{\"parts\":[{\"type\":\"text\",\"text\":\"" + json_escape("[语音输入] " + text) + "\"}]}";
+        FILE *f = fopen(path.c_str(), "wb"); if (!f) return;
+        fwrite(body.data(), 1, body.size(), f); fclose(f);
+        std::string cmd = "sh -c 'curl -s --max-time 300 -X POST -H \"Content-Type: application/json\" "
+            "--data-binary @" + path + " \"" + cfg.agent_url + "/session/" + sid + "/message\" "
+            ">/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1 &";
+        if (system(cmd.c_str()) == -1) fprintf(stderr, "[app] 后台转发启动失败\n");
+    }
     g_ui.set_reply("已转发 Master");
 }
 
