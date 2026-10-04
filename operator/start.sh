@@ -24,8 +24,9 @@ for _ in $(seq 1 30); do
     echo -n "."; sleep 1
 done
 
-tmux new-window -t "$SESSION" -n tui "cd '$DIR' && opencode attach http://localhost:$PORT" 2>/dev/null || true
-tmux select-window -t "$SESSION:tui" 2>/dev/null || true
+tmux new-window -d -t "$SESSION" -n tui \
+    "cd '$DIR' && opencode attach http://localhost:$PORT; echo; echo '[tui 已退出] 按回车关闭窗口'; read _"
+tmux select-window -t "$SESSION:tui"
 
 if [ "${1:-}" = "--bg" ]; then
     echo "已后台启动：tmux attach -t $SESSION"
