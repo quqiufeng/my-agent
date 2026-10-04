@@ -1,5 +1,7 @@
 # Chrome 浏览器控制
 
+> **官方完整文档（chrome-devtools-mcp 工具参考）**：https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md
+
 本机 Chrome 的控制分两种方式：
 
 | 方式 | 谁执行 | 能力 | 适用 |
