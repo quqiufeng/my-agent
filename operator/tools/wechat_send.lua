@@ -7,6 +7,11 @@ local ok, err = robot.init()
 if not ok then io.stderr:write("wechat init 失败: " .. tostring(err) .. "\n"); os.exit(1) end
 
 if to ~= "" then robot.search(to) end
+
+-- 先记录再发送：供 bridge 避免把大脑回复当成新消息（防自循环），并消除时序竞态
+local f = io.open(os.getenv("WECHAT_SENT_LOG") or "/tmp/friday_wechat_sent.log", "a")
+if f then f:write(text .. "\n"); f:close() end
+
 robot.send(text)
 robot.destroy()
 print("已发送")
