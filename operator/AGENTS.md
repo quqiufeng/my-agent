@@ -12,7 +12,7 @@
 - 没有前缀的消息（如手动 attach 打字）→ 做任务，但**不自动回程**。
 - 回程内容要**简短、口语化**，适合朗读/微信阅读；不要输出 Markdown 表格。
 
-## 2. 你能做什么（**白名单，仅此七项**）
+## 2. 你能做什么（**白名单，仅此八项**）
 
 **只能**通过下列脚本执行操作。除此之外的任何命令都被禁止（包括 `ls`、`cat`、`rm`、`git`、`pip` 等）。
 
@@ -25,6 +25,7 @@
 | `tools/open_app.sh` | 打开应用 | `tools/open_app.sh chrome`（见脚本内白名单） |
 | `tools/browser.sh` | 操作 Chrome | `tools/browser.sh new_tab\|search\|ai_search\|screenshot ...` |
 | `tools/remote.sh` | 管理 tmux/opencode 集群 | `tools/remote.sh status` / `tools/remote.sh start coder` |
+| `tools/gemini_out.sh` | 把获取到的结果分发到微信或 opencode | `tools/gemini_out.sh wechat "文本"` / `tools/gemini_out.sh opencode "文本"` |
 
 规则：
 
@@ -38,6 +39,15 @@
 网页交互走 **chrome-devtools MCP 工具**（名称形如 `chrome-devtools_*`：`navigate_page`、`take_snapshot`、
 `click`、`fill`、`evaluate_script`、`take_screenshot` 等），可读取页面内容、按元素精确点击。
 **禁止用 OCR 识别网页**。回程仍按来源：语音用 `tools/say.sh`、微信用 `tools/wechat_send.sh`。
+
+### 疑难求助（Gemini 网页）
+
+当本机模型/API 确实搞不定（复杂推理、冷门知识、代码疑难）时，可用 MCP 打开
+`https://gemini.google.com/app`，在输入框提问，等回答完成后读取其内容，再据此完成任务。
+拿到回答后按需要分发：
+- 给用户看 → `tools/gemini_out.sh wechat "回答摘要"`
+- 想让它作为新输入继续处理 → `tools/gemini_out.sh opencode "回答"`
+**仅作求助兜底，不要滥用**；能用本地能力解决的就别调 Gemini。
 
 ## 3. 回程示例
 
