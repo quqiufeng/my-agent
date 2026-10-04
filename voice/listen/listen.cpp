@@ -48,8 +48,10 @@ struct Config {
     std::string lang      = env_or("SENSEVOICE_LANG", "zh");
     int threads           = env_int("SENSEVOICE_THREADS", 4);
     std::string agent_url = env_or("AGENT_URL", "http://localhost:4097");
+    std::string operator_dir = env_or("OPERATOR_DIR", "/opt/my-agent/operator");
     bool forward          = true;
     bool once             = false;
+    std::string input_file;  // --file: 直接对 WAV 识别并转发（测试用）
     int silence_ms        = env_int("VOICE_SILENCE_MS", 1200); // 断句静音时长
     int min_speech_ms     = env_int("VOICE_MIN_SPEECH_MS", 300);
 };
@@ -119,11 +121,9 @@ std::string transcribe(const Config &cfg, const std::string &wav) {
 }
 
 // 通过 curl 转发 [语音输入] 文本到 Master（写 JSON 文件，避免转义问题）
-void forward(const Config &cfg, const std::string &text) {
-    std::string json = "[语音输入] " + text;
-    // JSON 转义
+std::string json_escape(const std::string &s) {
     std::string esc;
-    for (char c : json) {
+    for (char c : s) {
         switch (c) {
             case '"':  esc += "\\\""; break;
             case '\\': esc += "\\\\"; break;
@@ -133,7 +133,34 @@ void forward(const Config &cfg, const std::string &text) {
             default:   esc += c;
         }
     }
-    std::string body = "{\"text\": \"" + esc + "\"}";
+    return esc;
+}
+
+// 获取（或首次创建）大脑会话，返回 session id
+std::string ensure_session(const Config &cfg) {
+    static std::string sid;
+    if (!sid.empty()) return sid;
+    std::string url = cfg.agent_url + "/session?directory=" + cfg.operator_dir;
+    std::string cmd = "curl -sf -X POST -H 'Content-Type: application/json' -d '{}' '" + url + "' 2>/dev/null";
+    FILE *p = popen(cmd.c_str(), "r");
+    if (!p) return "";
+    std::string out;
+    char buf[2048];
+    while (fgets(buf, sizeof(buf), p)) out += buf;
+    pclose(p);
+    std::smatch m;
+    if (std::regex_search(out, m, std::regex(R"re("id":"(ses_[^"]+)")re"))) sid = m[1].str();
+    if (sid.empty()) fprintf(stderr, "[voice] 创建大脑会话失败\n");
+    return sid;
+}
+
+// 通过 /session/{id}/message 把 [语音输入] 转发到大脑
+void forward(const Config &cfg, const std::string &text) {
+    std::string sid = ensure_session(cfg);
+    if (sid.empty()) return;
+
+    std::string body = "{\"parts\":[{\"type\":\"text\",\"text\":\"" +
+                       json_escape("[语音输入] " + text) + "\"}]}";
     std::string path = "/tmp/voice_listen_" + std::to_string(getpid()) + ".json";
     FILE *f = fopen(path.c_str(), "wb");
     if (!f) return;
@@ -141,8 +168,7 @@ void forward(const Config &cfg, const std::string &text) {
     fclose(f);
 
     std::string cmd = "curl -sf -X POST -H 'Content-Type: application/json' --data-binary @" +
-                      path + " '" + cfg.agent_url + "/tui/append-prompt' >/dev/null 2>&1; " +
-                      "curl -sf -X POST '" + cfg.agent_url + "/tui/submit-prompt' >/dev/null 2>&1";
+                      path + " '" + cfg.agent_url + "/session/" + sid + "/message' >/dev/null 2>&1";
     int rc = system(cmd.c_str());
     unlink(path.c_str());
     if (rc == 0)
@@ -260,10 +286,12 @@ int main(int argc, char **argv) {
         std::string a = argv[i];
         if (a == "--once") cfg.once = true;
         else if (a == "--no-forward") cfg.forward = false;
+        else if (a == "--file" && i + 1 < argc) cfg.input_file = argv[++i];
         else if (a == "-h" || a == "--help") {
-            printf("用法: %s [--once] [--no-forward]\n"
+            printf("用法: %s [--once] [--no-forward] [--file <wav>]\n"
                    "  --once        识别到一句话后退出\n"
                    "  --no-forward  只打印识别结果，不转发 Master\n"
+                   "  --file <wav>  直接识别指定 WAV 并转发（测试用）\n"
                    "环境变量: VOICE_MIC_DEV VOICE_MIC_CARD AGENT_URL SENSEVOICE_MODEL ...\n",
                    argv[0]);
             return 0;
@@ -272,6 +300,15 @@ int main(int argc, char **argv) {
 
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
+
+    // --file 模式：直接识别 WAV 并转发（测试/转发语音文件）
+    if (!cfg.input_file.empty()) {
+        std::string text = transcribe(cfg, cfg.input_file);
+        if (text.empty()) { fprintf(stderr, "[voice] 未识别到内容\n"); return 1; }
+        printf("[语音输入] %s\n", text.c_str());
+        if (cfg.forward) forward(cfg, text);
+        return 0;
+    }
 
     // 打开麦克风硬件增益，避免采集电平过低
     std::string mix = "amixer -c " + cfg.mic_card + " sset 'Mic' " + cfg.mic_gain + " >/dev/null 2>&1";

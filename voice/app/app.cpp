@@ -88,6 +88,7 @@ struct Config {
     std::string lang = env_str("SENSEVOICE_LANG", "zh");
     int threads = atoi(env_str("SENSEVOICE_THREADS", "4").c_str());
     std::string agent_url = env_str("AGENT_URL", "http://localhost:4097");
+    std::string operator_dir = env_str("OPERATOR_DIR", "/opt/my-agent/operator");
     bool forward = true;
     int silence_ms = atoi(env_str("VOICE_SILENCE_MS", "1200").c_str());
     int min_speech_ms = atoi(env_str("VOICE_MIN_SPEECH_MS", "300").c_str());
@@ -139,9 +140,9 @@ std::string transcribe(const Config &cfg, const std::string &wav) {
     return trim(text);
 }
 
-void forward(const Config &cfg, const std::string &text) {
-    std::string json = "[语音输入] " + text, esc;
-    for (char c : json) {
+std::string json_escape(const std::string &s) {
+    std::string esc;
+    for (char c : s) {
         switch (c) {
             case '"': esc += "\\\""; break;
             case '\\': esc += "\\\\"; break;
@@ -151,15 +152,38 @@ void forward(const Config &cfg, const std::string &text) {
             default: esc += c;
         }
     }
-    std::string body = "{\"text\": \"" + esc + "\"}";
+    return esc;
+}
+
+std::string ensure_session(const Config &cfg) {
+    static std::string sid;
+    if (!sid.empty()) return sid;
+    std::string url = cfg.agent_url + "/session?directory=" + cfg.operator_dir;
+    std::string cmd = "curl -sf -X POST -H 'Content-Type: application/json' -d '{}' '" + url + "' 2>/dev/null";
+    FILE *p = popen(cmd.c_str(), "r");
+    if (!p) return "";
+    std::string out;
+    char buf[2048];
+    while (fgets(buf, sizeof(buf), p)) out += buf;
+    pclose(p);
+    std::smatch m;
+    if (std::regex_search(out, m, std::regex(R"re("id":"(ses_[^"]+)")re"))) sid = m[1].str();
+    if (sid.empty()) fprintf(stderr, "[app] 创建大脑会话失败\n");
+    return sid;
+}
+
+void forward(const Config &cfg, const std::string &text) {
+    std::string sid = ensure_session(cfg);
+    if (sid.empty()) { g_ui.set_reply("未连接大脑"); return; }
+    std::string body = "{\"parts\":[{\"type\":\"text\",\"text\":\"" +
+                       json_escape("[语音输入] " + text) + "\"}]}";
     std::string path = "/tmp/friday_app_" + std::to_string(getpid()) + ".json";
     FILE *f = fopen(path.c_str(), "wb");
     if (!f) return;
     fwrite(body.data(), 1, body.size(), f);
     fclose(f);
     std::string cmd = "curl -sf -X POST -H 'Content-Type: application/json' --data-binary @" + path +
-                      " '" + cfg.agent_url + "/tui/append-prompt' >/dev/null 2>&1; "
-                      "curl -sf -X POST '" + cfg.agent_url + "/tui/submit-prompt' >/dev/null 2>&1";
+                      " '" + cfg.agent_url + "/session/" + sid + "/message' >/dev/null 2>&1";
     int rc = system(cmd.c_str());
     unlink(path.c_str());
     g_ui.set_reply(rc == 0 ? "已转发 Master" : "转发失败(离线?)");
