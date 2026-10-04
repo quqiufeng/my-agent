@@ -155,50 +155,23 @@ std::string json_escape(const std::string &s) {
     return esc;
 }
 
-std::string ensure_session(const Config &cfg) {
-    static std::string sid;
-    if (!sid.empty()) return sid;
-    std::string url = cfg.agent_url + "/session?directory=" + cfg.operator_dir;
-    std::string cmd = "curl -sf -X POST -H 'Content-Type: application/json' -d '{}' '" + url + "' 2>/dev/null";
-    FILE *p = popen(cmd.c_str(), "r");
-    if (!p) return "";
-    std::string out;
-    char buf[2048];
-    while (fgets(buf, sizeof(buf), p)) out += buf;
-    pclose(p);
-    std::smatch m;
-    if (std::regex_search(out, m, std::regex(R"re("id":"(ses_[^"]+)")re"))) sid = m[1].str();
-    if (sid.empty()) fprintf(stderr, "[app] 创建大脑会话失败\n");
-    return sid;
-}
-
 bool tui_attached() {
     return system("pgrep -f 'opencode attach' >/dev/null 2>&1") == 0;
 }
 
 void forward(const Config &cfg, const std::string &text) {
+    if (!tui_attached())
+        fprintf(stderr, "[app] 警告: opencode TUI 未运行，指令无法处理；请先 operator/start.sh\n");
+    std::string body = "{\"text\": \"" + json_escape("[语音输入] " + text) + "\"}";
     std::string path = "/tmp/friday_app_" + std::to_string(getpid()) + ".json";
-    if (tui_attached()) {
-        std::string body = "{\"text\": \"" + json_escape("[语音输入] " + text) + "\"}";
-        FILE *f = fopen(path.c_str(), "wb"); if (!f) return;
-        fwrite(body.data(), 1, body.size(), f); fclose(f);
-        std::string cmd = "sh -c '"
-            "curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" --data-binary @" + path +
-            " \"" + cfg.agent_url + "/tui/append-prompt\" >/dev/null 2>&1;"
-            "curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" -d \"{}\" \"" +
-            cfg.agent_url + "/tui/submit-prompt\" >/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1";
-        if (system(cmd.c_str()) == -1) fprintf(stderr, "[app] 转发启动失败\n");
-    } else {
-        std::string sid = ensure_session(cfg);
-        if (sid.empty()) { g_ui.set_reply("未连接大脑"); return; }
-        std::string body = "{\"parts\":[{\"type\":\"text\",\"text\":\"" + json_escape("[语音输入] " + text) + "\"}]}";
-        FILE *f = fopen(path.c_str(), "wb"); if (!f) return;
-        fwrite(body.data(), 1, body.size(), f); fclose(f);
-        std::string cmd = "sh -c 'curl -s --max-time 300 -X POST -H \"Content-Type: application/json\" "
-            "--data-binary @" + path + " \"" + cfg.agent_url + "/session/" + sid + "/message\" "
-            ">/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1 &";
-        if (system(cmd.c_str()) == -1) fprintf(stderr, "[app] 后台转发启动失败\n");
-    }
+    FILE *f = fopen(path.c_str(), "wb"); if (!f) return;
+    fwrite(body.data(), 1, body.size(), f); fclose(f);
+    std::string cmd = "sh -c '"
+        "curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" --data-binary @" + path +
+        " \"" + cfg.agent_url + "/tui/append-prompt\" >/dev/null 2>&1;"
+        "curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" -d \"{}\" \"" +
+        cfg.agent_url + "/tui/submit-prompt\" >/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1";
+    if (system(cmd.c_str()) == -1) fprintf(stderr, "[app] 转发启动失败\n");
     g_ui.set_reply("已转发 Master");
 }
 

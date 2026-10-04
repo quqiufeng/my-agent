@@ -52,41 +52,19 @@ print("最后消息: " .. last)
 
 if mode == "peek" then os.exit(0) end
 
--- ── 第二步：转发大脑（后台即发即走，不等模型跑完） ─────────
-local function curl_capture(url, obj, timeout)
-    local tmp = os.tmpname()
-    local f = io.open(tmp, "w"); f:write(cjson.encode(obj)); f:close()
-    local out = os.tmpname()
-    os.execute(string.format(
-        "curl -s --max-time %d -X POST -H 'Content-Type: application/json' --data-binary @%s '%s' > %s 2>/dev/null",
-        timeout or 8, tmp, url, out))
-    os.remove(tmp)
-    local of = io.open(out, "r"); local body = of and of:read("*a") or ""
-    if of then of:close() end
-    os.remove(out)
-    return body
-end
-
+-- ── 第二步：转发大脑（走 /tui，实时可见、可人工介入） ───────
 local function tui_attached()
     return os.execute("pgrep -f 'opencode attach' >/dev/null 2>&1") == 0
 end
 
-local tmp = os.tmpname()
-if tui_attached() then
-    local f = io.open(tmp, "w"); f:write(cjson.encode({ text = "[微信输入] " .. last })); f:close()
-    os.execute(string.format(
-        "sh -c 'curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" --data-binary @%s \"%s/tui/append-prompt\" >/dev/null 2>&1; "
-        .. "curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" -d \"{}\" \"%s/tui/submit-prompt\" >/dev/null 2>&1; rm -f %s' >/dev/null 2>&1",
-        tmp, AGENT_URL, AGENT_URL, tmp))
-else
-    local sess = curl_capture(AGENT_URL .. "/session?directory=" .. OPERATOR_DIR, {})
-    local sid = sess:match('"id":"(ses_[^"]+)"')
-    if not sid then io.stderr:write("创建大脑会话失败（opencode 未启动？）\n"); os.exit(1) end
-    local f = io.open(tmp, "w")
-    f:write(cjson.encode({ parts = { { type = "text", text = "[微信输入] " .. last } } }))
-    f:close()
-    os.execute(string.format(
-        "sh -c 'curl -s --max-time 300 -X POST -H \"Content-Type: application/json\" --data-binary @%s \"%s/session/%s/message\" >/dev/null 2>&1; rm -f %s' >/dev/null 2>&1 &",
-        tmp, AGENT_URL, sid, tmp))
+if not tui_attached() then
+    io.stderr:write("[once] 警告: opencode TUI 未运行，指令无法处理；请先 operator/start.sh\n")
 end
+
+local tmp = os.tmpname()
+local f = io.open(tmp, "w"); f:write(cjson.encode({ text = "[微信输入] " .. last })); f:close()
+os.execute(string.format(
+    "sh -c 'curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" --data-binary @%s \"%s/tui/append-prompt\" >/dev/null 2>&1; "
+    .. "curl -s --max-time 10 -X POST -H \"Content-Type: application/json\" -d \"{}\" \"%s/tui/submit-prompt\" >/dev/null 2>&1; rm -f %s' >/dev/null 2>&1",
+    tmp, AGENT_URL, AGENT_URL, tmp))
 print("已转发大脑: [微信输入] " .. last)
