@@ -1,6 +1,6 @@
 // voice/camera/camera.cpp
 // 摄像头窗口：SDL2 双摄分屏显示（USB + RTSP），双击全屏，ESC 退出。
-// 迁自 /opt/friday/agent/gui_simple.cpp，剥离音频/ASR/Lua，仅保留画面显示。
+// 迁自早期项目的 SDL2 双摄界面，剥离音频/ASR/Lua，仅保留画面显示。
 //
 // 编译: make -C voice/camera
 // 运行: voice/camera.sh [--usb N] [--rtsp URL] [--usb-only|--rtsp-only] [--size WxH]
@@ -218,7 +218,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "[camera] SDL_Init 失败: %s\n", SDL_GetError());
         return 1;
     }
-    SDL_Window *win = SDL_CreateWindow("Friday Camera", SDL_WINDOWPOS_CENTERED,
+    SDL_Window *win = SDL_CreateWindow("My Agent Camera", SDL_WINDOWPOS_CENTERED,
                                        SDL_WINDOWPOS_CENTERED, cfg.win_w, cfg.win_h,
                                        SDL_WINDOW_RESIZABLE);
     SDL_Renderer *ren = win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED |

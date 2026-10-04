@@ -1,6 +1,6 @@
 # voice — 语音入口（纯 C/C++，无 Python）
 
-Friday 的第二个入口：**麦克风说话 → 本地识别成文字 → 转发给 Master agent**；以及**文本转语音 → USB 音响播放**。
+my-agent 的第二个入口：**麦克风说话 → 本地识别成文字 → 转发给 Master agent**；以及**文本转语音 → USB 音响播放**。
 全链路只用 C/C++ 与 Shell：识别用 `SenseVoice.cpp`，合成用 `sherpa-onnx + Kokoro`。
 
 ```
@@ -84,7 +84,7 @@ cd /opt/my-agent/voice
 
 ## 摄像头窗口
 
-迁自 Friday 的 SDL2 双摄界面，已剥离音频/ASR，仅显示画面（并修复了原代码的纹理泄漏、固定分辨率、RTSP 无重连、硬编码凭据等问题）。
+迁自早期项目的 SDL2 双摄界面，已剥离音频/ASR，仅显示画面（并修复了原代码的纹理泄漏、固定分辨率、RTSP 无重连、硬编码凭据等问题）。
 
 ```bash
 ./voice.sh camera                          # USB + RTSP 分屏

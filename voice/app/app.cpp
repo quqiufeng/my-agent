@@ -1,5 +1,5 @@
 // voice/app/app.cpp
-// Friday 统一界面：摄像头画面（人脸门控）+ 语音监听（SenseVoice）+ 状态栏
+// My Agent 统一界面：摄像头画面（人脸门控）+ 语音监听（SenseVoice）+ 状态栏
 //   · 摄像头：USB + RTSP 分屏，双击全屏
 //   · 人脸门控：无人脸则不出画面（黑屏），仅音频监控
 //   · 音频：ALSA 采集 → VAD 断句 → SenseVoice.cpp 识别 → 转发 Master
@@ -166,7 +166,7 @@ void forward(const Config &cfg, const std::string &text) {
             fprintf(stderr, "[app] 警告: 拉起 TUI 失败，指令可能无法处理\n");
     }
     std::string body = "{\"text\": \"" + json_escape("[语音输入] " + text) + "\"}";
-    std::string path = "/tmp/friday_app_" + std::to_string(getpid()) + ".json";
+    std::string path = "/tmp/myagent_app_" + std::to_string(getpid()) + ".json";
     FILE *f = fopen(path.c_str(), "wb"); if (!f) return;
     fwrite(body.data(), 1, body.size(), f); fclose(f);
     std::string cmd = "sh -c '"
@@ -306,7 +306,7 @@ void audio_worker(const Config &cfg, std::queue<std::vector<short>> &q,
         }
         if (pcm.empty()) continue;
         g_ui.set_status("识别中...");
-        std::string wav = "/tmp/friday_app_" + std::to_string(getpid()) + ".wav";
+        std::string wav = "/tmp/myagent_app_" + std::to_string(getpid()) + ".wav";
         if (!write_wav(wav, pcm)) { g_ui.set_status("写音频失败"); continue; }
         std::string text = transcribe(cfg, wav);
         unlink(wav.c_str());
@@ -370,7 +370,7 @@ int main(int argc, char **argv) {
     }
 
     if (SDL_Init(SDL_INIT_VIDEO) < 0) { fprintf(stderr, "[app] SDL_Init 失败: %s\n", SDL_GetError()); return 1; }
-    SDL_Window *win = SDL_CreateWindow("Friday", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    SDL_Window *win = SDL_CreateWindow("My Agent", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        cfg.win_w, cfg.win_h, SDL_WINDOW_RESIZABLE);
     SDL_Renderer *ren = win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC) : nullptr;
     if (!win || !ren) {

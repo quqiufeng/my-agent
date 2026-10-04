@@ -301,7 +301,7 @@ int main(int argc, char **argv) {
     if (system(mix.c_str()) != 0)
         fprintf(stderr, "[voice] 提示: amixer 设置麦克风增益失败，若识别不到请手动调高\n");
 
-    printf("=== Friday 语音入口 (SenseVoice.cpp) ===\n");
+    printf("=== My Agent 语音入口 (SenseVoice.cpp) ===\n");
     printf("识别语言: %s | 模型: %s\n", cfg.lang.c_str(), cfg.asr_model.c_str());
     printf("转发目标: %s%s\n", cfg.agent_url.c_str(), cfg.forward ? "" : " (已禁用)");
     printf("按 Ctrl+C 退出\n--------------------------------------\n");

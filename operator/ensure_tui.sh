@@ -4,7 +4,7 @@
 set -uo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-SESSION="${BRAIN_SESSION:-friday-brain}"
+SESSION="${BRAIN_SESSION:-my-agent-brain}"
 PORT="${AGENT_PORT:-4097}"
 export DISPLAY="${DISPLAY:-:0}"
 

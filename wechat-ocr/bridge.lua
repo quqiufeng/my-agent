@@ -14,7 +14,7 @@ local reader = require("wechat_ocr.reader")
 
 local AGENT_URL = os.getenv("AGENT_URL") or "http://localhost:4097"
 local OPERATOR_DIR = os.getenv("OPERATOR_DIR") or "/opt/my-agent/operator"
-local SENT_LOG = os.getenv("WECHAT_SENT_LOG") or "/tmp/friday_wechat_sent.log"
+local SENT_LOG = os.getenv("WECHAT_SENT_LOG") or "/tmp/myagent_wechat_sent.log"
 local INTERVAL = tonumber(os.getenv("WECHAT_INTERVAL") or "3")
 
 -- TUI 是否在线
