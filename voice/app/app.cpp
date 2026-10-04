@@ -182,11 +182,12 @@ void forward(const Config &cfg, const std::string &text) {
     if (!f) return;
     fwrite(body.data(), 1, body.size(), f);
     fclose(f);
-    std::string cmd = "curl -sf -X POST -H 'Content-Type: application/json' --data-binary @" + path +
-                      " '" + cfg.agent_url + "/session/" + sid + "/message' >/dev/null 2>&1";
-    int rc = system(cmd.c_str());
-    unlink(path.c_str());
-    g_ui.set_reply(rc == 0 ? "已转发 Master" : "转发失败(离线?)");
+    std::string cmd = "sh -c 'curl -s --max-time 300 -X POST -H \"Content-Type: application/json\" "
+                      "--data-binary @" + path + " \"" + cfg.agent_url + "/session/" + sid + "/message\" "
+                      ">/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1 &";
+    if (system(cmd.c_str()) == -1)
+        fprintf(stderr, "[app] 后台转发启动失败\n");
+    g_ui.set_reply("已转发 Master");
 }
 
 // ── 摄像头线程 ───────────────────────────────────────────────

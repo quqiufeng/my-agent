@@ -167,14 +167,12 @@ void forward(const Config &cfg, const std::string &text) {
     fwrite(body.data(), 1, body.size(), f);
     fclose(f);
 
-    std::string cmd = "curl -sf -X POST -H 'Content-Type: application/json' --data-binary @" +
-                      path + " '" + cfg.agent_url + "/session/" + sid + "/message' >/dev/null 2>&1";
-    int rc = system(cmd.c_str());
-    unlink(path.c_str());
-    if (rc == 0)
-        printf("[voice] 已转发: %s\n", text.c_str());
-    else
-        fprintf(stderr, "[voice] 转发失败（Master 未启动？）rc=%d\n", rc);
+    std::string cmd = "sh -c 'curl -s --max-time 300 -X POST -H \"Content-Type: application/json\" "
+                      "--data-binary @" + path + " \"" + cfg.agent_url + "/session/" + sid + "/message\" "
+                      ">/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1 &";
+    if (system(cmd.c_str()) == -1)
+        fprintf(stderr, "[voice] 后台转发启动失败\n");
+    printf("[voice] 已转发: %s\n", text.c_str());
 }
 
 // 采集线程：ALSA → VAD 断句 → 入队
