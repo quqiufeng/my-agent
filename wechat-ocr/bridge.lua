@@ -19,13 +19,14 @@ local INTERVAL = tonumber(os.getenv("WECHAT_INTERVAL") or "3")
 
 -- TUI 是否在线
 local function tui_attached()
-    return os.execute("pgrep -f 'opencode attach' >/dev/null 2>&1") == 0
+    return os.execute("pgrep -f 'opencode[ ]attach' >/dev/null 2>&1") == 0
 end
 
 -- 通过 /tui 注入大脑（TUI 常驻：实时可见、可人工介入；无 TUI 则明确报警）
 local function forward(text)
     if not tui_attached() then
-        io.stderr:write("[bridge] 警告: opencode TUI 未运行，指令无法处理；请先 operator/start.sh\n")
+        io.stderr:write("[bridge] opencode TUI 未运行，自动拉起...\n")
+        os.execute("/opt/my-agent/operator/ensure_tui.sh >/dev/null 2>&1")
     end
     local tmp = os.tmpname()
     local f = io.open(tmp, "w"); f:write(cjson.encode({ text = "[微信输入] " .. text })); f:close()

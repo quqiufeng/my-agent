@@ -156,12 +156,15 @@ std::string json_escape(const std::string &s) {
 }
 
 bool tui_attached() {
-    return system("pgrep -f 'opencode attach' >/dev/null 2>&1") == 0;
+    return system("pgrep -f 'opencode[ ]attach' >/dev/null 2>&1") == 0;
 }
 
 void forward(const Config &cfg, const std::string &text) {
-    if (!tui_attached())
-        fprintf(stderr, "[app] 警告: opencode TUI 未运行，指令无法处理；请先 operator/start.sh\n");
+    if (!tui_attached()) {
+        fprintf(stderr, "[app] opencode TUI 未运行，自动拉起...\n");
+        if (system("/opt/my-agent/operator/ensure_tui.sh >/dev/null 2>&1") != 0)
+            fprintf(stderr, "[app] 警告: 拉起 TUI 失败，指令可能无法处理\n");
+    }
     std::string body = "{\"text\": \"" + json_escape("[语音输入] " + text) + "\"}";
     std::string path = "/tmp/friday_app_" + std::to_string(getpid()) + ".json";
     FILE *f = fopen(path.c_str(), "wb"); if (!f) return;

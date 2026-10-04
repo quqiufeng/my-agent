@@ -54,11 +54,12 @@ if mode == "peek" then os.exit(0) end
 
 -- ── 第二步：转发大脑（走 /tui，实时可见、可人工介入） ───────
 local function tui_attached()
-    return os.execute("pgrep -f 'opencode attach' >/dev/null 2>&1") == 0
+    return os.execute("pgrep -f 'opencode[ ]attach' >/dev/null 2>&1") == 0
 end
 
 if not tui_attached() then
-    io.stderr:write("[once] 警告: opencode TUI 未运行，指令无法处理；请先 operator/start.sh\n")
+    io.stderr:write("[once] opencode TUI 未运行，自动拉起...\n")
+    os.execute("/opt/my-agent/operator/ensure_tui.sh >/dev/null 2>&1")
 end
 
 local tmp = os.tmpname()
