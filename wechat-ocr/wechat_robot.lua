@@ -119,6 +119,32 @@ local function find_wechat_window()
     return best_id
 end
 
+-- 确保微信窗口最大化（默认应最大化；若不是则用 wmctrl 最大化）
+function M.ensure_maximized()
+    local sw, sh
+    do
+        local f = io.popen("xdotool getdisplaygeometry 2>/dev/null")
+        if f then local o = f:read("*a"); f:close(); sw, sh = o:match("(%d+)%s+(%d+)") end
+    end
+    local wid = find_wechat_window()
+    if not wid then return M end
+    local w, h
+    do
+        local f = io.popen("xdotool getwindowgeometry " .. wid .. " 2>/dev/null")
+        if f then
+            local o = f:read("*a"); f:close()
+            w = tonumber(o:match("Geometry: (%d+)"))
+            h = tonumber(o:match("x(%d+)"))
+        end
+    end
+    -- 明显小于屏幕 → 视为未最大化
+    if sw and w and h and (w < tonumber(sw) - 40 or h < tonumber(sh) - 80) then
+        os.execute(string.format("wmctrl -i -r 0x%x -b add,maximized_vert,maximized_horz 2>/dev/null", wid))
+        sleep(800000)
+    end
+    return M
+end
+
 local _last_activate = 0
 
 -- force=true 时强制执行；否则 2 秒内重复调用只执行一次，避免一次操作里多次激活叠加等待
@@ -135,6 +161,7 @@ function M.activate(force)
         os.execute("xdotool windowfocus " .. wid .. " 2>/dev/null")
         os.execute("xdotool windowactivate " .. wid .. " 2>/dev/null")
     end
+    M.ensure_maximized()   -- 自动化前先确保窗口最大化
     sleep(800000)
     -- 点一下标题栏确保真正获取焦点
     local win = M.get_window_rect()

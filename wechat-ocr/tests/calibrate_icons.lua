@@ -25,6 +25,9 @@ local function flush(s) io.write(s); io.flush() end
 local function get_window()
     os.execute("xdotool search --name 微信 windowactivate 2>/dev/null")
     ffi.C.usleep(500000)
+    -- 确保最大化（非最大化时 wmctrl 会最大化）
+    os.execute("wmctrl -r 微信 -b add,maximized_vert,maximized_horz 2>/dev/null")
+    ffi.C.usleep(600000)
     os.execute("xdotool getactivewindow getwindowgeometry > /tmp/wx_geo.txt 2>/dev/null")
     local f = io.open("/tmp/wx_geo.txt")
     local geo = f:read("*a"); f:close()
