@@ -332,17 +332,10 @@ end
 function M.send(text)
     text = text or "你好"
     M.activate()
-    type_text(text, 80)
-    sleep(2000000)
-    os.execute("xdotool key Return 2>/dev/null")
-    sleep(200000)
-
-    -- 双保险：点发送按钮（窗口右下角固定偏移）
-    local win = M.get_window_rect()
-    if win then
-        os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null",
-            win.x + win.w - 80, win.y + win.h - 60))
-        sleep(500000)
+    -- 用 wechat_ocr 模块的稳健发送：点输入框 + 剪贴板粘贴 + 回车
+    local ok, err = ocr.send(text)
+    if not ok then
+        io.stderr:write("[wechat_robot] send failed: " .. tostring(err) .. "\n")
     end
     return M
 end
