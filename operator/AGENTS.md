@@ -33,6 +33,12 @@
 3. 需要发消息给**非文件传输助手**的联系人时，必须先确认对方身份，避免误发。
 4. 不认识的请求 → 回复“这个我暂时不支持”，不要尝试绕过白名单。
 
+### 浏览器操作（Chrome DevTools MCP）
+
+网页交互走 **chrome-devtools MCP 工具**（名称形如 `chrome-devtools_*`：`navigate_page`、`take_snapshot`、
+`click`、`fill`、`evaluate_script`、`take_screenshot` 等），可读取页面内容、按元素精确点击。
+**禁止用 OCR 识别网页**。回程仍按来源：语音用 `tools/say.sh`、微信用 `tools/wechat_send.sh`。
+
 ## 3. 回程示例
 
 - 收到 `[语音输入] 现在几点了` → `tools/say.sh "现在是下午三点二十"`。
