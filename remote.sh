@@ -4,13 +4,13 @@
 # 功能：创建、停止、管理 OpenCode Agent，支持通过 HTTP API 发送指令
 #
 # 用法:
-#   ./agent.sh start <name> [--workdir <dir>] [--port <port>]   创建并启动 Agent
-#   ./agent.sh stop <name>                                       停止 Agent
-#   ./agent.sh send <name> <instruction>                         发送指令到 Agent
-#   ./agent.sh status [name]                                     查看 Agent 状态
-#   ./agent.sh list                                              列出所有 Agent
-#   ./agent.sh attach <name>                                     附加到 Agent 的 tmux session
-#   ./agent.sh destroy <name>                                    销毁 Agent（停止并删除工作目录）
+#   ./remote.sh start <name> [--workdir <dir>] [--port <port>]   创建并启动 Agent
+#   ./remote.sh stop <name>                                       停止 Agent
+#   ./remote.sh send <name> <instruction>                         发送指令到 Agent
+#   ./remote.sh status [name]                                     查看 Agent 状态
+#   ./remote.sh list                                              列出所有 Agent
+#   ./remote.sh attach <name>                                     附加到 Agent 的 tmux session
+#   ./remote.sh destroy <name>                                    销毁 Agent（停止并删除工作目录）
 #
 
 set -euo pipefail
@@ -27,6 +27,17 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# 转义为合法的 JSON 字符串内容（不含首尾引号），避免引号/换行导致注入
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
 
 # 获取 Agent 端口
 get_agent_port() {
@@ -145,7 +156,7 @@ EOF
 # ============================================
 # 心跳守护进程 - 双心跳机制
 # 
-# Master 心跳（每 5 分钟）:
+# Master 心跳（每 25 分钟）:
 #   1. 检查自身健康 (/global/health)
 #   2. 给自己发 keepalive 消息，防止无故停机
 # 
@@ -221,11 +232,12 @@ start_heartbeat() {
                 # Master 心跳: 给自己发 keepalive，防止无故停机
                 # ============================================
                 local keepalive_text="心跳检测：请检查是否有待处理的任务。如果当前没有任务或所有子 Agent 的任务已完成，无需响应，保持待机即可。"
+                local keepalive_payload=$(json_escape "$keepalive_text")
                 
                 curl -s -X POST \
                     "${agent_url}/tui/append-prompt" \
                     -H "Content-Type: application/json" \
-                    -d "{\"text\": \"$keepalive_text\"}" > /dev/null 2>&1 || true
+                    -d "{\"text\": \"$keepalive_payload\"}" > /dev/null 2>&1 || true
                 
                 curl -s -X POST \
                     "${agent_url}/tui/submit-prompt" > /dev/null 2>&1 || true
@@ -236,11 +248,12 @@ start_heartbeat() {
                 # Worker 心跳: 向 Master 汇报状态
                 # ============================================
                 local report_text="[Agent心跳] Agent: '${name}' (port: ${port}) 状态汇报: 运行正常。请 Master 检查是否有需要分配给我的新任务。"
+                local report_payload=$(json_escape "$report_text")
                 
                 curl -s -X POST \
                     "${master_url}/tui/append-prompt" \
                     -H "Content-Type: application/json" \
-                    -d "{\"text\": \"$report_text\"}" > /dev/null 2>&1 || true
+                    -d "{\"text\": \"$report_payload\"}" > /dev/null 2>&1 || true
                 
                 curl -s -X POST \
                     "${master_url}/tui/submit-prompt" > /dev/null 2>&1 || true
@@ -259,7 +272,7 @@ start_heartbeat() {
     
     if [ "$is_master" = true ]; then
         echo -e "  ${BLUE}类型: Master 自心跳${NC}"
-        echo -e "  ${BLUE}间隔: 5 分钟${NC}"
+        echo -e "  ${BLUE}间隔: 25 分钟${NC}"
         echo -e "  ${BLUE}功能: 防止 Master 无故停机${NC}"
     else
         echo -e "  ${BLUE}类型: Worker 状态汇报${NC}"
@@ -295,7 +308,7 @@ cmd_start() {
     # 解析参数
     if [ $# -lt 1 ]; then
         echo -e "${RED}错误: 请指定 Agent 名称${NC}"
-        echo "用法: ./agent.sh start <name> [--workdir <dir>] [--port <port>]"
+        echo "用法: ./remote.sh start <name> [--workdir <dir>] [--port <port>]"
         exit 1
     fi
     
@@ -361,7 +374,7 @@ cmd_start() {
             echo -e "\n${GREEN}Agent '$name' 启动成功！${NC}"
             echo -e "  服务地址: ${BLUE}$agent_url${NC}"
             echo -e "  工作目录: ${BLUE}$workdir${NC}"
-            echo -e "  查看执行: ${BLUE}./agent.sh attach $name${NC}"
+            echo -e "  查看执行: ${BLUE}./remote.sh attach $name${NC}"
             
             # 启动心跳守护（防止 Agent 无故停止）
             start_heartbeat "$name" "$port"
@@ -377,11 +390,12 @@ cmd_start() {
 3. 你的主要职责是等待并执行 Master 分配的任务。
 
 请阅读完后回复：'已了解心跳机制，准备就绪。'"
+                local init_payload=$(json_escape "$init_msg")
                 
                 curl -s -X POST \
                     "${agent_url}/tui/append-prompt" \
                     -H "Content-Type: application/json" \
-                    -d "{\"text\": \"$init_msg\"}" > /dev/null 2>&1 || true
+                    -d "{\"text\": \"$init_payload\"}" > /dev/null 2>&1 || true
                 
                 curl -s -X POST \
                     "${agent_url}/tui/submit-prompt" > /dev/null 2>&1 || true
@@ -407,7 +421,7 @@ cmd_stop() {
     
     if [ -z "$name" ]; then
         echo -e "${RED}错误: 请指定 Agent 名称${NC}"
-        echo "用法: ./agent.sh stop <name>"
+        echo "用法: ./remote.sh stop <name>"
         exit 1
     fi
     
@@ -442,14 +456,14 @@ cmd_send() {
     
     if [ -z "$name" ] || [ -z "$instruction" ]; then
         echo -e "${RED}错误: 请指定 Agent 名称和指令${NC}"
-        echo "用法: ./agent.sh send <name> <instruction>"
-        echo "示例: ./agent.sh send coder '写一个 Python 爬虫'"
+        echo "用法: ./remote.sh send <name> <instruction>"
+        echo "示例: ./remote.sh send coder '写一个 Python 爬虫'"
         exit 1
     fi
     
     if ! check_agent_running "$name"; then
         echo -e "${RED}错误: Agent '$name' 未运行${NC}"
-        echo -e "先启动: ${BLUE}./agent.sh start $name${NC}"
+        echo -e "先启动: ${BLUE}./remote.sh start $name${NC}"
         exit 1
     fi
     
@@ -458,12 +472,14 @@ cmd_send() {
     
     echo -e "${BLUE}发送指令到 '$name'...${NC}"
     
+    local payload=$(json_escape "$instruction")
+    
     # 1. 发送提示词
     local resp
     resp=$(curl -s -w "\n%{http_code}" -X POST \
         "${agent_url}/tui/append-prompt" \
         -H "Content-Type: application/json" \
-        -d "{\"text\": \"$instruction\"}" 2>/dev/null)
+        -d "{\"text\": \"$payload\"}" 2>/dev/null)
     
     local http_code=$(echo "$resp" | tail -n1)
     
@@ -485,7 +501,7 @@ cmd_send() {
     
     echo -e "${GREEN}指令已发送到 '$name'${NC}"
     echo -e "  指令: ${YELLOW}$instruction${NC}"
-    echo -e "  查看: ${BLUE}./agent.sh attach $name${NC}"
+    echo -e "  查看: ${BLUE}./remote.sh attach $name${NC}"
 }
 
 # ============================================
@@ -516,7 +532,7 @@ cmd_status() {
         
         echo -e "  端口: ${BLUE}$port${NC}"
         echo -e "  目录: ${BLUE}$(get_work_dir $name)${NC}"
-        echo -e "  操作: ${BLUE}./agent.sh attach $name${NC}"
+        echo -e "  操作: ${BLUE}./remote.sh attach $name${NC}"
     else
         # 查看所有 Agent
         echo -e "${BLUE}Agent 状态列表:${NC}"
@@ -541,7 +557,7 @@ cmd_status() {
         
         if [ $found -eq 0 ]; then
             echo -e "${YELLOW}没有运行中的 Agent${NC}"
-            echo -e "创建: ${BLUE}./agent.sh start <name>${NC}"
+            echo -e "创建: ${BLUE}./remote.sh start <name>${NC}"
         fi
     fi
 }
@@ -579,7 +595,7 @@ cmd_attach() {
     
     if [ -z "$name" ]; then
         echo -e "${RED}错误: 请指定 Agent 名称${NC}"
-        echo "用法: ./agent.sh attach <name>"
+        echo "用法: ./remote.sh attach <name>"
         exit 1
     fi
     
@@ -602,7 +618,7 @@ cmd_destroy() {
     
     if [ -z "$name" ]; then
         echo -e "${RED}错误: 请指定 Agent 名称${NC}"
-        echo "用法: ./agent.sh destroy <name>"
+        echo "用法: ./remote.sh destroy <name>"
         exit 1
     fi
     
@@ -636,7 +652,7 @@ show_help() {
 Agent 管理脚本 - CLI 版
 
 用法:
-  ./agent.sh <command> [options]
+  ./remote.sh <command> [options]
 
 命令:
   start <name> [--workdir <dir>] [--port <port>]  创建并启动 Agent（自动启动心跳守护）
@@ -649,25 +665,25 @@ Agent 管理脚本 - CLI 版
 
 示例:
   # 启动一个名为 coder 的 Agent（自动启动心跳守护）
-  ./agent.sh start coder --workdir ~/agents/coder
+  ./remote.sh start coder --workdir ~/agents/coder
 
   # 发送指令
-  ./agent.sh send coder "写一个 Python 爬虫"
+  ./remote.sh send coder "写一个 Python 爬虫"
 
   # 查看所有 Agent 状态
-  ./agent.sh status
+  ./remote.sh status
 
   # 进入 Agent 查看执行过程
-  ./agent.sh attach coder
+  ./remote.sh attach coder
 
   # 停止 Agent（同时停止心跳守护）
-  ./agent.sh stop coder
+  ./remote.sh stop coder
 
   # 销毁 Agent（删除工作目录）
-  ./agent.sh destroy coder
+  ./remote.sh destroy coder
 
 双心跳机制:
-  Master 自心跳 (每 5 分钟):
+  Master 自心跳 (每 25 分钟):
     - 检查自身健康 (/global/health)
     - 给自己发 keepalive 消息，防止无故停机
     - 消息: "请检查是否有待处理的任务，如无则保持待机"

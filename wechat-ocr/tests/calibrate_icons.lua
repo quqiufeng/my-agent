@@ -3,7 +3,7 @@
 -- VLM 扫描侧边栏 + 工具栏所有图标，保存相对窗口(0,0)的坐标到 ~/.wechat_icons.json
 -- 之后所有操作只需 getwindowgeometry + 查表
 
-package.path = "/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;/opt/my-agent/wechat-ocr/lua/?.lua;" .. (package.path or "")
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;/opt/my-agent/wechat-ocr/lua/?/init.lua;/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;" .. (package.path or "")
 package.cpath = "/opt/my-agent/wechat-ocr/lib/?.so;/usr/local/lualib/?.so;;" .. (package.cpath or "")
 
 local ffi = require("ffi")

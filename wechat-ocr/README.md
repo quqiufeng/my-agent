@@ -262,7 +262,7 @@ robot.monitor({
         if text:match("^@agent") then
             -- 转发给 Master Agent
             os.execute(string.format(
-                "/opt/my-agent/agent.sh send master '%s'",
+                "/opt/my-agent/remote.sh send master '%s'",
                 text:sub(7):gsub("'", "'\\'''")
             ))
         end
@@ -299,7 +299,11 @@ wechat-ocr/
 ├── lua/
 │   ├── ocr_core.lua           # FFI 绑定
 │   ├── wechat_monitor.lua     # 监控循环
-│   └── icon_actions.lua       # 图标名称→功能映射
+│   ├── icon_actions.lua       # 图标名称→功能映射
+│   └── wechat_ocr/            # 核心模块（与源码同步，仓库内为正本）
+│       ├── init.lua           # ocr / wechat_ocr 统一 API
+│       ├── chrome.lua         # Chrome 控制
+│       └── badge_detect.lua   # 第二列红点检测
 │
 ├── tests/
 │   ├── TEST.md                # 测试脚本说明
@@ -338,7 +342,7 @@ wechat-ocr/
 
 ## 注意事项
 
-1. **坐标缓存**：运行 `calibrate_icons.lua` 后，所有图标操作优先使用缓存；若窗口缩放或微信布局改变，需重新校准。
+1. **坐标缓存**：运行 `calibrate_icons.lua` 后，所有图标操作优先使用 `~/.wechat_icons.json`；仓库内附带的 `wechat-ocr/wechat_icons.json` 仅作为兜底。若窗口缩放或微信布局改变，需重新校准。
 2. **第一列宽度固定**：侧边栏图标布局稳定，是缓存可靠的基础。
 3. **VLM 速度**：图标语义识别约 5 秒，因此只在一次性校准时使用，运行时不再调用 LLM。
 4. **Chrome 控制**：通过浏览器操作时必须遵守 `CLAUDE.md` 中的规则，只能用 Lua、`wechat_ocr.chrome` 模块，不得启动新 Chrome 进程，不得用 OCR 识别网页。

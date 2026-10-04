@@ -14,9 +14,14 @@ ffi.cdef[[
     void        joycaption_free();
 ]]
 
+local dir = "/opt/my-agent/wechat-ocr"
+
+-- 优先加载仓库内的模块与动态库，保证运行版本与源码一致
+package.path = dir .. "/lua/?.lua;" .. dir .. "/lua/?/init.lua;" .. (package.path or "")
+package.cpath = dir .. "/lib/?.so;" .. (package.cpath or "")
+
 local ocr = require("wechat_ocr")
 local cjson = require("cjson")
-local dir = "/opt/my-agent/wechat-ocr"
 
 local M = {}
 
@@ -28,10 +33,29 @@ local _icon_cache = nil
 
 -- === 常量 ===
 local HOME = os.getenv("HOME") or "/tmp"
+local PID = ffi.C.getpid()
+-- 用户级缓存优先，仓库内附带的旧缓存只作兜底，避免校准结果被覆盖
 local ICON_CACHE_PATHS = {
-    dir .. "/wechat_icons.json",
     HOME .. "/.wechat_icons.json",
+    dir .. "/wechat_icons.json",
 }
+
+-- 屏幕尺寸（惰性获取一次）
+local SCREEN_W, SCREEN_H = 2560, 1440
+local function screen_size()
+    local f = io.popen("xdotool getdisplaygeometry 2>/dev/null")
+    if f then
+        local out = f:read("*a"); f:close()
+        local w, h = out:match("(%d+)%s+(%d+)")
+        if w and h then SCREEN_W, SCREEN_H = tonumber(w), tonumber(h) end
+    end
+    return SCREEN_W, SCREEN_H
+end
+
+-- 当前进程专属临时文件，避免并发/残留互相覆盖
+local function tmp(name)
+    return string.format("/tmp/wx_robot_%d_%s", PID, name)
+end
 
 local SIDEBAR_INDEX_MAP = {
     [1] = "WeChat",
@@ -95,7 +119,14 @@ local function find_wechat_window()
     return best_id
 end
 
-function M.activate()
+local _last_activate = 0
+
+-- force=true 时强制执行；否则 2 秒内重复调用只执行一次，避免一次操作里多次激活叠加等待
+function M.activate(force)
+    local now = os.time()
+    if not force and now - _last_activate < 2 then return M end
+    _last_activate = now
+
     local wid = find_wechat_window()
     if wid then
         -- 先取消最小化再激活，确保微信真正到前台
@@ -179,6 +210,7 @@ function M.get_icon_pos(name, area)
     if not list then return nil, "area not found: " .. tostring(area) end
     for _, icon in ipairs(list) do
         if icon.name == name or icon.name_cn == name then
+            -- activate 内部有 2 秒去重，重复调用不会叠加等待
             M.activate()
             local win = M.get_window_rect()
             if not win then return nil, "no window" end
@@ -196,14 +228,20 @@ function M.get_icon_pos(name, area)
 end
 
 function M.click_icon(name, area)
+    M.activate()
     local pos, err = M.get_icon_pos(name, area)
     if not pos then
         io.stderr:write("[wechat_robot] click_icon failed: " .. tostring(err) .. "\n")
-        return M
+        return nil, err
     end
     os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", pos.x, pos.y))
     sleep(500000)
     return M
+end
+
+-- 兼容文档命名：按名称点击图标
+function M.click_icon_rel(name, area)
+    return M.click_icon(name, area)
 end
 
 -- === 初始化 / 销毁 ===
@@ -224,10 +262,11 @@ end
 
 local function start_recording()
     if not _record_enabled then return end
+    local sw, sh = screen_size()
     local cmd = string.format(
-        "ffmpeg -y -f x11grab -r 10 -s 2560x1440 -i :0.0 "
+        "ffmpeg -y -f x11grab -r 10 -s %dx%d -i :0.0 "
         .. "-vcodec libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "
-        .. "'%s' & echo $!", _record_output)
+        .. "'%s' & echo $!", sw, sh, _record_output)
     local f = io.popen(cmd, "r")
     if f then
         local pid = f:read("*a"); f:close()
@@ -248,7 +287,11 @@ function M.init()
         dir .. "/models/ch_PP-OCRv4_det_infer.onnx",
         dir .. "/models/ch_PP-OCRv4_rec_infer.onnx",
         dir .. "/ppocr_keys_v1.txt")
-    if ok and _record_enabled then start_recording() end
+    if not ok then
+        io.stderr:write("[wechat_robot] init failed: " .. tostring(err) .. "\n")
+        return nil, err
+    end
+    if _record_enabled then start_recording() end
     return M
 end
 
@@ -346,22 +389,22 @@ function M.screenshot()
     os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", pos.x, pos.y))
     sleep(800000)
 
+    local sw, sh = screen_size()
+
     -- 框选全屏
     os.execute("xdotool mousemove 0 0 2>/dev/null")
     sleep(100000)
     os.execute("xdotool mousedown 1 2>/dev/null")
     sleep(100000)
-    os.execute("xdotool mousemove 2560 1440 2>/dev/null")
+    os.execute(string.format("xdotool mousemove %d %d 2>/dev/null", sw, sh))
     sleep(300000)
     os.execute("xdotool mouseup 1 2>/dev/null")
     sleep(500000)
 
-    -- 双击确认
-    os.execute("xdotool mousemove 1280 720 2>/dev/null")
+    -- 双击确认（屏幕中心）
+    os.execute(string.format("xdotool mousemove %d %d 2>/dev/null", math.floor(sw / 2), math.floor(sh / 2)))
     sleep(200000)
-    os.execute("xdotool click 1 2>/dev/null")
-    sleep(200000)
-    os.execute("xdotool click 1 2>/dev/null")
+    os.execute("xdotool click --repeat 2 --delay 150 1 2>/dev/null")
     sleep(1000000)
 
     os.execute("xdotool key Return 2>/dev/null")
@@ -415,109 +458,28 @@ end
 
 -- === 未读红点检测 ===
 
-local function detect_unread_cv(debug)
-    M.activate()
-    M.click_sidebar(1)  -- 先点击微信图标，确保聊天列表显示
-    local win = M.get_window_rect()
-    if not win then return nil, "no window" end
+-- 第二列（聊天列表）几何参数：以 2560 宽窗口为基准，按窗口宽度等比缩放
+local function col_geometry(win)
+    local scale = (win.w or 2560) / 2560
+    return {
+        col1_w = math.max(40, math.floor(75 * scale)),
+        col2_w = math.max(120, math.floor(445 * scale)),
+    }
+end
 
-    local wx, wy, wh = win.x, win.y, win.h
-    local col1_w = 75
-
-    if debug then
-        flush(string.format("[detect_unread_cv] window: (%d,%d) %dx%d\n", wx, wy, win.w, win.h))
-    end
-
+-- 截图微信窗口并裁出第二列，返回 { full=..., col2=... }
+local function capture_col2(win)
+    local full = tmp("unread_full.png")
+    local col2 = tmp("unread_col2.png")
+    local col1_w = col_geometry(win).col1_w
+    local col2_w = col_geometry(win).col2_w
     os.execute(string.format(
-        "import -window root -crop %dx%d+%d+%d '/tmp/wx_unread_full.png' 2>/dev/null",
-        win.w, win.h, wx, wy))
+        "import -window root -crop %dx%d+%d+%d '%s' 2>/dev/null",
+        win.w, win.h, win.x, win.y, full))
     os.execute(string.format(
-        "convert '/tmp/wx_unread_full.png' +repage -crop %dx%d+%d+0 +repage '/tmp/wx_unread_col2.png' 2>/dev/null",
-        445, wh, col1_w))
-
-    if debug then
-        os.execute(string.format("cp '/tmp/wx_unread_full.png' '%s/wx_unread_debug_full.png' 2>/dev/null", HOME))
-        os.execute(string.format("cp '/tmp/wx_unread_col2.png' '%s/wx_unread_debug_col2.png' 2>/dev/null", HOME))
-    end
-
-    local pipe = io.popen(string.format(
-        "convert '/tmp/wx_unread_col2.png' -colorspace gray -scale 1x%d! txt:- 2>/dev/null | grep -oP 'gray\\(\\K[0-9.]+'",
-        wh))
-    if not pipe then return nil, "row detection failed" end
-
-    local proj = {}
-    for line in pipe:lines() do
-        local v = tonumber(line)
-        if v then table.insert(proj, v) end
-    end
-    pipe:close()
-
-    local dark = {}
-    for i, v in ipairs(proj) do dark[i] = v < 180 end
-
-    local rows = {}
-    local run_start_idx = nil
-    local gap_count = 0
-    for idx = 1, #dark do
-        if dark[idx] then
-            if run_start_idx == nil then run_start_idx = idx end
-            gap_count = 0
-        else
-            if run_start_idx then
-                gap_count = gap_count + 1
-                if gap_count > 15 then
-                    local end_idx = idx - gap_count
-                    local h = end_idx - run_start_idx + 1
-                    table.insert(rows, {y = run_start_idx - 1, h = h})
-                    run_start_idx = nil
-                    gap_count = 0
-                end
-            end
-        end
-    end
-    if run_start_idx then
-        local end_idx = #dark - gap_count
-        local h = end_idx - run_start_idx + 1
-        table.insert(rows, {y = run_start_idx - 1, h = h})
-    end
-
-    local valid_rows = {}
-    for _, r in ipairs(rows) do
-        if r.h >= 45 and r.h <= 90 then table.insert(valid_rows, r) end
-    end
-
-    if debug then
-        flush(string.format("[detect_unread_cv] rows found: %d (valid: %d)\n", #rows, #valid_rows))
-    end
-
-    local result = {}
-    for i, r in ipairs(valid_rows) do
-        if r.y > 80 then
-            os.execute(string.format(
-                "convert '/tmp/wx_unread_col2.png' +repage -crop 15x15+68+%d +repage '/tmp/wx_unread_badge.png' 2>/dev/null",
-                r.y))
-            local rp = io.popen(
-                "convert /tmp/wx_unread_badge.png -fx '(r>0.78&&g<0.47&&b<0.47)?1:0' -format '%[fx:mean*100]' info: 2>/dev/null")
-            if rp then
-                local raw = rp:read("*a")
-                local pct = tonumber(raw:match("[%d.]+")) or 0
-                rp:close()
-                if pct > 5 then
-                    table.insert(result, {
-                        x = wx + col1_w + 30,
-                        y = wy + r.y + 35,
-                        badge_x = wx + col1_w + 68 + 7,
-                        badge_y = wy + r.y + 7,
-                        row_y = r.y,
-                        row_h = r.h,
-                        pct = pct,
-                    })
-                end
-            end
-        end
-    end
-
-    return result
+        "convert '%s' +repage -crop %dx%d+%d+0 +repage '%s' 2>/dev/null",
+        full, col2_w, win.h, col1_w, col2))
+    return full, col2
 end
 
 -- VLM 识别第二列未读消息（红底白字数字徽章）
@@ -529,15 +491,11 @@ function M.detect_unread_vlm(debug)
     if not win then return nil, "no window" end
 
     local wx, wy, wh = win.x, win.y, win.h
-    local col1_w = 75
-    local col2_w = 445
+    local geom = col_geometry(win)
+    local col1_w, col2_w = geom.col1_w, geom.col2_w
+    local scale = (win.w or 2560) / 2560
 
-    os.execute(string.format(
-        "import -window root -crop %dx%d+%d+%d '/tmp/wx_unread_full.png' 2>/dev/null",
-        win.w, win.h, wx, wy))
-    os.execute(string.format(
-        "convert '/tmp/wx_unread_full.png' +repage -crop %dx%d+%d+0 +repage '/tmp/wx_unread_col2.png' 2>/dev/null",
-        col2_w, wh, col1_w))
+    local _full, col2_path = capture_col2(win)
 
     local lib = vlm_load()
     if not lib then return nil, "vlm not available" end
@@ -556,7 +514,7 @@ For each unread contact, list:
 Format exactly: "1. 小王: 3"
 If no unread badges, reply only "None".]]
 
-    local result_ptr = lib.joycaption_analyze("/tmp/wx_unread_col2.png", prompt)
+    local result_ptr = lib.joycaption_analyze(col2_path, prompt)
     if result_ptr == ffi.NULL then return nil, "vlm returned null" end
     local text = ffi.string(result_ptr)
 
@@ -564,8 +522,8 @@ If no unread badges, reply only "None".]]
         flush(string.format("[detect_unread_vlm] VLM output:\n%s\n", text))
     end
 
-    local chat_list_start = 110
-    local row_height = 70
+    local chat_list_start = math.floor(110 * scale)
+    local row_height = math.max(1, math.floor(70 * scale))
     local result = {}
     for line in text:gmatch("[^\n]+") do
         local row_str, name, count = line:match("^(%d+)%.%s*([^:]+)%s*:%s*(%d+)")
@@ -597,24 +555,19 @@ function M.detect_unread_red(debug)
     if not win then return nil, "no window" end
 
     local wx, wy, wh = win.x, win.y, win.h
-    local col1_w = 75
-    local col2_w = 445
+    local geom = col_geometry(win)
+    local col1_w, col2_w = geom.col1_w, geom.col2_w
 
-    os.execute(string.format(
-        "import -window root -crop %dx%d+%d+%d '/tmp/wx_unread_full.png' 2>/dev/null",
-        win.w, win.h, wx, wy))
-    os.execute(string.format(
-        "convert '/tmp/wx_unread_full.png' +repage -crop %dx%d+%d+0 +repage '/tmp/wx_unread_col2.png' 2>/dev/null",
-        col2_w, wh, col1_w))
+    local _full, col2_path = capture_col2(win)
 
     if debug then
-        os.execute(string.format("cp '/tmp/wx_unread_col2.png' '%s/wx_unread_debug_col2.png' 2>/dev/null", HOME))
+        os.execute(string.format("cp '%s' '%s/wx_unread_debug_col2.png' 2>/dev/null", col2_path, HOME))
     end
 
     local cmd = string.format(
-        "convert '/tmp/wx_unread_col2.png' -fx '(r>0.78&&g<0.47&&b<0.47)?1:0' " ..
+        "convert '%s' -fx '(r>0.78&&g<0.47&&b<0.47)?1:0' " ..
         "-define connected-components:verbose=true -connected-components 4 /dev/null 2>&1 " ..
-        "| grep -v 'bgcolor\\|id:\\|0:.*gray'")
+        "| grep -v 'bgcolor\\|id:\\|0:.*gray'", col2_path)
     local pipe = io.popen(cmd)
     if not pipe then return nil, "red detection failed" end
 
@@ -737,9 +690,11 @@ end
 function M.find_text(target)
     local data, err = ocr.capture_raw()
     if not data then return nil, err end
+    local win = data.win or {}
+    local wx, wy = win.x or 0, win.y or 0
     for _, b in ipairs(data.boxes or {}) do
         if b.text == target then
-            return {x = math.floor(b.x + b.w / 2), y = math.floor(b.y + b.h / 2), box = b}
+            return {x = math.floor(wx + b.x + b.w / 2), y = math.floor(wy + b.y + b.h / 2), box = b}
         end
     end
     return nil, "not found: " .. target
@@ -748,9 +703,11 @@ end
 function M.find_text_partial(partial)
     local data, err = ocr.capture_raw()
     if not data then return nil, err end
+    local win = data.win or {}
+    local wx, wy = win.x or 0, win.y or 0
     for _, b in ipairs(data.boxes or {}) do
         if b.text:find(partial, 1, true) then
-            return {x = math.floor(b.x + b.w / 2), y = math.floor(b.y + b.h / 2), box = b}
+            return {x = math.floor(wx + b.x + b.w / 2), y = math.floor(wy + b.y + b.h / 2), box = b}
         end
     end
     return nil, "not found: " .. partial
@@ -796,10 +753,11 @@ end
 
 function M.start_recording(output, duration)
     local out = output or "/tmp/wx_record.mp4"
+    local sw, sh = screen_size()
     local cmd = string.format(
-        "ffmpeg -y -f x11grab -r 10 -s 2560x1440 -i :0.0 "
+        "ffmpeg -y -f x11grab -r 10 -s %dx%d -i :0.0 "
         .. "-vcodec libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "
-        .. "-t %d '%s' & echo $!", duration or 15, out)
+        .. "-t %d '%s' & echo $!", sw, sh, duration or 15, out)
     local f = io.popen(cmd, "r")
     if f then
         local pid = f:read("*a"); f:close()
@@ -817,11 +775,18 @@ end
 -- === 校准 ===
 
 function M.calibrate_icons()
-    M.reload_icons()
     local cmd = string.format("cd '%s' && luajit tests/calibrate_icons.lua", dir)
     local ret = os.execute(cmd)
     M.reload_icons()
     if ret ~= 0 then return nil, "calibration failed" end
+    return M
+end
+
+function M.clear_calibration()
+    _icon_cache = nil
+    for _, path in ipairs(ICON_CACHE_PATHS) do
+        os.remove(path)
+    end
     return M
 end
 

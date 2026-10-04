@@ -130,6 +130,6 @@ chrome.screenshot()       -- ✅ 截图
 
 ---
 
-*文件位置: `/usr/local/lualib/wechat_ocr/chrome.lua`*
-*文档版本: 1.1*
-*更新日期: 2026-06-21*
+*文件位置: `/usr/local/lualib/wechat_ocr/chrome.lua`（仓库正本：`wechat-ocr/lua/wechat_ocr/chrome.lua`）*
+*文档版本: 1.2*
+*更新日期: 2026-10-04*

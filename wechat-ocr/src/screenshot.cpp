@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <regex>
+#include <string>
+#include <unistd.h>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <cstdlib>
@@ -80,16 +82,19 @@ WindowRect find_wechat_window() {
 cv::Mat capture_screen(const WindowRect &rect) {
     if (!rect.valid) return cv::Mat();
 
-    // Use ImageMagick import as primary method (more reliable with GPU windows)
+    // Use ImageMagick import as primary method (more reliable with GPU windows).
+    // Per-process temp file avoids races between concurrent instances.
     {
+        std::string path = "/tmp/wechat_import_" + std::to_string(getpid()) + ".png";
         std::string cmd = "import -window root -crop "
             + std::to_string(rect.width) + "x" + std::to_string(rect.height)
             + "+" + std::to_string(rect.x) + "+" + std::to_string(rect.y)
-            + " /tmp/wechat_import.png 2>/dev/null";
+            + " '" + path + "' 2>/dev/null";
         if (system(cmd.c_str()) == 0) {
-            cv::Mat img = cv::imread("/tmp/wechat_import.png");
-            if (!img.empty()) return img;
+            cv::Mat img = cv::imread(path);
+            if (!img.empty()) { unlink(path.c_str()); return img; }
         }
+        unlink(path.c_str());
     }
 
     // Fallback: XShm

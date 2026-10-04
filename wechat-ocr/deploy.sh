@@ -15,6 +15,8 @@ cp "$DIR/lib/libwechat_ocr_core.so" "$OUT/lib/"
 
 # 2. Lua 脚本
 cp "$DIR/lua/"*.lua "$OUT/lua/" 2>/dev/null || true
+cp -r "$DIR/lua/wechat_ocr" "$OUT/lua/" 2>/dev/null || true
+cp "$DIR/wechat_robot.lua" "$OUT/" 2>/dev/null || true
 cp "$DIR/run.lua" "$OUT/"
 cp "$DIR/run_ops.lua" "$OUT/" 2>/dev/null || true
 

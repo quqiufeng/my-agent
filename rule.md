@@ -832,6 +832,8 @@ class RedBlackTree:
 
 ## UTEL 编码器测试代码
 
+> 注：以下为历史测试记录，其 Python 实现 `utel_encoder.py` 已从仓库移除（本项目不再依赖 Python）。
+
 ### Python 测试代码
 
 ```python

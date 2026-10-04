@@ -34,7 +34,7 @@ OCR::OCR(const std::string &det_model_path,
     session_options_->SetIntraOpNumThreads(4);
     session_options_->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
-    // Try to enable CUDA
+    // Try to enable CUDA (falls back to CPU if unavailable)
     OrtCUDAProviderOptions cuda_options;
     cuda_options.device_id = 0;
     try {
@@ -84,40 +84,6 @@ std::vector<TextBox> OCR::run(const cv::Mat &image) {
 }
 
 // ==================== Text Detection ====================
-
-static cv::Mat resize_and_normalize(const cv::Mat &img, int max_side_len) {
-    int h = img.rows;
-    int w = img.cols;
-    int max_wh = std::max(w, h);
-
-    float ratio = 1.0f;
-    if (max_wh > max_side_len) {
-        ratio = static_cast<float>(max_side_len) / static_cast<float>(max_wh);
-    }
-
-    int resize_h = static_cast<int>(h * ratio);
-    int resize_w = static_cast<int>(w * ratio);
-
-    // Make dimensions divisible by 32
-    resize_h = std::max(32, (resize_h / 32) * 32);
-    resize_w = std::max(32, (resize_w / 32) * 32);
-
-    cv::Mat resized;
-    cv::resize(img, resized, cv::Size(resize_w, resize_h));
-
-    // Convert to float and normalize to [0,1]
-    cv::Mat float_img;
-    resized.convertTo(float_img, CV_32FC3, 1.0 / 255.0);
-
-    // HWC -> CHW
-    cv::Mat chw(resize_h, resize_w, CV_32FC3);
-    std::vector<cv::Mat> channels(3);
-    cv::split(float_img, channels);
-
-    // Create NCHW blob (batch=1, channels=3, H, W)
-    // ONNX input shape: [1, 3, H, W]
-    return float_img; // Will be transposed later to CHW
-}
 
 cv::Mat OCR::detect_text(const cv::Mat &image) {
     int h = image.rows;

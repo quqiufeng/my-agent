@@ -1,56 +1,39 @@
-# My Agent — 微信机器人远程入口与自动化执行框架
+# My Agent — 用微信 / 语音远程操作电脑
 
-> **核心定位**：把微信（客户端已替换为「小龙虾」）作为远程消息入口，通过 OCR 识别聊天内容，将消息解析为指令并执行，再把结果回发到微信。无需额外安装微信客户端。
->
-> **相关文档**
-> - [Agent 管理脚本使用指南](AGENTS.md) — Master-Slave 架构的 Agent 管理
-> - [WeChat 机器人快速入门](wechat-ocr/README.md) — 微信自动化 Lua API 与指令执行流程
-> - [WeChat OCR 技术文档](wechat-ocr/WECHAT_OCR.md) — 截图、OCR、窗口定位实现细节
-> - [Chrome 浏览器控制](chrome.md) — Lua + xdotool 的 Chrome 控制 API
-> - [UTEL 编码规则](rule.md) — LLM 文本压缩编码协议
+> **一句话**：一个常驻服务，把**手机微信**或**语音**当作遥控器，交给一个本地 `opencode` 大脑理解，再通过**白名单脚本**操作这台电脑（发微信、放音、截屏、开应用、操作浏览器、管理集群）。
+
+它的本质是「**入口只产文本 → 单脑决策 → 白名单工具执行 → 按来源回程**」。
 
 ---
 
-## 项目概述
-
-本项目运行在 Linux 桌面环境上，核心目标是把**微信变成一个远程控制入口**：
-
-1. 用户通过手机或其他微信客户端，给运行本项目的微信号发消息；
-2. 项目持续监控微信聊天窗口，用 OCR 识别新消息内容；
-3. 识别出的文本被解析为指令（系统命令、Agent 任务、Chrome 搜索、文件操作等）；
-4. 执行指令并将结果发送回微信。
-
-**微信客户端已被替换为「小龙虾」**，本项目可以直接与其交互，不需要额外安装官方微信。
-
----
-
-## 核心工作流
+## 架构总览
 
 ```
-手机/远程微信
-      │ 发送消息
-      ▼
-┌─────────────────┐
-│  小龙虾（桌面微信） │
-└─────────────────┘
-      │ 聊天窗口显示消息
-      ▼
-┌─────────────────┐     ┌─────────────┐
-│ 截图 + OCR 识别  │────▶│ 文本指令解析 │
-└─────────────────┘     └─────────────┘
-                              │
-            ┌─────────────────┼─────────────────┐
-            ▼                 ▼                 ▼
-      ┌───────────┐    ┌──────────┐    ┌──────────────┐
-      │ 执行系统命令 │    │ Chrome搜索 │    │ 转发给 Agent │
-      └───────────┘    └──────────┘    └──────────────┘
-            │                 │                 │
-            └─────────────────┴─────────────────┘
-                              ▼
-                       ┌─────────────┐
-                       │ 结果回发微信  │
-                       └─────────────┘
+   输入（入口层，只产文本）              决策（单脑）                执行（白名单工具层）        回程
+┌───────────────────────┐
+│ 语音  voice/          │
+│  麦克风 → VAD →        │  [语音输入] xxx
+│  SenseVoice.cpp (C++) │ ───────────┐
+└───────────────────────┘            │
+                                     ▼
+┌───────────────────────┐   ┌───────────────────────┐   ┌────────────────────────────┐
+│ 微信  wechat-ocr/     │   │  opencode  (127.0.0.1 │   │ tools/ 白名单（唯一入口）   │
+│  截图 → PP-OCRv4 →     │──▶│  :4097, tmux 常驻)     │──▶│  say.sh         → USB 音响  │
+│  聊天文本提取          │   │  读 AGENTS.md 契约      │   │  wechat_send.sh → 微信      │
+└───────────────────────┘   │  只能调用 tools/*       │   │  wechat_send_file.sh        │
+   [微信输入] xxx ──────────▶│                        │   │  screenshot.sh / open_app.sh│
+                            └───────────────────────┘   │  browser.sh / remote.sh     │
+                                                        └────────────────────────────┘
+                                                                    │
+                                                                    ▼
+                                            语音→ say.sh 出声   微信→ wechat_send.sh 回发
 ```
+
+三条设计原则：
+
+1. **入口只产文本**：语音、微信两条入口都只做「转成文字 + 打前缀」，不掺业务逻辑。
+2. **单脑**：全项目只有一个常驻 `opencode`（4097），不跑多 Agent。
+3. **能力=白名单**：大脑只能调用 `operator/tools/*` 里的脚本（三层白名单防护），其余命令一律拒绝。
 
 ---
 
@@ -58,218 +41,99 @@
 
 ```
 my-agent/
-├── README.md                          # 本文档
-├── AGENTS.md                          # Agent Master-Slave 架构指南
-├── agent.sh                           # Agent 管理脚本（启动/停止/发送指令）
-├── chrome.md                          # Chrome 浏览器控制模块文档
-├── rule.md                            # UTEL 编码规则完整文档
-├── utel_encoder.py                    # UTEL 编码器 Python 实现
+├── README.md                 # 本文档（整体架构）
+├── AGENTS.md                 # 仓库级 agent 指南（开发/维护约定）
+├── remote.sh                 # tmux + opencode 会话/集群管理脚本（大脑的一把工具）
+├── chrome.md / rule.md       # Chrome 控制、UTEL 编码规范（参考）
 │
-├── wechat-ocr/                        # 微信机器人核心框架
-│   ├── wechat_robot.lua              # 统一 Lua API 库（消息收发、搜索、监控）
-│   ├── run.lua                       # 入口脚本
-│   ├── run_ops.lua                   # 演示脚本：打开 → 发送 → 验证
-│   ├── lib/                          # C++ 动态库 + C API
-│   ├── src/                          # 截图、OCR 推理 C++ 源码
-│   ├── lua/                          # Lua 辅助模块（FFI 绑定、监控循环）
-│   ├── tests/                        # 测试脚本
-│   ├── models/                       # OCR 模型文件
-│   ├── build_final.sh                # C 库构建脚本
-│   ├── run.sh                        # 启动环境脚本
-│   └── CMakeLists.txt                # CMake 构建配置
+├── operator/                 # 【大脑】单脑 + 工具白名单
+│   ├── AGENTS.md             #   ★ 运行时契约（大脑读：来源识别/回程/白名单/禁止项）
+│   ├── opencode.json         #   权限：默认全拒，仅放行 tools/*
+│   ├── .opencode/plugin/guard.js  # 兜底：拦截拼接命令
+│   ├── start.sh              #   启动 tmux + opencode serve(4097)/attach
+│   ├── tools/                #   白名单工具（say/wechat_send/screenshot/open_app/browser/remote）
+│   └── README.md
 │
-├── sense-voice-wrapper/               # SenseVoice ASR C 封装源码（备用）
-│   └── sensevoice_wrapper.cpp
+├── voice/                    # 【语音入口 + 输出】纯 C/C++，无 Python
+│   ├── say.sh                #   文本 → USB 音响（sherpa-onnx + Kokoro）
+│   ├── listen/               #   麦克风监听 → SenseVoice → 转发大脑
+│   ├── camera/               #   摄像头窗口（SDL2 + 人脸门控）
+│   ├── app/                  #   统一界面：画面 + 人脸门控 + 语音 + 状态栏
+│   └── README.md
 │
-├── joycaption-wrapper/                # JoyCaption Vision C 封装源码（备用）
-│   └── joycaption_wrapper.cpp
+├── wechat-ocr/               # 【微信入口】LuaJIT + C++ + ONNX Runtime
+│   ├── wechat_robot.lua      #   统一 Lua API（搜索/发送/截图/监控/未读）
+│   ├── bridge.lua / bridge.sh #   monitor → 转发 [微信输入]
+│   ├── lua/wechat_ocr/       #   核心模块（init/chrome/badge_detect，仓库正本）
+│   ├── src/ lib/             #   截图 + PP-OCRv4 C++ 封装
+│   └── README.md / WECHAT_OCR.md
 │
-└── .gitignore
+├── sense-voice-wrapper/      # SenseVoice ASR C 封装源码（备用）
+├── joycaption-wrapper/       # VLM 图标识别 C 封装（备用）
+└── models/                   # 模型目录（.gitignore 排除大文件）
 ```
-
-> 注：历史遗留的 `start.sh`（引用已删除的 ding/ 目录）和 `img.sh`（图像生成脚本）不再作为项目主线维护。
 
 ---
 
-## 模块详解
-
-### 1. 微信机器人入口 — WeChat OCR
-
-基于 LuaJIT + C++ + ONNX Runtime GPU 实现。
-
-**核心能力：**
-
-| 功能 | 说明 |
-|------|------|
-| 窗口定位 | 白面板检测 + 跨桌面切换 + xdotool 兜底 |
-| 聊天文字识别 | PaddleOCR PP-OCRv4，GPU 加速 |
-| 指令消息捕获 | 监控第三列聊天内容，提取用户指令 |
-| 结果回发 | 剪贴板粘贴 + 回车发送 |
-| 联系人搜索 | 搜索框 + 通讯录双路径 |
-| 文件/截图发送 | 模拟点击图标 + 粘贴路径 |
-| 持续监控 | `monitor()` 轮询检测新消息，回调通知 |
-| Chrome AI 搜索 | 微信指令 → Chrome AI 搜索 → 结果回微信 |
-| 操作录屏 | ffmpeg 录制完整操作过程 |
-
-**快速使用：**
-
-```lua
-local robot = require("wechat_robot")
-robot.init()
-robot.search("小王")
-robot.send("你好！")
-local text = robot.capture()   -- 读取聊天内容（即用户发来的指令）
-robot.destroy()
-```
-
-详见 [wechat-ocr/README.md](wechat-ocr/README.md) 和 [WECHAT_OCR.md](wechat-ocr/WECHAT_OCR.md)。
-
----
-
-### 2. Agent 管理 — Master-Slave 架构
-
-基于 OpenCode 和 tmux 的 Agent 管理方案，用于把复杂指令分发给不同 Slave Agent 执行。
-
-| 角色 | 名称 | 端口 | 职责 |
-|------|------|------|------|
-| **Master** | master | 4097 | 任务分配、Slave 管理、状态监控 |
-| **Slave** | coder, reviewer... | 4098+ | 接收任务、执行工作、汇报结果 |
-
-**快速开始：**
+## 快速开始
 
 ```bash
-# 启动 Master
-./agent.sh start master
+# 1. 启动大脑（tmux + opencode，端口 4097）
+operator/start.sh                # 前台；--bg 后台
 
-# 启动 Slave
-./agent.sh start coder
+# 2. 语音入口（麦克风 → 文本 → 大脑）
+voice/voice.sh listen            # 常驻监听
+voice/voice.sh app               # 或：统一界面（画面+语音+状态栏）
 
-# 发送任务
-./agent.sh send coder "写一个 Python 爬虫"
+# 3. 微信入口（微信窗口 → OCR → 大脑）
+wechat-ocr/bridge.sh
 
-# 查看状态
-./agent.sh status
-```
-
-**心跳机制：**
-- Master 每 25 分钟自心跳，防止无故停机
-- Slave 每 15 分钟向 Master 汇报状态
-- 连续 3 次健康检查失败自动重启 Agent
-
-详见 [AGENTS.md](AGENTS.md)。
-
----
-
-### 3. Chrome 浏览器控制
-
-纯 Lua 实现，通过 xdotool 模拟键盘快捷键操作现有 Chrome 窗口（不打开新浏览器）。
-
-```lua
-local chrome = require("wechat_ocr.chrome")
-chrome.new_tab()              -- Ctrl+T 新标签
-chrome.open("网址")            -- 新标签打开网址
-chrome.search("关键词")        -- Google 搜索
-chrome.ai_search("问题")       -- AI 模式搜索
-chrome.screenshot()           -- 截图
-```
-
-详见 [chrome.md](chrome.md)。
-
----
-
-### 4. 多模态 C 封装（备用）
-
-| 模块 | 功能 | 技术方案 |
-|------|------|---------|
-| **SenseVoice** | 语音转文本 (ASR) | C++ wrapper → `libsensevoice.so` |
-| **JoyCaption** | 图片分析 (Vision) | C++ wrapper → `libjoycaption.so` |
-
-源码备份：
-- `sense-voice-wrapper/sensevoice_wrapper.cpp`
-- `joycaption-wrapper/joycaption_wrapper.cpp`
-
----
-
-### 5. UTEL 编码系统
-
-针对 LLM 的文本压缩编码协议，支持自然语言和代码的双模式压缩，可用于在 Agent 之间高效传输长文本。
-
-```python
-from utel_encoder import UTEL_Encoder
-
-encoder = UTEL_Encoder()
-compressed = encoder.pack("请帮我实现一个红黑树，需要支持完整的插入、删除操作。")
-```
-
-详见 [rule.md](rule.md) 和 `utel_encoder.py`。
-
----
-
-## 构建与运行
-
-### 微信机器人核心库
-
-```bash
-cd wechat-ocr
-cmake -S . -B build_lib \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_PREFIX_PATH="/data/venv/onnxruntime-linux-x64-gpu-1.26.0/lib/cmake"
-cmake --build build_lib -j$(nproc) --target wechat_ocr_core
-```
-
-### 运行微信机器人
-
-```bash
-cd wechat-ocr
-./run.sh
-```
-
-或手动设置环境变量后运行：
-
-```bash
-export LD_LIBRARY_PATH="./lib:/data/venv/onnxruntime-linux-x64-gpu-1.26.0/lib"
-export LUA_PATH="/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;;"
-export LUA_CPATH="/usr/local/lualib/?.so;;"
-luajit run.lua
-```
-
-### Agent 管理
-
-```bash
-# 启动 Master
-./agent.sh start master
-
-# 启动 Worker
-./agent.sh start coder
+# 4. 文本转语音（USB 音响）
+voice/voice.sh say "你好"
 ```
 
 ---
 
-## 依赖汇总
+## 安全模型（白名单，三层）
 
-| 组件 | 用途 | 所属模块 |
-|------|------|---------|
-| OpenCode + tmux | Agent 管理与运行 | Agent 管理 |
-| LuaJIT | 微信自动化脚本语言 | WeChat OCR |
-| ONNX Runtime GPU | 深度学习推理 | WeChat OCR |
-| PaddleOCR PP-OCRv4 | 文字检测+识别模型 | WeChat OCR |
-| OpenCV | 图像处理 | WeChat OCR |
-| xdotool / xclip | 桌面操作 | WeChat OCR / Chrome |
-| ffmpeg | 录屏 | WeChat OCR |
-| CUDA | GPU 加速 | WeChat OCR |
-| 小龙虾（微信客户端） | 远程消息入口 | WeChat OCR |
+> 微信/语音内容是不可信输入，却要触发本机执行。为此设三层：
+
+1. **权限**（`operator/opencode.json`）：`bash` 默认 `deny`、只放行 `tools/*`；`read/edit/webfetch/task` 全部 `deny`。
+2. **兜底插件**（`operator/.opencode/plugin/guard.js`）：执行前正则校验，禁止 `&&`、`;`、`|`、重定向等拼接绕过。
+3. **契约**（`operator/AGENTS.md`）：明确告诉大脑“只能做白名单里的七件事，不认识的请求就拒绝”。
+
+回程规则：`[语音输入]` → `say.sh`；`[微信输入]` → `wechat_send.sh`（默认发「文件传输助手」，可 `--to` 指定联系人）。
 
 ---
 
-## 注意事项
+## 运行依赖
 
-1. **小龙虾即微信客户端**：本项目直接操作桌面上的「小龙虾」窗口，不需要额外安装官方微信。
-2. **Agent 心跳**：Slave 每 15 分钟收到系统自动心跳消息，Slave 应忽略这些消息无需回复。
-3. **操作频率**：微信自动化操作频率不宜过高，避免触发风控。
-4. **OCR 依赖**：模型文件较大，通过 `.gitignore` 排除，部署时需确保 `wechat-ocr/models/` 下有 ONNX 模型。
-5. **Chrome 控制规则**：只能用 Lua 调用、只能操作现有 Chrome 窗口、禁止用 OCR 识别浏览器页面，详见 [chrome.md](chrome.md) 和 [wechat-ocr/CLAUDE.md](wechat-ocr/CLAUDE.md)。
+| 组件 | 用途 | 模块 |
+|------|------|------|
+| opencode + tmux | 单脑与常驻会话 | operator |
+| SenseVoice.cpp + gguf | 语音转文本（纯 C++） | voice |
+| sherpa-onnx + Kokoro | 文本转语音（纯 C++） | voice |
+| SDL2 + OpenCV + ALSA | 统一界面 / 摄像头 / 采集 | voice |
+| LuaJIT + ONNX Runtime GPU | 微信 OCR | wechat-ocr |
+| PaddleOCR PP-OCRv4 | 聊天文字识别 | wechat-ocr |
+| xdotool / xclip / ImageMagick | 桌面窗口操作 | wechat-ocr / operator |
+| PipeWire (`pw-play`) / aplay / espeak-ng | 音频播放与兜底 | voice |
+| 小龙虾（微信客户端） | 微信窗口 | wechat-ocr |
+
+> 运行时**不依赖 Python**；模型/二进制在 `/opt`、`/data/models`，不入库。
 
 ---
 
-*文档版本: 3.0*
-*更新日期: 2026-06-21*
+## 状态
+
+- ✅ 语音转文本（SenseVoice.cpp，实测中文识别正确）
+- ✅ 文本转语音（Kokoro → USB 音响，实测出声）
+- ✅ 摄像头窗口 / 人脸门控 / 统一界面
+- ✅ 微信 OCR 机器人（搜索/发送/截图/监控）
+- ✅ 单脑 + 工具白名单骨架（operator/）
+- ⏳ 微信入口 `bridge.lua` 转发放大脑、端到端联调
+- ⏳ 模型后端与生产守护（systemd）待定
+
+---
+
+*文档版本: 4.0 · 更新日期: 2026-10-04*

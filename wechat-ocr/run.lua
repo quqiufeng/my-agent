@@ -6,14 +6,16 @@
 --   luajit run.lua send "你好"      -- 发送消息
 --   luajit run.lua monitor          -- 持续监控新消息
 
-package.path = "/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;" .. (package.path or "")
-package.cpath = "/usr/local/lualib/?.so;" .. (package.cpath or "")
+local dir = arg[0]:match("(.*/)") or "."
+
+package.path = dir .. "lua/?.lua;" .. dir .. "lua/?/init.lua;"
+    .. "/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;" .. (package.path or "")
+package.cpath = dir .. "lib/?.so;/usr/local/lualib/?.so;" .. (package.cpath or "")
 
 local ffi = require("ffi")
 ffi.cdef[[void usleep(unsigned int);]]
 
 local ocr = require("wechat_ocr")
-local dir = arg[0]:match("(.*/)") or "."
 
 local det  = dir .. "models/ch_PP-OCRv4_det_infer.onnx"
 local rec  = dir .. "models/ch_PP-OCRv4_rec_infer.onnx"

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "deepseek/deepseek-flash",
+  "permission": {
+    "read": "deny",
+    "edit": "deny",
+    "glob": "deny",
+    "grep": "deny",
+    "list": "deny",
+    "task": "deny",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "bash": {
+      "*": "deny",
+      "tools/*": "allow",
+      "./tools/*": "allow",
+      "bash tools/*": "allow",
+      "/opt/my-agent/operator/tools/*": "allow"
+    }
+  }
+}
