@@ -36,17 +36,35 @@ chrome://inspect/#remote-debugging
 （Chrome 重启后可能要重新放行。）
 
 ### 大脑可用的 MCP 工具（名如 `chrome-devtools_*`）
-| 工具 | 用途 |
-|------|------|
-| `new_page` / `close_page` | 新开/关闭页面 |
-| `navigate_page` | 跳转网址 |
-| `take_snapshot` | 取无障碍树快照（读页面结构，给元素定位） |
-| `click` / `fill` / `hover` | 按元素点击/填写/悬停 |
-| `evaluate_script` | 在页面执行 JS（如取 `document.title`、抓数据） |
-| `take_screenshot` | 截图 |
-| `wait_for` / `list_network_requests` 等 | 等待、网络观察 |
+
+**默认启用（约 30 个）**：
+
+| 类别 | 工具 | 用途 |
+|------|------|------|
+| 输入 (10) | `click` `fill` `fill_form` `hover` `drag` `press_key` `type_text` `upload_file` `handle_dialog` `click_at`\* | 点击/填表/拖拽/按键/上传/弹窗 |
+| 导航 (6) | `new_page` `navigate_page` `list_pages` `select_page` `close_page` `wait_for` | 开关/切换页面、跳转、等文本出现 |
+| 调试·读取 (9) | `take_snapshot` `take_screenshot` `evaluate_script` `list_console_messages` `get_console_message` `get_css_styles` `lighthouse_audit` `screencast_start`/`screencast_stop`\* | 读 a11y 树(拿元素 uid)、截图、跑 JS、console/CSS、Lighthouse |
+| 网络 (2) | `list_network_requests` `get_network_request` | 看请求/响应头（含 Cookie） |
+| 性能 (3) | `performance_start_trace` `performance_stop_trace` `performance_analyze_insight` | 性能追踪、Core Web Vitals |
+| 设备模拟 (2) | `emulate` `resize_page` | 深色模式/UA/视口/网络限速/定位 |
+
+**需加 flag 才启用**：
+
+- 内存 (14)：`take_heapsnapshot` 及 `*_heapsnapshot_*` —— `--memoryDebugging`
+- 扩展 (5)：`install_extension` / `list_extensions` / `reload_extension` / `trigger_extension_action` / `uninstall_extension` —— `--categoryExtensions`
+- WebMCP / 第三方工具 / PWA —— `--categoryExperimentalWebmcp` / `--categoryExperimentalThirdParty` / `--categoryPwa`
+
+\* `click_at`（按坐标点击）需 `--experimentalVision`；录屏需 `--experimentalScreencast`。
+
+**常用启动参数**：`--slim`（只露导航/脚本/截图 3 个工具）、`--headless`（无界面）、`--autoConnect`（连已登录 Chrome）、`--channel stable`。
+
+**关键用法**：读网页优先 `take_snapshot`（拿元素 uid + 文本）→ 据此 `click`/`fill`；抓数据用 `evaluate_script`。**禁止 OCR 网页。**
 
 启动时 opencode 会加载该 MCP；`opencode mcp list` 应显示 `✓ chrome-devtools connected`。
+
+**官方文档**：
+- 工具参考（完整参数）：https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md
+- 仓库 / README：https://github.com/ChromeDevTools/chrome-devtools-mcp
 
 ---
 
@@ -101,4 +119,4 @@ opencode 大脑（tmux 常驻 TUI，4097）
 ---
 
 *相关：`operator/AGENTS.md`（运行时契约）、`operator/tools/browser.sh`、`wechat-ocr/lua/wechat_ocr/chrome.lua`*
-*文档版本: 2.0 · 更新日期: 2026-10-04*
+*文档版本: 2.1 · 更新日期: 2026-10-04*
