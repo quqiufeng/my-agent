@@ -1,135 +1,104 @@
-# Chrome 浏览器控制模块
+# Chrome 浏览器控制
 
-## 简介
+本机 Chrome 的控制分两种方式：
 
-纯 Lua 实现的 Chrome 控制模块，操作现有 Chrome 浏览器（不打开新浏览器），通过 xdotool 模拟键盘快捷键。
+| 方式 | 谁执行 | 能力 | 适用 |
+|------|--------|------|------|
+| **① Chrome DevTools MCP（推荐）** | opencode 大脑直接调用 MCP 工具 | 读页面、精确点击/填表/取文本 | 绝大部分网页任务 |
+| ② Lua + xdotool（兜底） | opencode 调 `operator/tools/browser.sh` | 只能开标签/搜索/截图，**读不到页面** | 粗动作 |
 
-在微信机器人场景中，Chrome 主要用于：
-- 收到微信指令后触发 Google AI 搜索；
-- 获取网页信息后再把结果发回微信。
-
-## 安装
-
-不需要安装，模块已内置：
-
-```lua
-local chrome = require("wechat_ocr.chrome")
-```
-
-依赖：`xdotool`、`xclip`、`ImageMagick`（均已安装）
-
-## API
-
-### `chrome.new_tab()`
-
-打开新空白标签页（Ctrl+T），显示 Chrome 默认新标签页（含 Google 搜索框）。
-
-```lua
-chrome.new_tab()
-```
-
-### `chrome.open(url)`
-
-新标签打开指定网址。
-
-```lua
-chrome.open("https://www.google.com")
-```
-
-### `chrome.search(keyword)`
-
-新标签打开 Google 搜索。
-
-```lua
-chrome.search("chrome 有什么好玩的玩法")
-```
-
-### `chrome.ai_search(keyword)`
-
-**Google AI 模式搜索** — 地址栏输入问题 → Tab → 回车，触发 Google AI 回答。
-
-```lua
-chrome.ai_search("chrome mcp 有什么好玩的玩法")
-```
-
-内部流程：`Ctrl+T` → 粘贴问题 → `Tab`（移到 AI 模式选项）→ `Return`
-
-### `chrome.screenshot(path)`
-
-截图当前标签页，保存到文件。
-
-```lua
-chrome.screenshot("/tmp/page.png")  -- 默认 /tmp/chrome_ss.png
-```
-
-## 原理
-
-| 操作 | 方式 |
-|------|------|
-| 新标签 | `xdotool key ctrl+t` |
-| 打开网址 | 剪贴板粘贴 + 回车 |
-| 截图 | `import -window root -crop` |
-| 窗口激活 | `xdotool windowactivate` |
-
-不启动新浏览器，不依赖 MCP 守护进程，不需要 Node.js。
+> 规则：**禁止用 OCR 识别网页**。要读网页内容一律走 MCP。
 
 ---
 
-## 在微信机器人中的典型用法
+## 方式一：Chrome DevTools MCP（推荐）
+
+### 配置
+`operator/opencode.json`：
+```json
+{
+  "mcp": {
+    "chrome-devtools": {
+      "type": "local",
+      "command": ["npx", "-y", "chrome-devtools-mcp@latest", "--autoConnect", "--channel", "stable", "--no-usage-statistics"],
+      "enabled": true
+    }
+  }
+}
+```
+
+### 前置（一次性，Chrome 144+）
+在你**日常已登录**的 Chrome 里打开：
+```
+chrome://inspect/#remote-debugging
+```
+打开「允许远程调试」。`--autoConnect` 会连这个已登录实例（保留 cookie/登录态），不再单起隔离小号。
+（Chrome 重启后可能要重新放行。）
+
+### 大脑可用的 MCP 工具（名如 `chrome-devtools_*`）
+| 工具 | 用途 |
+|------|------|
+| `new_page` / `close_page` | 新开/关闭页面 |
+| `navigate_page` | 跳转网址 |
+| `take_snapshot` | 取无障碍树快照（读页面结构，给元素定位） |
+| `click` / `fill` / `hover` | 按元素点击/填写/悬停 |
+| `evaluate_script` | 在页面执行 JS（如取 `document.title`、抓数据） |
+| `take_screenshot` | 截图 |
+| `wait_for` / `list_network_requests` 等 | 等待、网络观察 |
+
+启动时 opencode 会加载该 MCP；`opencode mcp list` 应显示 `✓ chrome-devtools connected`。
+
+---
+
+## 方式二：Lua + xdotool（兜底粗动作）
+
+纯 Lua 模块 `wechat_ocr.chrome`，经 xdotool 操作**现有** Chrome，不启动新进程。
+opencode 侧通过白名单脚本 `operator/tools/browser.sh` 调用它。
 
 ```lua
-local robot = require("wechat_robot")
 local chrome = require("wechat_ocr.chrome")
-
-robot.init()
-robot.monitor({
-    interval_ms = 3000,
-    on_message = function(text)
-        -- 以 @ai 开头的消息触发 AI 搜索
-        if text:match("^@ai") then
-            local question = text:sub(4):match("^%s*(.*)")
-            chrome.ai_search(question)
-
-            -- 等待 AI 回答
-            local ffi = require("ffi")
-            ffi.cdef[[void usleep(unsigned int);]]
-            ffi.C.usleep(4000000)
-
-            -- 复制页面内容
-            os.execute("xdotool key ctrl+a ctrl+c")
-            ffi.C.usleep(500000)
-
-            -- 读取剪贴板
-            local pipe = io.popen("xclip -selection clipboard -o")
-            local answer = pipe:read("*a"); pipe:close()
-
-            -- 把结果发回微信
-            robot.send(answer:sub(1, 1000))
-        end
-    end
-})
+chrome.new_tab()              -- Ctrl+T 新空白标签
+chrome.open("url")            -- 新标签打开网址
+chrome.search("关键词")        -- Google 搜索
+chrome.ai_search("问题")       -- Google AI 模式（地址栏→Tab→回车）
+chrome.screenshot(path)       -- 截图
 ```
+
+对应 opencode 工具（`operator/tools/browser.sh`）：
+```bash
+tools/browser.sh new_tab
+tools/browser.sh open <url>
+tools/browser.sh search <关键词>
+tools/browser.sh ai_search <问题>
+tools/browser.sh screenshot [输出路径]
+```
+依赖：`xdotool`、`xclip`、`ImageMagick`。
+
+---
+
+## opencode 是怎么调起来的
+
+```
+语音 [语音输入] / 微信 [微信输入]
+      │  (voice/listen、wechat-ocr/bridge 用 curl 转发到 opencode TUI)
+      ▼
+opencode 大脑（tmux 常驻 TUI，4097）
+      │  读 operator/AGENTS.md 规则
+      ├─ 浏览器 → 直接用 chrome-devtools MCP 工具
+      └─ 本机动作 → 调 operator/tools/*.sh（白名单，如 browser.sh / screenshot.sh / say.sh / wechat_send.sh）
+```
+要点：**MCP 由 opencode 直接调用**；**sh 脚本也由 opencode 调用**（受 `operator/opencode.json` 白名单 + `guard.js` 约束）。
 
 ---
 
 ## 必须遵守的规则
 
-1. **用 Lua** — 通过 `require("wechat_ocr.chrome")` 调用，不得使用 Node.js/其他语言
-2. **不打开新浏览器** — 只能操作现有 Chrome 窗口，不得启动新 Chrome 进程
-3. **新开空白标签** — 用 `chrome.new_tab()`（Ctrl+T），不要打开具体网址，除非用户明确要求
-4. **禁止 OCR 识别浏览器网页** — 不得使用 PaddleOCR 或任何 OCR 方式识别浏览器页面内容，浏览器页面交互必须通过 MCP 或 xdotool 完成
-
-```lua
-local chrome = require("wechat_ocr.chrome")
-chrome.new_tab()          -- ✅ 新开空白标签
-chrome.open("网址")        -- ✅ 新标签打开网址
-chrome.search("关键词")    -- ✅ 新标签 Google 搜索
-chrome.ai_search("问题")   -- ✅ AI 模式搜索
-chrome.screenshot()       -- ✅ 截图
-```
+1. **只用 MCP 读网页** — 网页交互/内容读取走 `chrome-devtools_*` 工具；**禁止 OCR 识别浏览器页面**。
+2. **操作现有 Chrome** — 不启动新浏览器进程；用 `--autoConnect` 连已登录实例。
+3. **`browser.sh` 只做粗动作** — 开标签/搜索/截图；不要靠它读页面。
+4. **白名单** — opencode 侧只能调 `operator/tools/*.sh`，不得任意 shell。
 
 ---
 
-*文件位置: `/usr/local/lualib/wechat_ocr/chrome.lua`（仓库正本：`wechat-ocr/lua/wechat_ocr/chrome.lua`）*
-*文档版本: 1.2*
-*更新日期: 2026-10-04*
+*相关：`operator/AGENTS.md`（运行时契约）、`operator/tools/browser.sh`、`wechat-ocr/lua/wechat_ocr/chrome.lua`*
+*文档版本: 2.0 · 更新日期: 2026-10-04*
