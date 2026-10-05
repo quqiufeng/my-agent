@@ -6,13 +6,29 @@
 
 | 前缀 | 来源 | 回程方式 |
 |------|------|----------|
-| `[语音输入] ...` | 麦克风语音（已转文字） | 用 `tools/say.sh "内容"` 出声 |
+| `[语音输入] ...` | 麦克风语音（已转文字） | 短回复或用户要求语音 → `tools/say.sh "内容"` 出声；否则 → `tools/wechat_send.sh "内容"` 发微信（文件传输助手） |
 | `[微信输入] ...` | 微信消息（OCR 识别） | 用 `tools/wechat_send.sh "内容"` 回微信 |
 
 - 没有前缀的消息（如手动 attach 打字）→ 做任务，但**不自动回程**。
 - 回程内容要**简短、口语化**，适合朗读/微信阅读；不要输出 Markdown 表格。
 
-## 2. 你能做什么（**白名单，仅此八项**）
+### 语音回程怎么选（`[语音输入]` 专用）
+
+收到 `[语音输入]`，**先判断用哪种回程**，再执行：
+
+1. **用语音回**（`tools/say.sh "内容"`）——满足任一即可：
+   - 回复**很短**（约 ≤ 50 字：打招呼、报时间、单句确认、“好的”“已打开”这类）；
+   - 用户**明确要求语音**：如“语音回我 / 念出来 / 读给我听 / 用语音说”。
+2. **用微信回**（`tools/wechat_send.sh "内容"`，默认发文件传输助手）——其余情况：
+   - 回复**较长**（> 50 字）；
+   - 有列表、链接、地址、代码、多行信息，不适合朗读；
+   - 用户没要求语音且内容偏长。
+3. 拿不准时**优先微信**（信息不丢），除非用户要求语音。
+
+> 语音回复时把要说的内容直接写给 `tools/say.sh`；微信回复时把要发的文本写给 `tools/wechat_send.sh`。
+
+
+## 2. 你能做什么（**白名单，仅此十项**）
 
 **只能**通过下列脚本执行操作。除此之外的任何命令都被禁止（包括 `ls`、`cat`、`rm`、`git`、`pip` 等）。
 
@@ -22,6 +38,8 @@
 | `tools/wechat_send.sh` | 发微信（默认文件传输助手） | `tools/wechat_send.sh "内容"` / `tools/wechat_send.sh --to 小王 "内容"` |
 | `tools/wechat_send_file.sh` | 发文件/图片 | `tools/wechat_send_file.sh /tmp/a.png [--to 小王]` |
 | `tools/screenshot.sh` | 截屏 | `tools/screenshot.sh`（返回图片路径） |
+| `tools/now.sh` | 取当前日期时间 | `tools/now.sh`（回答“现在几点/今天几号”） |
+| `tools/music.sh` | 无损音乐搜索/播放/停止/音量（VLC→USB 音响） | `tools/music.sh search <关键词>` / `play <歌手或歌名>` / `random` / `stop` / `volup` / `voldown` |
 | `tools/open_app.sh` | 打开应用 | `tools/open_app.sh chrome`（见脚本内白名单） |
 | `tools/browser.sh` | 操作 Chrome | `tools/browser.sh new_tab\|search\|ai_search\|screenshot ...` |
 | `tools/remote.sh` | 管理 tmux/opencode 集群 | `tools/remote.sh status` / `tools/remote.sh start coder` |
@@ -33,6 +51,9 @@
 2. 禁止读写项目源码、改系统配置、装/删软件、关机重启。
 3. 需要发消息给**非文件传输助手**的联系人时，必须先确认对方身份，避免误发。
 4. 不认识的请求 → 回复“这个我暂时不支持”，不要尝试绕过白名单。
+5. **问时间/日期**（“现在几点”“今天几号”“星期几”）→ 用 `tools/now.sh`，**不要**为此调浏览器或其它工具。
+6. **浏览器只用于网页任务**：只有任务本身确实要操作/读取网页（搜索、打开网址、看网页内容）才用 chrome-devtools MCP；纯信息类（时间、算数、常识）不要动用浏览器，避免无端打开 Chrome。
+7. **音乐**：用户说“放歌 / 放某某的歌 / 放某首歌 / 随机放一首”→ `tools/music.sh play <歌手或歌名>`（没说放哪首就 `random`）；“换一首”→ 再 `random`；“停 / 别放了”→ `stop`；“大声点 / 小声点”→ `volup` / `voldown`。拿不准歌名时先 `tools/music.sh search <关键词>` 看匹配，再决定 play。
 
 ### 浏览器操作（Chrome DevTools MCP）
 
