@@ -2,8 +2,10 @@
 -- 基于已验证测试脚本重构，使用坐标缓存 + 窗口左上角动态计算
 -- 用法: local robot = require("wechat_robot")
 --
--- 流式调用示例:
---   robot:search("小王"):send("你好"):send_file("a.mp4"):screenshot()
+-- 注意：本模块方法用「点调用」(robot.search(...))，不是冒号。
+--   所有方法返回 M，可点式链式（每步都是独立语句）:
+--   robot.init()
+--   robot.search("小王"); robot.send("你好"); robot.send_file("a.mp4"); robot.screenshot()
 
 local ffi = require("ffi")
 ffi.cdef[[void usleep(unsigned int);]]
@@ -87,7 +89,14 @@ end
 
 local function type_text(text, delay_ms)
     delay_ms = delay_ms or 80
-    os.execute(string.format("xdotool type --delay %d '%s' 2>/dev/null", delay_ms, shell_escape(text)))
+    -- 中文用剪贴板粘贴：xdotool type 对 UTF-8 中文不可靠（会静默丢失）
+    local tmpfile = tmp("type_clip.txt")
+    local f = io.open(tmpfile, "w")
+    if f then f:write(text); f:close() end
+    os.execute("xclip -selection clipboard " .. tmpfile .. " </dev/null >/dev/null 2>&1")
+    sleep(80000)
+    os.execute("xdotool key --clearmodifiers ctrl+v 2>/dev/null")
+    sleep(delay_ms * 1000)
 end
 
 local function find_wechat_window()

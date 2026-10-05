@@ -174,7 +174,7 @@ function M.send(text)
 
         local f = io.open(CHAR_TMP, "w")
         if f then f:write(ch); f:close() end
-        os.execute("xclip -selection clipboard < " .. CHAR_TMP .. " 2>/dev/null")
+        os.execute("xclip -selection clipboard " .. CHAR_TMP .. " </dev/null >/dev/null 2>&1")
         ffi.C.usleep(50000)
         os.execute("xdotool key ctrl+v 2>/dev/null")
         local delay = 80 + math.random(170)
@@ -202,7 +202,7 @@ function M.send_file(filepath)
     
     local f = io.open(SEND_TMP, "w")
     if f then f:write(filepath); f:close() end
-    os.execute("xclip -selection clipboard < " .. SEND_TMP .. " 2>/dev/null")
+    os.execute("xclip -selection clipboard " .. SEND_TMP .. " </dev/null >/dev/null 2>&1")
     ffi.C.usleep(100000)
     os.execute("xdotool key ctrl+v 2>/dev/null")
     ffi.C.usleep(500000)
