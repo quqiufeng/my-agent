@@ -62,6 +62,7 @@ struct Config {
     std::string wake_words = env_or("VOICE_WAKE", "你好星期五,星期五"); // 唤醒词(逗号分隔)
     int active_ms          = env_int("VOICE_ACTIVE_MS", 10000);          // 唤醒后持续响应窗口
     std::string ack        = env_or("VOICE_ACK", "在的，老板");          // 仅唤醒时的语音应答
+    int max_seg_ms         = env_int("VOICE_MAX_SEG_MS", 6000);          // 最大片段时长(持续噪声时强制断句)
 };
 
 constexpr int kSampleRate = 16000;
@@ -250,6 +251,7 @@ void capture_thread(const Config &cfg, std::queue<std::vector<short>> &q,
     int noise = 200;
     const int end_frames = std::max(1, cfg.silence_ms / kFrameMs);
     const int min_frames = std::max(1, cfg.min_speech_ms / kFrameMs);
+    const int max_frames = std::max(1, cfg.max_seg_ms / kFrameMs);
 
     while (g_run) {
         // 唤醒窗口结束 → 恢复音乐
@@ -288,6 +290,16 @@ void capture_thread(const Config &cfg, std::queue<std::vector<short>> &q,
             ++silent;
         }
         acc.insert(acc.end(), frame.begin(), frame.begin() + r);
+
+        // 持续背景声(音乐等)时 VAD 等不到静音 → 到达最大时长就强制送识别一次
+        if (static_cast<int>(acc.size()) / kFrameLen >= max_frames) {
+            std::lock_guard<std::mutex> lk(qm);
+            q.push(acc);
+            cv.notify_one();
+            acc.clear();
+            silent = 0;
+            continue;
+        }
 
         if (silent >= end_frames) {
             speaking = false;
