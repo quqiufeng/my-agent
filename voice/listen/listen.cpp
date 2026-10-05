@@ -216,15 +216,15 @@ bool handle_text(const Config &cfg, const std::string &text) {
         g_music_paused = true;
         printf("[voice] 已暂停音乐(pid=%ld)\n", mp);
     }
+    g_active_until = now + std::chrono::milliseconds(cfg.active_ms);
     std::string cmd = woke ? rest : norm;
     if (woke && cmd.empty()) {
-        // 只说唤醒词 → 本地语音应答「在的，老板」，不打扰大脑
+        // 只说唤醒词 → 本地语音应答「在的，老板」，并已开启活跃窗口等待后续指令
         printf("[voice] 唤醒应答: %s\n", cfg.ack.c_str());
         std::string ackcmd = "/opt/my-agent/voice/say.sh '" + cfg.ack + "' >/dev/null 2>&1";
         int rc = system(ackcmd.c_str()); (void)rc;
         return true;
     }
-    g_active_until = now + std::chrono::milliseconds(cfg.active_ms);
     printf("[voice] 已唤醒 → %s\n", cmd.c_str());
     forward(cfg, cmd);
     return true;

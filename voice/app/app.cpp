@@ -228,6 +228,7 @@ bool handle_text(const Config &cfg, const std::string &text) {
         g_music_paused = true;
         printf("[app] 已暂停音乐(pid=%ld)\n", mp);
     }
+    g_active_until = now + std::chrono::milliseconds(cfg.active_ms);
     std::string cmd = woke ? rest : norm;
     if (woke && cmd.empty()) {
         printf("[app] 唤醒应答: %s\n", cfg.ack.c_str());
@@ -235,7 +236,6 @@ bool handle_text(const Config &cfg, const std::string &text) {
         int rc = system(ackcmd.c_str()); (void)rc;
         return true;
     }
-    g_active_until = now + std::chrono::milliseconds(cfg.active_ms);
     printf("[app] 已唤醒 → %s\n", cmd.c_str());
     forward(cfg, cmd);
     return true;
