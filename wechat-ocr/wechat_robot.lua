@@ -376,11 +376,47 @@ function M.send(text)
     return M
 end
 
+-- 通过剪贴板直接粘贴图片发送（比文件对话框稳；png/jpg 等）
+function M.send_image(path)
+    path = path or ""
+    if path == "" then return M end
+    M.activate(true)   -- 强制激活（避免被 activate 的 2 秒去重跳过）
+
+    -- 统一转成 png 放剪贴板（微信按图片消息粘贴）；nohup setsid 保证 xclip 常驻持有选区
+    local png = path
+    if not path:lower():match("%.png$") then
+        png = tmp("clip.png")
+        os.execute(string.format("convert '%s' '%s' 2>/dev/null", path, png))
+    end
+    os.execute("pkill -x xclip 2>/dev/null")
+    sleep(400000)
+    os.execute(string.format("nohup setsid xclip -selection clipboard -t image/png -i '%s' </dev/null >/dev/null 2>&1 &", png))
+    sleep(900000)
+
+    -- 点击输入框获取焦点（窗口相对坐标，实测稳）
+    local win = M.get_window_rect()
+    local cx, cy
+    if win then
+        cx = win.x + math.floor(win.w * 0.47)
+        cy = win.y + math.floor(win.h * 0.874)
+    else
+        local box = ocr.input_box()
+        if box then cx = box.x + box.w / 2; cy = box.y + box.h / 2 end
+    end
+    if not cx then return M end
+    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", math.floor(cx), math.floor(cy)))
+    sleep(500000)
+    os.execute("xdotool key --clearmodifiers ctrl+v 2>/dev/null")
+    sleep(1200000)
+    os.execute("xdotool key Return 2>/dev/null")
+    sleep(800000)
+    return M
+end
+
 -- 在当前聊天中发送文件（支持图片/视频/任意文件）
 function M.send_file(filepath)
     filepath = filepath or "/tmp/test.txt"
     M.activate()
-
     local pos = M.get_icon_pos("Folder", "toolbar")
     if pos then
         os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", pos.x, pos.y))

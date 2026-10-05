@@ -90,6 +90,18 @@ function M.capture_raw()
     return data
 end
 
+-- 获取输入框位置（绝对屏幕坐标 {x,y,w,h}）
+function M.input_box()
+    if not engine then return nil end
+    local c_str = lib.ocr_get_input_box(engine)
+    if c_str == nil or c_str == ffi.NULL then return nil end
+    local json_str = ffi.string(c_str)
+    lib.ocr_free_string(c_str)
+    local ok, box = pcall(cjson.decode, json_str)
+    if not ok then return nil end
+    return box
+end
+
 -- 时间戳模式：全窗口扫描，通过时间戳定位第三列
 -- 返回第三列的文字内容
 function M.capture_third_column()

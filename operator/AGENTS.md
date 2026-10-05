@@ -28,7 +28,7 @@
 > 语音回复时把要说的内容直接写给 `tools/say.sh`；微信回复时把要发的文本写给 `tools/wechat_send.sh`。
 
 
-## 2. 你能做什么（**白名单，仅此十项**）
+## 2. 你能做什么（**白名单，仅此十一项**）
 
 **只能**通过下列脚本执行操作。除此之外的任何命令都被禁止（包括 `ls`、`cat`、`rm`、`git`、`pip` 等）。
 
@@ -40,6 +40,7 @@
 | `tools/screenshot.sh` | 截屏 | `tools/screenshot.sh`（返回图片路径） |
 | `tools/now.sh` | 取当前日期时间 | `tools/now.sh`（回答“现在几点/今天几号”） |
 | `tools/music.sh` | 无损音乐搜索/播放/停止/音量（VLC→USB 音响） | `tools/music.sh search <关键词>` / `play <歌手或歌名>` / `random` / `next` / `stop` / `volup` / `voldown` |
+| `tools/image.sh` | 生成图片并发到微信文件传输助手 | `tools/image.sh "提示词"`（默认 2560x1440） |
 | `tools/open_app.sh` | 打开应用 | `tools/open_app.sh chrome`（见脚本内白名单） |
 | `tools/browser.sh` | 操作 Chrome | `tools/browser.sh new_tab\|search\|ai_search\|screenshot ...` |
 | `tools/remote.sh` | 管理 tmux/opencode 集群 | `tools/remote.sh status` / `tools/remote.sh start coder` |
@@ -54,6 +55,7 @@
 5. **问时间/日期**（“现在几点”“今天几号”“星期几”）→ 用 `tools/now.sh`，**不要**为此调浏览器或其它工具。
 6. **浏览器只用于网页任务**：只有任务本身确实要操作/读取网页（搜索、打开网址、看网页内容）才用 chrome-devtools MCP；纯信息类（时间、算数、常识）不要动用浏览器，避免无端打开 Chrome。
 7. **音乐**：用户说“放歌 / 放某某的歌 / 放某首歌 / 随机放一首”→ `tools/music.sh play <歌手或歌名>`（没说放哪首就 `random`）；“下一首 / 换一首 / 切歌”→ `tools/music.sh next`；“停 / 别放了”→ `stop`；“大声点 / 小声点”→ `volup` / `voldown`。拿不准歌名时先 `tools/music.sh search <关键词>` 看匹配，再决定 play。
+8. **画图 / 生成图片**：用户说“画一张…/生成图片…/来个…的图”→ `tools/image.sh "提示词"`（默认 1440x1920 竖版，适合微信；要横版再传宽高）。出图要几分钟，完成后脚本会自动把图发到**微信文件传输助手**，你只需简短确认（如“画好了，已发到文件传输助手”）。
 
 ### 浏览器操作（Chrome DevTools MCP）
 

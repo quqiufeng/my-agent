@@ -9,6 +9,14 @@ local ok, err = robot.init()
 if not ok then io.stderr:write("wechat init 失败: " .. tostring(err) .. "\n"); os.exit(1) end
 
 robot.search(to)
-robot.send_file(file)
+os.execute("sleep 1")   -- 等搜索/焦点/剪贴板稳定
+
+local ext = file:lower():match("%.([%w]+)$") or ""
+local is_img = (ext == "png" or ext == "jpg" or ext == "jpeg" or ext == "webp" or ext == "bmp" or ext == "gif")
+if is_img then
+    robot.send_image(file)   -- 图片走剪贴板粘贴（稳）
+else
+    robot.send_file(file)    -- 其它文件走文件对话框
+end
 robot.destroy()
-print("已发送文件 -> " .. to)
+print("已发送 -> " .. to)
