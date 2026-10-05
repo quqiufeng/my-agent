@@ -19,8 +19,9 @@ case "$cmd" in
     test)   exec "$DIR/say.sh" "${*:-你好，我是星期五，语音模块自检正常。}" ;;
     camera) exec "$DIR/camera.sh" "$@" ;;
     app|ui) exec "$DIR/app.sh" "$@" ;;
+    orb|ball) exec "$DIR/orb.sh" "$@" ;;
     *)
-        echo "用法: $0 {say <文本>|listen|once|test|camera|app}" >&2
+        echo "用法: $0 {say <文本>|listen|once|test|camera|app|orb}" >&2
         exit 2
         ;;
 esac

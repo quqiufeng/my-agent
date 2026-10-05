@@ -191,6 +191,14 @@ bool tts_active() {
     return (time(nullptr) - st.st_mtime) < 30;  // 兜底：超过 30s 视为陈旧
 }
 
+// 唤醒时开启摄像头窗口（若未开）
+void launch_camera() {
+    if (system("pgrep -x camera >/dev/null 2>&1") == 0) return;
+    int rc = system("setsid /opt/my-agent/voice/voice.sh camera >/dev/null 2>&1 &");
+    (void)rc;
+    printf("[voice] 唤醒 → 已开启摄像头\n");
+}
+
 // 唤醒后持续响应的截止时刻
 std::chrono::steady_clock::time_point g_active_until{};
 
@@ -217,6 +225,7 @@ bool handle_text(const Config &cfg, const std::string &text) {
         g_music_paused = true;
         printf("[voice] 已暂停音乐(pid=%ld)\n", mp);
     }
+    if (woke) launch_camera();   // 唤醒即开摄像头
     g_active_until = now + std::chrono::milliseconds(cfg.active_ms);
     std::string cmd = woke ? rest : norm;
     if (woke && cmd.empty()) {
