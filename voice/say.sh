@@ -14,6 +14,11 @@ if [ -z "$TEXT" ]; then
     exit 2
 fi
 
+# TTS 播放期间置标志：语音监听据此静音麦克风，避免把自己的播报当输入（回环）
+TTS_FLAG="/tmp/myagent_tts_active"
+touch "$TTS_FLAG" 2>/dev/null
+trap 'rm -f "$TTS_FLAG"' EXIT INT TERM
+
 WAV="${TTS_OUT:-/tmp/voice_tts.wav}"
 ok=0
 

@@ -9,10 +9,12 @@
 #include <alsa/asoundlib.h>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <mutex>
 #include <queue>
 #include <regex>
@@ -21,7 +23,10 @@
 #include <vector>
 
 #include <signal.h>
+#include <sys/stat.h>
 #include <unistd.h>
+
+#include "../wake.h"
 
 namespace {
 
@@ -54,6 +59,9 @@ struct Config {
     std::string input_file;  // --file: 直接对 WAV 识别并转发（测试用）
     int silence_ms        = env_int("VOICE_SILENCE_MS", 1200); // 断句静音时长
     int min_speech_ms     = env_int("VOICE_MIN_SPEECH_MS", 300);
+    std::string wake_words = env_or("VOICE_WAKE", "你好星期五,星期五"); // 唤醒词(逗号分隔)
+    int active_ms          = env_int("VOICE_ACTIVE_MS", 10000);          // 唤醒后持续响应窗口
+    std::string ack        = env_or("VOICE_ACK", "在的，老板");          // 仅唤醒时的语音应答
 };
 
 constexpr int kSampleRate = 16000;
@@ -163,6 +171,65 @@ void forward(const Config &cfg, const std::string &text) {
     printf("[voice] 已转发: %s\n", text.c_str());
 }
 
+// —— 音乐播放控制：播放中唤醒即暂停，唤醒窗口结束自动恢复 ——
+long read_music_pid() {
+    FILE *f = fopen("/tmp/myagent_music.pid", "r");
+    if (!f) return -1;
+    long pid = -1;
+    if (fscanf(f, "%ld", &pid) != 1) pid = -1;
+    fclose(f);
+    return pid;
+}
+long g_music_pid    = -1;
+bool g_music_paused = false;
+
+// Agent 正在用 say.sh 播报（TTS）→ 期间静音麦克风，避免自我回环
+bool tts_active() {
+    struct stat st;
+    if (stat("/tmp/myagent_tts_active", &st) != 0) return false;
+    return (time(nullptr) - st.st_mtime) < 30;  // 兜底：超过 30s 视为陈旧
+}
+
+// 唤醒后持续响应的截止时刻
+std::chrono::steady_clock::time_point g_active_until{};
+
+// 唤醒门控：命中唤醒词，或处于唤醒后的活跃窗口内，才转发；否则静默忽略
+bool handle_text(const Config &cfg, const std::string &text) {
+    if (tts_active()) {
+        printf("[voice] TTS 播放中，静音忽略: %s\n", text.c_str());
+        return false;
+    }
+    std::string norm = wake::normalize(text);
+    std::string rest;
+    bool woke = wake::strip(norm, cfg.wake_words, rest);
+    auto now = std::chrono::steady_clock::now();
+    bool active = now < g_active_until;
+    if (!woke && !active) {
+        printf("[voice] 未唤醒(静默): %s\n", text.c_str());
+        return false;
+    }
+    // 若正在放歌：一唤醒就暂停，避免歌声串进命令
+    long mp = read_music_pid();
+    if (woke && mp > 0 && kill(mp, 0) == 0 && !g_music_paused) {
+        kill(mp, SIGSTOP);
+        g_music_pid = mp;
+        g_music_paused = true;
+        printf("[voice] 已暂停音乐(pid=%ld)\n", mp);
+    }
+    std::string cmd = woke ? rest : norm;
+    if (woke && cmd.empty()) {
+        // 只说唤醒词 → 本地语音应答「在的，老板」，不打扰大脑
+        printf("[voice] 唤醒应答: %s\n", cfg.ack.c_str());
+        std::string ackcmd = "/opt/my-agent/voice/say.sh '" + cfg.ack + "' >/dev/null 2>&1";
+        int rc = system(ackcmd.c_str()); (void)rc;
+        return true;
+    }
+    g_active_until = now + std::chrono::milliseconds(cfg.active_ms);
+    printf("[voice] 已唤醒 → %s\n", cmd.c_str());
+    forward(cfg, cmd);
+    return true;
+}
+
 // 采集线程：ALSA → VAD 断句 → 入队
 void capture_thread(const Config &cfg, std::queue<std::vector<short>> &q,
                     std::mutex &qm, std::condition_variable &cv) {
@@ -185,6 +252,12 @@ void capture_thread(const Config &cfg, std::queue<std::vector<short>> &q,
     const int min_frames = std::max(1, cfg.min_speech_ms / kFrameMs);
 
     while (g_run) {
+        // 唤醒窗口结束 → 恢复音乐
+        if (g_music_paused && std::chrono::steady_clock::now() >= g_active_until) {
+            kill(g_music_pid, SIGCONT);
+            g_music_paused = false;
+            printf("[voice] 已恢复音乐\n");
+        }
         int r = snd_pcm_readi(cap, frame.data(), kFrameLen);
         if (r < 0) {
             snd_pcm_prepare(cap);
@@ -258,8 +331,8 @@ void worker_thread(const Config &cfg, std::queue<std::vector<short>> &q,
             printf("[voice] 未识别到内容\n");
             continue;
         }
-        printf("[语音输入] %s\n", text.c_str());
-        if (cfg.forward) forward(cfg, text);
+        printf("[识别] %s\n", text.c_str());
+        if (cfg.forward) handle_text(cfg, text);
         if (cfg.once) g_run = false;
     }
 }
@@ -291,8 +364,8 @@ int main(int argc, char **argv) {
     if (!cfg.input_file.empty()) {
         std::string text = transcribe(cfg, cfg.input_file);
         if (text.empty()) { fprintf(stderr, "[voice] 未识别到内容\n"); return 1; }
-        printf("[语音输入] %s\n", text.c_str());
-        if (cfg.forward) forward(cfg, text);
+        printf("[识别] %s\n", text.c_str());
+        if (cfg.forward) handle_text(cfg, text);
         return 0;
     }
 

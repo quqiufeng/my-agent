@@ -21,5 +21,11 @@ export VOICE_SPEAKER="${VOICE_SPEAKER:-plughw:3,0}"   # ALSA 兜底设备（USB 
 export VOICE_SINK="${VOICE_SINK:-}"                   # PipeWire sink（留空=默认，本机默认即 DTC 480）
 export TTS_OUT="${TTS_OUT:-/tmp/voice_tts.wav}"
 
+# ── 唤醒词（语音交互模式） ────────────────────────────────────
+# 只有听到唤醒词才响应，否则静默；命中唤醒词后 VOICE_ACTIVE_MS 内持续响应后续指令。
+# 若此时正在放歌（存在 /tmp/myagent_music.pid 且进程存活），唤醒即暂停音乐，窗口结束自动恢复。
+export VOICE_WAKE="${VOICE_WAKE:-你好星期五,星期五}"   # 逗号分隔多个唤醒词
+export VOICE_ACTIVE_MS="${VOICE_ACTIVE_MS:-10000}"     # 唤醒后持续响应窗口（毫秒）
+
 # ── 处理中心（opencode Master） ───────────────────────────────
 export AGENT_URL="${AGENT_URL:-http://localhost:4097}"

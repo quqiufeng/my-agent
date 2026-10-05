@@ -39,7 +39,7 @@
 | `tools/wechat_send_file.sh` | 发文件/图片 | `tools/wechat_send_file.sh /tmp/a.png [--to 小王]` |
 | `tools/screenshot.sh` | 截屏 | `tools/screenshot.sh`（返回图片路径） |
 | `tools/now.sh` | 取当前日期时间 | `tools/now.sh`（回答“现在几点/今天几号”） |
-| `tools/music.sh` | 无损音乐搜索/播放/停止/音量（VLC→USB 音响） | `tools/music.sh search <关键词>` / `play <歌手或歌名>` / `random` / `stop` / `volup` / `voldown` |
+| `tools/music.sh` | 无损音乐搜索/播放/停止/音量（VLC→USB 音响） | `tools/music.sh search <关键词>` / `play <歌手或歌名>` / `random` / `next` / `stop` / `volup` / `voldown` |
 | `tools/open_app.sh` | 打开应用 | `tools/open_app.sh chrome`（见脚本内白名单） |
 | `tools/browser.sh` | 操作 Chrome | `tools/browser.sh new_tab\|search\|ai_search\|screenshot ...` |
 | `tools/remote.sh` | 管理 tmux/opencode 集群 | `tools/remote.sh status` / `tools/remote.sh start coder` |
@@ -53,7 +53,7 @@
 4. 不认识的请求 → 回复“这个我暂时不支持”，不要尝试绕过白名单。
 5. **问时间/日期**（“现在几点”“今天几号”“星期几”）→ 用 `tools/now.sh`，**不要**为此调浏览器或其它工具。
 6. **浏览器只用于网页任务**：只有任务本身确实要操作/读取网页（搜索、打开网址、看网页内容）才用 chrome-devtools MCP；纯信息类（时间、算数、常识）不要动用浏览器，避免无端打开 Chrome。
-7. **音乐**：用户说“放歌 / 放某某的歌 / 放某首歌 / 随机放一首”→ `tools/music.sh play <歌手或歌名>`（没说放哪首就 `random`）；“换一首”→ 再 `random`；“停 / 别放了”→ `stop`；“大声点 / 小声点”→ `volup` / `voldown`。拿不准歌名时先 `tools/music.sh search <关键词>` 看匹配，再决定 play。
+7. **音乐**：用户说“放歌 / 放某某的歌 / 放某首歌 / 随机放一首”→ `tools/music.sh play <歌手或歌名>`（没说放哪首就 `random`）；“下一首 / 换一首 / 切歌”→ `tools/music.sh next`；“停 / 别放了”→ `stop`；“大声点 / 小声点”→ `volup` / `voldown`。拿不准歌名时先 `tools/music.sh search <关键词>` 看匹配，再决定 play。
 
 ### 浏览器操作（Chrome DevTools MCP）
 

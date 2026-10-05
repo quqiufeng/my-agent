@@ -20,13 +20,17 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <mutex>
 #include <queue>
 #include <regex>
 #include <string>
 #include <thread>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
+
+#include "../wake.h"
 
 namespace {
 
@@ -92,6 +96,9 @@ struct Config {
     bool forward = true;
     int silence_ms = atoi(env_str("VOICE_SILENCE_MS", "1200").c_str());
     int min_speech_ms = atoi(env_str("VOICE_MIN_SPEECH_MS", "300").c_str());
+    std::string wake_words = env_str("VOICE_WAKE", "你好星期五,星期五"); // 唤醒词(逗号分隔)
+    int active_ms = atoi(env_str("VOICE_ACTIVE_MS", "10000").c_str());   // 唤醒后持续响应窗口
+    std::string ack = env_str("VOICE_ACK", "在的，老板");                 // 仅唤醒时的语音应答
 };
 
 // ── 音频工具 ─────────────────────────────────────────────────
@@ -176,6 +183,62 @@ void forward(const Config &cfg, const std::string &text) {
         cfg.agent_url + "/tui/submit-prompt\" >/dev/null 2>&1; rm -f " + path + "' >/dev/null 2>&1";
     if (system(cmd.c_str()) == -1) fprintf(stderr, "[app] 转发启动失败\n");
     g_ui.set_reply("已转发 Master");
+}
+
+// —— 唤醒门控 / 音乐暂停 / TTS 静音 ——
+long read_music_pid() {
+    FILE *f = fopen("/tmp/myagent_music.pid", "r");
+    if (!f) return -1;
+    long pid = -1;
+    if (fscanf(f, "%ld", &pid) != 1) pid = -1;
+    fclose(f);
+    return pid;
+}
+long g_music_pid = -1;
+bool g_music_paused = false;
+std::chrono::steady_clock::time_point g_active_until{};
+
+bool tts_active() {
+    struct stat st;
+    if (stat("/tmp/myagent_tts_active", &st) != 0) return false;
+    return (time(nullptr) - st.st_mtime) < 30;
+}
+
+// 命中唤醒词或处于活跃窗口才转发；放歌时唤醒即暂停、窗口结束恢复；TTS 期间静音
+bool handle_text(const Config &cfg, const std::string &text) {
+    if (tts_active()) {
+        printf("[app] TTS 播放中，静音忽略: %s\n", text.c_str());
+        g_ui.set_status("TTS 播放中");
+        return false;
+    }
+    std::string norm = wake::normalize(text);
+    std::string rest;
+    bool woke = wake::strip(norm, cfg.wake_words, rest);
+    auto now = std::chrono::steady_clock::now();
+    bool active = now < g_active_until;
+    if (!woke && !active) {
+        printf("[app] 未唤醒(静默): %s\n", text.c_str());
+        g_ui.set_status("未唤醒·静默");
+        return false;
+    }
+    long mp = read_music_pid();
+    if (woke && mp > 0 && kill(mp, 0) == 0 && !g_music_paused) {
+        kill(mp, SIGSTOP);
+        g_music_pid = mp;
+        g_music_paused = true;
+        printf("[app] 已暂停音乐(pid=%ld)\n", mp);
+    }
+    std::string cmd = woke ? rest : norm;
+    if (woke && cmd.empty()) {
+        printf("[app] 唤醒应答: %s\n", cfg.ack.c_str());
+        std::string ackcmd = "/opt/my-agent/voice/say.sh '" + cfg.ack + "' >/dev/null 2>&1";
+        int rc = system(ackcmd.c_str()); (void)rc;
+        return true;
+    }
+    g_active_until = now + std::chrono::milliseconds(cfg.active_ms);
+    printf("[app] 已唤醒 → %s\n", cmd.c_str());
+    forward(cfg, cmd);
+    return true;
 }
 
 // ── 摄像头线程 ───────────────────────────────────────────────
@@ -315,7 +378,7 @@ void audio_worker(const Config &cfg, std::queue<std::vector<short>> &q,
         fflush(stdout);
         g_ui.set_last(text);
         g_ui.set_status("已识别");
-        if (cfg.forward) forward(cfg, text);
+        if (cfg.forward) handle_text(cfg, text);
         if (g_run) g_ui.set_status("等待语音");
     }
 }

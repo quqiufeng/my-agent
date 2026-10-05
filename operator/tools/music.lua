@@ -69,6 +69,7 @@ local function play_list(tracks)
     local pid = p and p:read("*a"):match("%d+") or nil
     if p then p:close() end
     if pid then write_file(PIDF, pid) end
+    write_file("/tmp/myagent_music_now", tracks[1].name)
     if #tracks == 1 then
         print("正在播放: " .. tracks[1].name)
     else
@@ -125,6 +126,17 @@ elseif mode == "random" then
     if #ts == 0 then print("音乐库为空或不可访问"); os.exit(1) end
     play_list({ ts[math.random(#ts)] })
 
+elseif mode == "next" then
+    local ts = list_tracks()
+    if #ts == 0 then print("音乐库为空或不可访问"); os.exit(1) end
+    local cur = read_file("/tmp/myagent_music_now")
+    local pick
+    for _ = 1, 12 do
+        pick = ts[math.random(#ts)]
+        if not cur or pick.name ~= cur then break end
+    end
+    play_list({ pick })
+
 elseif mode == "stop" then
     stop(); print("已停止播放")
 
@@ -136,5 +148,5 @@ elseif mode == "volume" then
     volume(arg[2])
 
 else
-    print("用法: music.sh search <关键词> | play <歌手或歌名> | random | stop | volup | voldown | volume <0-100>")
+    print("用法: music.sh search <关键词> | play <歌手或歌名> | random | next | stop | volup | voldown | volume <0-100>")
 end
