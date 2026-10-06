@@ -32,8 +32,18 @@ for u in "${URLS[@]}"; do
     printf '%05d %s\n' "$i" "$(tidy "$u")" >> "$D/urls"
 done
 export D
-# 并行下载（8 并发）
-xargs -a "$D/urls" -P 8 -n 2 sh -c 'curl -sL --max-time 40 -A "Mozilla/5.0" -H "Referer: https://weibo.com/" -o "$D/$1.jpg" "$2" 2>/dev/null' _
+# 并行下载（8 并发）；下不到就换尺寸重试 large↔mw690↔orj360，解决部分图 /large/ 404
+xargs -a "$D/urls" -P 8 -n 2 sh -c '
+  out="$D/$1.jpg"; u="$2"
+  curl -sL --max-time 40 -A "Mozilla/5.0" -H "Referer: https://weibo.com/" -o "$out" "$u" 2>/dev/null
+  if [ ! -s "$out" ]; then
+    for s in mw690 large orj360 thumb150; do
+      v="$(printf "%s" "$u" | sed -E "s#/(large|mw690|orj360|thumb150|thumb180|orj480|thumbnail|small|wap360|bmiddle)/#/$s/#")"
+      curl -sL --max-time 40 -A "Mozilla/5.0" -H "Referer: https://weibo.com/" -o "$out" "$v" 2>/dev/null
+      [ -s "$out" ] && break
+    done
+  fi
+' _
 
 FILES=()
 for f in "$D"/[0-9]*.jpg; do
