@@ -5,10 +5,10 @@ local to = os.getenv("WECHAT_TO") or ""
 if to == "" then to = "文件传输助手" end
 local text = arg[1] or ""
 
--- 回复统一带「#ai助手」前缀，便于在聊天里区分 AI 的回复
-local TAG = os.getenv("WECHAT_AI_TAG") or "#ai助手"
+-- 回复统一带「ai助手」前缀，便于在聊天里区分 AI 的回复（# 可省）
+local TAG = os.getenv("WECHAT_AI_TAG") or "ai助手"
 local out = text
-if not out:find("#%s*ai助手") then out = TAG .. " " .. text end
+if not out:find("ai助手") then out = TAG .. " " .. text end
 
 local ok, err = robot.init()
 if not ok then io.stderr:write("wechat init 失败: " .. tostring(err) .. "\n"); os.exit(1) end

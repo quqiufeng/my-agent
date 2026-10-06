@@ -3,9 +3,9 @@
 -- 每 POLL 秒后台轮询（不聚焦、不点开会话）：
 --   抓微信窗口(import -window，遮挡可读) → OCR 第二列 → 对白名单里每个会话
 --   找到其行 且 该行有未读红点（双重认证）→ 读该行预览(=最新消息)
---   → 消息必须带 #ai 标签（WECHAT_CMD_TAG）才当作指令，去掉标签后以
+--   → 消息必须以标签开头（ai / ai助手，`#` 可省）才当作指令，去掉标签后以
 --     [微信输入:<会话名>] 转发大脑。红点保留，不自动已读；不带标签的不响应。
--- 大脑回复经 operator/tools/wechat_send.sh --to <会话名> 发送，自动加 #ai助手 前缀。
+-- 大脑回复经 operator/tools/wechat_send.sh --to <会话名> 发送，自动加 ai助手 前缀。
 -- 用法: ./bridge.sh
 
 package.path = "/opt/my-agent/wechat-ocr/?.lua;/opt/my-agent/wechat-ocr/lua/?.lua;"
@@ -25,18 +25,17 @@ local DRY       = os.getenv("WECHAT_DRY") == "1"                   -- 只打印�
 local FORCE     = os.getenv("WECHAT_FORCE_UNREAD") == "1"          -- 无视红点强制读取（调试）
 local REPLY_WAIT = tonumber(os.getenv("WECHAT_REPLY_WAIT") or "40") -- 等大脑回复上限（秒）
 local WHITELIST = os.getenv("WECHAT_WHITELIST") or (DIR .. "/whitelist.txt")
-local CMD_TAG   = os.getenv("WECHAT_CMD_TAG") or "#ai"              -- 指令标签（白名单消息需带）
+local CMD_TAG   = os.getenv("WECHAT_CMD_TAG") or "ai助手"           -- 指令标签（# 可选）
 
--- 取指令正文：白名单消息必须带 #ai（或 #ai助手，容错大小写/空格/丢#）。
--- 命中返回去掉标签后的正文，否则 nil。
+-- 取指令正文：白名单消息以标签开头（`ai`/`ai助手`，`#` 可省；手机不好打#）。
+-- 容错：`#` 可能被 OCR 成「并/井」，`ai` 的 i 可能变 1/l/L。命中返回正文，否则 nil。
 local function to_command(text)
-    -- 标签容错：# 可能被 OCR 成「并/井」，#ai 的 i 可能变成 1/l/L
-    for _, h in ipairs({ "#", "并", "井" }) do
-        local b, n = text:gsub(h .. "%s*[Aa][Ii1lL]%s*助手", "")
-        if n == 0 then b, n = text:gsub(h .. "%s*[Aa][Ii1lL]", "") end
-        if n > 0 then return (b:gsub("^%s+", ""):gsub("%s+$", "")) end
-    end
-    return nil
+    local t = text:gsub("^%s+", ""):gsub("^[#并井]%s*", "")
+    local rest, n = t:gsub("^[Aa][Ii1lL]", "", 1)
+    if n == 0 then return nil end
+    if rest:match("^[A-Za-z0-9]") then return nil end   -- 排除 air/aid 等英文词
+    rest = rest:gsub("^%s*助手", ""):gsub("^%s+", "")
+    return (rest:gsub("%s+$", ""))
 end
 
 -- ── 白名单 ──────────────────────────────────────────────────

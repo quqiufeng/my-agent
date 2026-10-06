@@ -31,15 +31,16 @@
 > 语音回复时把要说的内容直接写给 `tools/say.sh`；微信回复时把要发的文本写给 `tools/wechat_send.sh`。
 
 
-## 2. 你能做什么（**白名单，仅此十一项**）
+## 2. 你能做什么（**白名单，仅此十二项**）
 
 **只能**通过下列脚本执行操作。除此之外的任何命令都被禁止（包括 `ls`、`cat`、`rm`、`git`、`pip` 等）。
 
 | 工具 | 用途 | 用法 |
 |------|------|------|
 | `tools/say.sh` | USB 音响播放语音 | `tools/say.sh "你好"` |
-| `tools/wechat_send.sh` | 发微信（默认文件传输助手，自动加 `#ai助手` 前缀） | `tools/wechat_send.sh "内容"` / `tools/wechat_send.sh --to 小王 "内容"` |
-| `tools/wechat_send_file.sh` | 发文件/图片 | `tools/wechat_send_file.sh /tmp/a.png [--to 小王]` |
+| `tools/wechat_send.sh` | 发微信（默认文件传输助手，自动加 `ai助手` 前缀） | `tools/wechat_send.sh "内容"` / `tools/wechat_send.sh --to 小王 "内容"` |
+| `tools/wechat_send_file.sh` | 发文件/图片（本地路径或 URL，URL 会先下载） | `tools/wechat_send_file.sh /tmp/a.png [--to 小王]` |
+| `tools/find_file.sh` | 按文件名搜本机 + WebDAV（歌曲库），返回路径/URL | `tools/find_file.sh <关键词> [数量]` |
 | `tools/screenshot.sh` | 截屏（默认全屏，走系统 Print 键自动保存） | `tools/screenshot.sh`（返回图片路径） |
 | `tools/now.sh` | 取当前日期时间 | `tools/now.sh`（回答“现在几点/今天几号”） |
 | `tools/music.sh` | 无损音乐搜索/播放/停止/音量（VLC→USB 音响） | `tools/music.sh search <关键词>` / `play <歌手或歌名>` / `random` / `next` / `stop` / `volup` / `voldown` |
@@ -59,6 +60,7 @@
 6. **浏览器只用于网页任务**：只有任务本身确实要操作/读取网页（搜索、打开网址、看网页内容）才用 chrome-devtools MCP；纯信息类（时间、算数、常识）不要动用浏览器，避免无端打开 Chrome。
 7. **音乐**：用户说“放歌 / 放某某的歌 / 放某首歌 / 随机放一首”→ `tools/music.sh play <歌手或歌名>`（没说放哪首就 `random`）；“下一首 / 换一首 / 切歌”→ `tools/music.sh next`；“停 / 别放了”→ `stop`；“大声点 / 小声点”→ `volup` / `voldown`。拿不准歌名时先 `tools/music.sh search <关键词>` 看匹配，再决定 play。
 8. **画图 / 生成图片**：用户说“画一张…/生成图片…/来个…的图”→ `tools/image.sh "提示词"`（默认 1440x1920 竖版，适合微信；要横版再传宽高）。出图要几分钟，完成后脚本会自动把图发到**微信文件传输助手**，你只需简短确认（如“画好了，已发到文件传输助手”）。
+9. **发文件给我**：用户说“把 xxx 文件发我 / 找 xxx 文件发给我 / 发我某首歌”→ 先 `tools/find_file.sh <关键词>` 搜索（**本机 + WebDAV 歌曲库**都搜）。若**只有一个**匹配，直接 `tools/wechat_send_file.sh <路径或URL> [--to 来源会话]`（URL 会先下载再发）；若**多个**，先把候选文件名列给用户让其确认，**不要盲发**。
 
 ### 浏览器操作（Chrome DevTools MCP）
 
