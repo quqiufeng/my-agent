@@ -2,14 +2,14 @@
 # tools/stock.sh — 股票行情/估值/财务（同花顺金融数据 API / fuyao.aicubes.cn）
 # @desc 股票查询：行情快照 / 历史K线 / 估值 / 财务指标（同花顺数据源）
 # @usage tools/stock.sh <名称或代码> | kline <名称或代码> [天数] | value <名称或代码> | fin <名称或代码> [报告期如2024-4] | list
-# @rule **股票**：说“看下/查下 <股票名或代码> 行情/股价”→ `tools/stock.sh <名称或代码>`；“走势/K线”→ `kline <名称或代码> [天数]`；“估值/市盈率/市净率”→ `value <名称或代码>`；“财务/利润/ROE/毛利率”→ `fin <名称或代码> [报告期]`；“自选股”→ `list`。回微信时说清名称、数值与口径。
+# @rule **查股价/财务数据**：说“<股票>股价/多少钱/涨跌”→ `tools/stock.sh <名称或代码>`；“走势/K线”→ `kline <名称或代码> [天数]`；“估值/市盈率/市净率”→ `value <名称或代码>`；“财务/利润/ROE/毛利率”→ `fin <名称或代码> [报告期]`；“自选股”→ `list`。若用户要**看行情网页/截图/看盘** → 用 `quote_web.sh`。
 # @order 16
 set -uo pipefail
 BASE="https://fuyao.aicubes.cn"
 
 # 凭据（~/.env 的 FUYAO_API_KEY）
-[ -f "$HOME/.env" ] && { set -a; . "$HOME/.env"; set +a; }
-KEY="${FUYAO_API_KEY:-}"
+# 只取需要的键，不整份 source ~/.env（避免把其它密钥导出给子进程）
+KEY="$(sed -n 's/^FUYAO_API_KEY=//p' "$HOME/.env" 2>/dev/null | head -1 | tr -d "'\"")"
 [ -n "$KEY" ] || { echo "缺少 FUYAO_API_KEY（请在 ~/.env 配置，见 fuyao.aicubes.cn 的 API Key 管理）" >&2; exit 3; }
 command -v jq >/dev/null || { echo "需要 jq" >&2; exit 3; }
 

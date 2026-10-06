@@ -21,7 +21,6 @@ local SENT_LOG  = os.getenv("WECHAT_SENT_LOG") or "/tmp/myagent_wechat_sent.log"
 local POLL      = tonumber(os.getenv("WECHAT_POLL_SEC") or "10")   -- 轮询间隔（秒）
 local ONCE      = os.getenv("WECHAT_ONCE") == "1"                  -- 只跑一轮（调试）
 local DRY       = os.getenv("WECHAT_DRY") == "1"                   -- 只打印不转发（调试）
-local FORCE     = os.getenv("WECHAT_FORCE_UNREAD") == "1"          -- 无视红点强制读取（调试）
 local REPLY_WAIT = tonumber(os.getenv("WECHAT_REPLY_WAIT") or "40") -- 等大脑回复上限（秒）
 local WHITELIST = os.getenv("WECHAT_WHITELIST") or (DIR .. "/whitelist.txt")
 local CMD_TAG   = os.getenv("WECHAT_CMD_TAG") or "ai助手"           -- 指令标签（# 可选）

@@ -126,6 +126,5 @@ end
 -- 页脚
 text(m, H - 30, "同花顺 · " .. os.date("%Y-%m-%d %H:%M:%S"), 18, GRAY)
 
-qt_out = qt(out)
-cmd[#cmd + 1] = qt_out
+cmd[#cmd + 1] = qt(out)
 os.execute(table.concat(cmd, " "))

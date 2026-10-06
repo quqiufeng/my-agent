@@ -7,7 +7,7 @@
 | 工具 | 用途 | 用法 |
 |------|------|------|
 | `tools/browser.sh` | 操作本机 Chrome（不新开浏览器） | `browser.sh new_tab` |
-| `tools/dash.sh` | 股票大屏（指数+自选股汇总成一张行情大屏图） | `tools/dash.sh [--to 会话] [--show]` |
+| `tools/dash.sh` | 股票大屏（指数头+自选股+小K线，白底多面板） | `tools/dash.sh [--to 会话] [--show]` |
 | `tools/english.sh` | 英语口语陪练（麦克风识别英文，回复用英文音色朗读） | `tools/english.sh start|stop|status` |
 | `tools/find_file.sh` | 按文件名关键词搜索本机文件 + WebDAV，返回匹配（本地路径 或 可下载 URL） | `find_file.sh <关键词> [数量=15]` |
 | `tools/gemini_out.sh` | 把（Gemini 等）获取到的结果按目标转发 | `tools/gemini_out.sh` |
@@ -18,6 +18,7 @@
 | `tools/open_app.sh` | 打开白名单内的本机应用 | `open_app.sh <chrome|terminal|files|editor|wechat>` |
 | `tools/photo.sh` | USB 摄像头拍照并发微信（默认文件传输助手） | `tools/photo.sh` |
 | `tools/progress.sh` | 查看开发进度：点击 qterminal，逐个 tab 截图 opencode，合并后发微信 | `progress.sh [--to 会话]` |
+| `tools/quote_web.sh` | 看行情（浏览器打开搜狐行情页并全屏截图发微信） | `tools/quote_web.sh [名称或代码] [--to 会话]` |
 | `tools/remote.sh` | 管理本机/远程的 tmux + opencode 集群 | `tools/remote.sh` |
 | `tools/say.sh` | USB 音响播放语音（文本转语音） | `tools/say.sh` |
 | `tools/screenshot.sh` | 截屏（默认全屏），返回图片路径 | `screenshot.sh [可选输出路径]` |
@@ -47,7 +48,8 @@
 9. **看开发进度**：说“看看开发进度 / 项目进度 / 各项目怎么样 / 进度”→ `progress.sh`（点击 qterminal，逐个 tab 截图 opencode，合并后发来源会话）。
 10. **英语口语陪练**：收到 `[英语口语] ...` 时，你是英语口语陪练——用**英文**简短回应（1-3 句）、温和指出更自然的说法，并反问一句让对话继续；回复一律 `tools/say.sh "英文"` 读出（陪练模式会自动用英文音色）。用户说中文或要翻译时，再中英对照。
 11. **记单词**：说“记单词 / 背单词 / 开始背单词”→ `tools/vocab.sh start`；“停了/结束背单词”→ `stop`；要加词 → `add <英文> <中文>`。开始后弹卡片，你读单词：**读对进下一个；读错弹带中文翻译的卡片帮助记忆**。
-12. **股票**：说“看下/查下 <股票名或代码> 行情/股价”→ `tools/stock.sh <名称或代码>`；“走势/K线”→ `kline <名称或代码> [天数]`；“估值/市盈率/市净率”→ `value <名称或代码>`；“财务/利润/ROE/毛利率”→ `fin <名称或代码> [报告期]`；“自选股”→ `list`。回微信时说清名称、数值与口径。
-13. **股票大屏**：说“股票大屏 / 行情大屏 / 看盘 / 大盘和自选股汇总”→ `tools/dash.sh`（生成大屏图并发来源会话）。要在大屏上直接看加 `--show`。
+12. **查股价/财务数据**：说“<股票>股价/多少钱/涨跌”→ `tools/stock.sh <名称或代码>`；“走势/K线”→ `kline <名称或代码> [天数]`；“估值/市盈率/市净率”→ `value <名称或代码>`；“财务/利润/ROE/毛利率”→ `fin <名称或代码> [报告期]`；“自选股”→ `list`。若用户要**看行情网页/截图/看盘** → 用 `quote_web.sh`。
+13. **自绘数据大屏**：说“自绘大屏 / 汇总我的自选股 / 把指数和自选股汇总成一张图”→ `tools/dash.sh`。若只是“看行情/看盘”→ 用 `quote_web.sh` 开浏览器截图。
+14. **看行情/看盘/大盘**：说“看下<股票>行情 / 大盘怎么样 / 看盘 / 行情截图”→ `tools/quote_web.sh [名称或代码]`（不传=上证指数）。它会用浏览器打开搜狐行情页并全屏截图发来源会话。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_

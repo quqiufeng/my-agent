@@ -2,7 +2,7 @@
 # tools/dash.sh — 股票大屏：汇总指数 + 自选股 + 主指数K线，渲染白底多面板大屏图并发微信
 # @desc 股票大屏（指数头+自选股+小K线，白底多面板）
 # @usage tools/dash.sh [--to 会话] [--show]
-# @rule **股票大屏**：说“股票大屏 / 行情大屏 / 看盘 / 大盘和自选股汇总”→ `tools/dash.sh`（生成大屏图并发来源会话）。要在大屏上直接看加 `--show`。
+# @rule **自绘数据大屏**：说“自绘大屏 / 汇总我的自选股 / 把指数和自选股汇总成一张图”→ `tools/dash.sh`。若只是“看行情/看盘”→ 用 `quote_web.sh` 开浏览器截图。
 # @order 17
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -16,8 +16,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-[ -f "$HOME/.env" ] && { set -a; . "$HOME/.env"; set +a; }
-KEY="${FUYAO_API_KEY:-}"
+KEY="$(sed -n 's/^FUYAO_API_KEY=//p' "$HOME/.env" 2>/dev/null | head -1 | tr -d "'\"")"
 [ -n "$KEY" ] || { echo "缺少 FUYAO_API_KEY" >&2; exit 3; }
 command -v jq >/dev/null || { echo "需要 jq" >&2; exit 3; }
 BASE="https://fuyao.aicubes.cn"

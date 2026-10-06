@@ -46,17 +46,6 @@ render() {
         0x0b1f12 0xf4f4f4 "${3:-0x9fe0b0}" 2>/dev/null
 }
 
-norm() { printf '%s' "$1" | tr -d '[:space:][:punct:]'; }
-
-# 模糊匹配（中文释义）：答案包含目标 或 目标包含答案
-match() {
-    local a e; a="$(norm "$1")"; e="$(norm "$2")"
-    [ -z "$a" ] && return 1
-    case "$a" in *"$e"*) return 0;; esac
-    case "$e" in *"$a"*) [ "${#a}" -ge 2 ] && return 0;; esac
-    return 1
-}
-
 # Levenshtein 编辑距离
 lev() {
     awk -v s="$1" -v t="$2" 'BEGIN{
@@ -146,7 +135,7 @@ case "${1:-status}" in
         command -v tmux >/dev/null || { echo "需要 tmux"; exit 1; }
         tmux has-session -t "$SESS" 2>/dev/null && { echo "记单词已在运行"; exit 0; }
         tmux new-session -d -s "$SESS" "cd '$DIR' && DISPLAY=:0 './vocab.sh' run 2>&1 | tee /tmp/vocab.log"
-        sleep 1; echo "已开始记单词（看屏幕卡片，读一遍并说中文意思）" ;;
+        sleep 1; echo "已开始记单词（看屏幕卡片读单词：读对进下一个，读错弹释义卡）" ;;
     stop)
         tmux kill-session -t "$SESS" 2>/dev/null
         pkill -f "display.*$(basename "$CARD")" 2>/dev/null
