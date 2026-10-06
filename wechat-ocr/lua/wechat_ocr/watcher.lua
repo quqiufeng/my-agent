@@ -135,6 +135,14 @@ local function taskbar_icon()
     return taskbar_icon_im()
 end
 
+-- 若微信被最小化/隐藏，映射出来（不点开会话）
+function M.ensure_visible()
+    local win = M.window()
+    if not win then return end
+    sh("xdotool windowmap " .. win.id)
+    sleep_us(400000)
+end
+
 -- 当前活动窗口 id
 function M.active_window()
     local out = popen_line("xdotool getactivewindow") or ""

@@ -1,10 +1,10 @@
 -- wechat-ocr/bridge.lua — 微信入口（常驻守护，用户白名单模式）
 -- 白名单: whitelist.txt（每行一个会话名），第一个是「文件传输助手」。
 -- 每 POLL 秒后台轮询（不聚焦、不点开会话）：
---   抓微信窗口(import -window，遮挡可读) → OCR 第二列 → 对白名单里每个会话
---   找到其行 且 该行有未读红点（双重认证）→ 读该行预览(=最新消息)
---   → 消息必须以标签开头（ai / ai助手，`#` 可省）才当作指令，去掉标签后以
---     [微信输入:<会话名>] 转发大脑。红点保留，不自动已读；不带标签的不响应。
+--   抓微信窗口(import -window，遮挡可读；最小化则 windowmap 映射) → OCR 第二列
+--   → 对白名单里每个会话，读其行预览(=最新消息)；预览以标签开头（ai / ai助手，
+--     `#` 可省）且与上次不同 → 去掉标签以 [微信输入:<会话名>] 转发大脑。
+--   （不依赖红点：会话长期打开时消息会被自动已读；用「预览变化 + 标签」触发）
 -- 大脑回复经 operator/tools/wechat_send.sh --to <会话名> 发送，自动加 ai助手 前缀。
 -- 用法: ./bridge.sh
 
@@ -96,17 +96,22 @@ local function normalize(s)
     return (s:gsub("%s", ""):gsub("[%p%c]", ""))
 end
 
-local function is_self(text)
-    local n = normalize(text)
-    if n == "" then return false end
+-- 判断预览/正文是否是我们自己刚发过的回复（带标签/去标签都比）
+local function is_self(preview, cmd)
+    local full, body = {}, {}
     local f = io.open(SENT_LOG, "r")
-    if not f then return false end
-    local hit = false
-    for line in f:lines() do
-        if normalize(line) == n then hit = true; break end
+    if f then
+        for line in f:lines() do
+            if line ~= "" then
+                full[normalize(line)] = true
+                body[normalize(to_command(line) or line)] = true
+            end
+        end
+        f:close()
     end
-    f:close()
-    return hit
+    if preview and full[normalize(preview)] then return true end
+    if cmd and cmd ~= "" and body[normalize(cmd)] then return true end
+    return false
 end
 
 local function sent_lines()
@@ -146,59 +151,50 @@ io.write(string.format("[bridge] 微信白名单监控启动：每 %d 秒轮询�
     POLL, table.concat(USERS, ","), AGENT_URL))
 io.flush()
 
--- 全程后台读第二列：不聚焦、不点开会话，红点保留。
+-- 全程后台读第二列：不聚焦、不点开会话。
+-- 触发条件（不依赖红点，因为「文件传输助手」长期是打开会话、消息会被自动已读）：
+--   白名单会话的预览文字以标签开头，且与上次不同 → 作为指令转发。
 while true do
     local shot, win = watcher.window_capture()
-    local res, badges = nil, {}
-    if shot then
-        res = watcher.ocr(shot, win)
-        badges = watcher.red_badges(shot, win)
+    if not shot then
+        watcher.ensure_visible()                 -- 微信可能被最小化，映射出来
+        shot, win = watcher.window_capture()
     end
-    local any_unread = false
+    local res = shot and watcher.ocr(shot, win)
+    local did = false
 
     for _, user in ipairs(USERS) do
         local row = res and watcher.find_row(res, user)
         if row then
-            local unread = FORCE or watcher.row_has_badge(row, badges)
-            if not unread then
-                last[user] = nil                 -- 红点已清，允许同样消息再次处理
-            else
-                any_unread = true
-                io.write("[bridge] 「" .. user .. "」有未读\n")
-                notify()                          -- USB 音响提示音
-                local text, perr = watcher.read_preview(shot, win, row)
-                local cmd = text and to_command(text) or nil
-                if text and text ~= "" and text ~= last[user] then
-                    if not cmd then
-                        io.write("[bridge] 跳过(无 " .. CMD_TAG .. " 标签): " .. text .. "\n")
-                    elseif cmd == "" then
-                        io.write("[bridge] 跳过(空指令)\n")
-                    elseif is_self(text) then
-                        io.write("[bridge] 跳过(自己发的): " .. text .. "\n")
-                    elseif DRY then
-                        io.write("[bridge][DRY] 将转发 -> " .. user .. ": " .. cmd .. "\n")
-                        last[user] = text; save_last()
-                    else
-                        io.write("[微信输入:" .. user .. "] " .. cmd .. "\n")
-                        io.flush()
-                        local before = sent_lines()
-                        forward(user, cmd)
-                        last[user] = text; save_last()
-                        -- 等大脑回程（回微信会写发送日志）
-                        for _ = 1, REPLY_WAIT do
-                            if sent_lines() > before then break end
-                            os.execute("sleep 1")
-                        end
-                        os.execute("sleep 4")
-                    end
+            local text, _ = watcher.read_preview(shot, win, row)
+            local cmd = text and to_command(text) or nil
+            if text and text ~= "" and text ~= last[user] and cmd and cmd ~= "" then
+                if is_self(text, cmd) then
+                    io.write("[bridge] 跳过(自己发的): " .. text .. "\n")
+                    last[user] = text; save_last()
+                elseif DRY then
+                    io.write("[bridge][DRY] 将转发 -> " .. user .. ": " .. cmd .. "\n")
+                    last[user] = text; save_last(); did = true
                 else
-                    io.write("[bridge] 未读到新消息 (" .. tostring(perr or "重复") .. ")\n")
+                    did = true
+                    io.write("[微信输入:" .. user .. "] " .. cmd .. "\n")
+                    io.flush()
+                    notify()                          -- USB 音响提示音
+                    local before = sent_lines()
+                    forward(user, cmd)
+                    last[user] = text; save_last()
+                    -- 等大脑回程（回微信会写发送日志）
+                    for _ = 1, REPLY_WAIT do
+                        if sent_lines() > before then break end
+                        os.execute("sleep 1")
+                    end
+                    os.execute("sleep 4")
                 end
             end
         end
     end
 
-    if not any_unread then io.write("[bridge] 白名单内无未读\n") end
+    if not did then io.write("[bridge] 白名单内无新指令\n") end
     io.flush()
     if ONCE then break end
     os.execute("sleep " .. POLL)
