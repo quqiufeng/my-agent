@@ -1,9 +1,9 @@
 -- wechat-ocr/bridge.lua — 微信入口（常驻守护，用户白名单模式）
 -- 白名单: whitelist.txt（每行一个会话名），第一个是「文件传输助手」。
--- 每 POLL 秒轮询：聚焦微信(触发会话区重绘) → 抓窗口 → 顶部标题确认当前会话
---   在白名单内 → 读第三列最新一条消息；以标签开头（ai / ai助手，`#` 可省）
---   且与上次不同 → 去掉标签以 [微信输入:<会话名>] 转发大脑，随后还原焦点。
---   （会话区是 GPU 渲染，需聚焦才可抓；用「最新消息变化 + 标签」触发，不依赖红点）
+-- 每 POLL 秒后台轮询（quiet：不聚焦、不激活、不点开会话）：
+--   import -window 抓微信窗口(遮挡可读；最小化则跳过) → OCR 第二列 →
+--   对白名单每个会话读其行预览(=最新消息)；预览以标签开头（ai / ai助手，`#` 可省）
+--   且与上次不同 → 去掉标签以 [微信输入:<会话名>] 转发大脑。
 -- 大脑回复经 operator/tools/wechat_send.sh --to <会话名> 发送，自动加 ai助手 前缀。
 -- 用法: ./bridge.sh
 
@@ -150,36 +150,36 @@ io.write(string.format("[bridge] 微信白名单监控启动：每 %d 秒轮询�
     POLL, table.concat(USERS, ","), AGENT_URL))
 io.flush()
 
--- 读「当前打开的会话」：聚焦微信(触发会话区重绘) → 顶部标题确认来源会话
--- → 读第三列最新一条气泡；带标签且与上次不同 → 作为指令转发。
--- （列表里的预览方案会被滚动/最小化影响，读打开会话更稳；自动已读无所谓）
+-- 全程后台读第二列预览：不聚焦、不激活、不点开会话（quiet）。
+-- 白名单会话的预览以标签开头且与上次不同 → 作为指令转发。
+-- 微信被最小化/隐藏时抓不到（不抢焦点，跳过）；遮挡不影响。
 while true do
-    watcher.activate_wechat()
     local shot, win = watcher.window_capture()
-    local res = shot and watcher.ocr(shot, win)
-    local did = false
-
-    if res then
+    if not shot then
+        io.write("[bridge] 微信不可见（最小化），跳过（保持微信未最小化即可）\n")
+    else
+        local res = watcher.ocr(shot, win)
+        local has_cmd = false
         for _, user in ipairs(USERS) do
-            if watcher.find_title(res, user) then
-                local text = watcher.read_bottom_from(res, win)
+            local row = res and watcher.find_row(res, user)
+            if row then
+                local text = watcher.read_preview(shot, win, row)
                 local cmd = text and to_command(text) or nil
                 if text and text ~= "" and text ~= last[user] and cmd and cmd ~= "" then
+                    has_cmd = true
                     if is_self(text, cmd) then
                         io.write("[bridge] 跳过(自己发的): " .. text .. "\n")
                         last[user] = text; save_last()
                     elseif DRY then
                         io.write("[bridge][DRY] 将转发 -> " .. user .. ": " .. cmd .. "\n")
-                        last[user] = text; save_last(); did = true
+                        last[user] = text; save_last()
                     else
-                        did = true
                         io.write("[微信输入:" .. user .. "] " .. cmd .. "\n")
                         io.flush()
                         notify()                          -- USB 音响提示音
                         local before = sent_lines()
                         forward(user, cmd)
                         last[user] = text; save_last()
-                        -- 等大脑回程（回微信会写发送日志）
                         for _ = 1, REPLY_WAIT do
                             if sent_lines() > before then break end
                             os.execute("sleep 1")
@@ -189,10 +189,8 @@ while true do
                 end
             end
         end
+        if not has_cmd then io.write("[bridge] 无新指令\n") end
     end
-
-    watcher.restore_focus()
-    if not did then io.write("[bridge] 白名单会话无新指令\n") end
     io.flush()
     if ONCE then break end
     os.execute("sleep " .. POLL)
