@@ -39,10 +39,10 @@ echo "打开: $SOHU"
 
 # 在现有 Chrome 里打开（已有实例会新开标签）
 setsid google-chrome "$SOHU" >/dev/null 2>&1 &
-sleep 6
-w="$(wmctrl -l | grep -i "Google Chrome" | awk '{print $1}' | head -1)"
-[ -n "$w" ] && wmctrl -i -a "$w"      # 把 Chrome 提到前台再截屏
-sleep 2
+sleep 8
+cid="$(xdotool search --name 'Google Chrome' 2>/dev/null | head -1)"
+[ -n "$cid" ] && xdotool windowactivate --sync "$cid"   # 把 Chrome 提到前台再截屏
+sleep 3
 
 # 全屏截图（优先系统 Print 自动存图，失败用 import）
 OUT="/tmp/myagent_quote_$(date +%Y%m%d_%H%M%S).png"

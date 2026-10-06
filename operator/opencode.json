@@ -10,6 +10,7 @@
     }
   },
   "permission": {
+    "*": "allow",
     "read": "deny",
     "edit": "deny",
     "glob": "deny",
