@@ -135,18 +135,60 @@ local function taskbar_icon()
     return taskbar_icon_im()
 end
 
--- 若微信被最小化/隐藏，映射出来（不点开会话）
+-- 若微信被最小化/隐藏，映射出来（不点开会话），并把焦点还给原窗口。
+-- 注：用「预览变化」触发后，自动已读无关紧要，故可安全唤出。
 function M.ensure_visible()
     local win = M.window()
     if not win then return end
+    local prev = M.active_window()
+    local pname = prev and (popen_line("xdotool getwindowname " .. prev) or "") or ""
     sh("xdotool windowmap " .. win.id)
-    sleep_us(400000)
+    sleep_us(500000)
+    if prev and not pname:find("微信") then
+        sh("xdotool windowactivate " .. prev)
+        sleep_us(200000)
+    end
 end
 
 -- 当前活动窗口 id
 function M.active_window()
     local out = popen_line("xdotool getactivewindow") or ""
     return tonumber(out:match("(%d+)"))
+end
+
+-- 把微信激活到前台（会话区是 GPU 渲染，聚焦后才会重绘、可被抓到）。
+-- 记录原活动窗口，供 restore_focus() 还原。
+function M.activate_wechat()
+    if not M._prev_win then
+        local cur = M.active_window()
+        if cur then
+            local n = popen_line("xdotool getwindowname " .. cur) or ""
+            if not n:find("微信") then M._prev_win = cur end
+        end
+    end
+    sh("xdotool search --name 微信 windowactivate --sync")
+    sleep_us(800000)
+end
+
+-- 还原到 activate_wechat() 之前的窗口
+function M.restore_focus()
+    if M._prev_win then
+        sh("xdotool windowactivate " .. M._prev_win)
+        M._prev_win = nil
+        sleep_us(300000)
+    end
+end
+
+local name_match   -- 前向声明（定义见下方 find_row 之前）
+
+-- 顶部标题栏(y<60)里匹配 name 的文字（=当前打开的会话名）
+function M.find_title(res, name)
+    for _, b in ipairs(res.boxes) do
+        if b.y < 60 and b.text ~= "" and name_match(b.text, name) then
+            return b
+        end
+    end
+    return nil
 end
 
 -- 点状态栏微信图标，让微信独占显示（最大化到前台）
@@ -228,7 +270,7 @@ local function utf8_chars(s)
     return t
 end
 
-local function name_match(text, name)
+name_match = function(text, name)
     local t = (text or ""):gsub("%s", "")
     local n = (name or ""):gsub("%s", "")
     if n == "" then return false end
