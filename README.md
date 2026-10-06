@@ -29,6 +29,9 @@
                                             语音→ say.sh 出声   微信→ wechat_send.sh 回发
 ```
 
+> **白名单工具现有 21 个**：说话/发微信（`say`/`wechat_send`/`wechat_send_file`）、截屏、音乐、美剧/电影、USB 摄像头拍照、找文件（本机+NAS）、出图、股票行情/估值/财务、行情大屏、开发进度、备忘、英语口语陪练、记单词、开应用/浏览器、集群管理、结果分发、时间。
+> 清单与各工具规则由 `operator/plugin.sh index` **自动生成**到 `operator/TOOLS.md`（大脑经 `instructions` 加载），**新增工具无需手改契约**。
+
 三条设计原则：
 
 1. **入口只产文本**：语音、微信两条入口都只做「转成文字 + 打前缀」，不掺业务逻辑。
@@ -46,25 +49,28 @@ my-agent/
 ├── remote.sh                 # tmux + opencode 会话/集群管理脚本（大脑的一把工具）
 ├── chrome.md / rule.md       # Chrome 控制、UTEL 编码规范（参考）
 │
-├── operator/                 # 【大脑】单脑 + 工具白名单
-│   ├── AGENTS.md             #   ★ 运行时契约（大脑读：来源识别/回程/白名单/禁止项）
-│   ├── opencode.json         #   权限：默认全拒，仅放行 tools/*
+├── operator/                 # 【大脑】单脑 + 工具白名单（插件式）
+│   ├── AGENTS.md             #   运行时契约（来源识别/回程/示例等散文）
+│   ├── TOOLS.md              #   工具清单+规则（plugin.sh index 自动生成，instructions 加载）
+│   ├── plugin.sh             #   轻插件：new 生成模板 / index 重建 TOOLS.md / list
+│   ├── opencode.json         #   权限：默认全拒，仅放行 tools/*；instructions 加载 TOOLS.md
 │   ├── .opencode/plugin/guard.js  # 兜底：拦截拼接命令
 │   ├── start.sh              #   启动 tmux + opencode serve(4097)/attach
-│   ├── tools/                #   白名单工具（say/wechat_send/screenshot/open_app/browser/remote）
+│   ├── tools/                #   21 个白名单工具（每个自带 @desc/@usage/@rule）
 │   └── README.md
 │
 ├── voice/                    # 【语音入口 + 输出】纯 C/C++，无 Python
 │   ├── say.sh                #   文本 → USB 音响（sherpa-onnx + Kokoro）
 │   ├── listen/               #   麦克风监听 → SenseVoice → 转发大脑
+│   ├── tutor.sh              #   英语口语陪练（[英语口语] 前缀 + 英文音色）
 │   ├── camera/               #   摄像头窗口（SDL2 + 人脸门控）
 │   ├── app/                  #   统一界面：画面 + 人脸门控 + 语音 + 状态栏
 │   └── README.md
 │
 ├── wechat-ocr/               # 【微信入口】LuaJIT + C++ + ONNX Runtime
 │   ├── wechat_robot.lua      #   统一 Lua API（搜索/发送/截图/监控/未读）
-│   ├── bridge.lua / bridge.sh #   monitor → 转发 [微信输入]
-│   ├── lua/wechat_ocr/       #   核心模块（init/chrome/badge_detect，仓库正本）
+│   ├── bridge.lua / bridge.sh #   白名单会话后台读预览 → 转发 [微信输入:<会话>]（不抢焦点）
+│   ├── lua/wechat_ocr/       #   核心模块（init/chrome/badge_detect/watcher，仓库正本）
 │   ├── src/ lib/             #   截图 + PP-OCRv4 C++ 封装
 │   └── README.md / WECHAT_OCR.md
 │
@@ -85,11 +91,18 @@ operator/start.sh                # 前台；--bg 后台
 voice/voice.sh listen            # 常驻监听
 voice/voice.sh app               # 或：统一界面（画面+语音+状态栏）
 
-# 3. 微信入口（微信窗口 → OCR → 大脑）
+# 3. 微信入口（白名单会话 → 读预览 → 大脑；不抢焦点）
 wechat-ocr/bridge.sh
+#    微信里发“ai助手 现在几点 / 放周杰伦 / 拍一张 / 看生活大爆炸 / 看下茅台 / 股票大屏”
 
-# 4. 文本转语音（USB 音响）
+# 4. 英语口语陪练（麦克风，回复用英文音色）
+voice/voice.sh tutor
+
+# 5. 文本转语音（USB 音响）
 voice/voice.sh say "你好"
+
+# 新增一个“能力”（不用改 AGENTS.md）
+operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → 重启大脑
 ```
 
 ---
@@ -100,9 +113,9 @@ voice/voice.sh say "你好"
 
 1. **权限**（`operator/opencode.json`）：`bash` 默认 `deny`、只放行 `tools/*`；`read/edit/webfetch/task` 全部 `deny`。
 2. **兜底插件**（`operator/.opencode/plugin/guard.js`）：执行前正则校验，禁止 `&&`、`;`、`|`、重定向等拼接绕过。
-3. **契约**（`operator/AGENTS.md`）：明确告诉大脑“只能做白名单里的七件事，不认识的请求就拒绝”。
+3. **契约**（`operator/AGENTS.md` + `operator/TOOLS.md`）：告诉大脑“只能调用白名单里的 21 个工具，不认识的请求就拒绝”。
 
-回程规则：`[语音输入]` → `say.sh`；`[微信输入]` → `wechat_send.sh`（默认发「文件传输助手」，可 `--to` 指定联系人）。
+回程规则：`[语音输入]` → `say.sh` / `wechat_send.sh`；`[微信输入:<会话名>]` → `wechat_send.sh --to <会话名>`（默认「文件传输助手」）；`[英语口语]` → `say.sh` 英文音色。
 
 ---
 
@@ -116,8 +129,11 @@ voice/voice.sh say "你好"
 | SDL2 + OpenCV + ALSA | 统一界面 / 摄像头 / 采集 | voice |
 | LuaJIT + ONNX Runtime GPU | 微信 OCR | wechat-ocr |
 | PaddleOCR PP-OCRv4 | 聊天文字识别 | wechat-ocr |
-| xdotool / xclip / ImageMagick | 桌面窗口操作 | wechat-ocr / operator |
+| xdotool / xclip / ImageMagick | 桌面窗口操作 / 大屏渲染 | wechat-ocr / operator |
+| VLC (`cvlc`/`vlc`) + `jq` | 音乐/美剧播放、行情解析 | operator |
+| WordCard `libtxt2png.so` + 霞鹜文楷 | 单词卡/大屏渲染（纯 C ABI） | operator |
 | PipeWire (`pw-play`) / aplay / espeak-ng | 音频播放与兜底 | voice |
+| 同花顺 fuyao REST（需 API Key） | 股票行情/财务/大屏 | operator |
 | 小龙虾（微信客户端） | 微信窗口 | wechat-ocr |
 
 > 运行时**不依赖 Python**；模型/二进制在 `/opt`、`/data/models`，不入库。
@@ -126,14 +142,16 @@ voice/voice.sh say "你好"
 
 ## 状态
 
-- ✅ 语音转文本（SenseVoice.cpp，实测中文识别正确）
-- ✅ 文本转语音（Kokoro → USB 音响，实测出声）
+- ✅ 语音转文本（SenseVoice.cpp，中/英）
+- ✅ 文本转语音（Kokoro → USB 音响，中英音色）
 - ✅ 摄像头窗口 / 人脸门控 / 统一界面
 - ✅ 微信 OCR 机器人（搜索/发送/截图/监控）
-- ✅ 单脑 + 工具白名单骨架（operator/）
-- ✅ 微信入口端到端：后台轮询「文件传输助手」未读红点（双重认证，不抢焦点、不点开会话、红点保留）→ 读预览转发大脑 → 大脑回复带 `ai助手` 前缀
-- ⏳ 模型后端与生产守护（systemd）待定
+- ✅ 单脑 + **插件式白名单**（`plugin.sh` 生成 `TOOLS.md`，21 工具）
+- ✅ 微信入口：白名单会话；后台**不抢焦点**读预览，带 `ai助手` 标签触发 → `[微信输入:<会话>]` 转发 → 回复带 `ai助手` 前缀回来源
+- ✅ 能力：音乐 / 美剧·电影(VLC) / USB 拍照 / 截屏 / 找文件(本机+NAS) / 出图 / 股票行情·估值·财务 / 行情大屏 / 开发进度 / 备忘 / **英语口语陪练** / **记单词(发音判定)** / 开应用·浏览器 / 集群 / 结果分发
+- ✅ 股票数据源：同花顺 fuyao（REST，API Key 在 `~/.env`）
+- ⏳ 生产守护（systemd）待定；微信读屏受「最小化/列表滚动」限制
 
 ---
 
-*文档版本: 4.0 · 更新日期: 2026-10-04*
+*文档版本: 5.0 · 更新日期: 2026-10-06*
