@@ -5,6 +5,11 @@ local to = os.getenv("WECHAT_TO") or ""
 if to == "" then to = "文件传输助手" end
 local text = arg[1] or ""
 
+-- 回复统一带「#ai助手」前缀，便于在聊天里区分 AI 的回复
+local TAG = os.getenv("WECHAT_AI_TAG") or "#ai助手"
+local out = text
+if not out:find("#%s*ai助手") then out = TAG .. " " .. text end
+
 local ok, err = robot.init()
 if not ok then io.stderr:write("wechat init 失败: " .. tostring(err) .. "\n"); os.exit(1) end
 
@@ -13,8 +18,8 @@ robot.search(to)
 
 -- 先记录再发送：供 bridge 避免把大脑回复当成新消息（防自循环），并消除时序竞态
 local f = io.open(os.getenv("WECHAT_SENT_LOG") or "/tmp/myagent_wechat_sent.log", "a")
-if f then f:write(text .. "\n"); f:close() end
+if f then f:write(out .. "\n"); f:close() end
 
-robot.send(text)
+robot.send(out)
 robot.destroy()
 print("已发送 -> " .. to)

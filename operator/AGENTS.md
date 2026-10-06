@@ -7,7 +7,10 @@
 | 前缀 | 来源 | 回程方式 |
 |------|------|----------|
 | `[语音输入] ...` | 麦克风语音（已转文字） | 短回复或用户要求语音 → `tools/say.sh "内容"` 出声；否则 → `tools/wechat_send.sh "内容"` 发微信（文件传输助手） |
-| `[微信输入] ...` | 微信消息（OCR 识别） | 用 `tools/wechat_send.sh "内容"` 回微信 |
+| `[微信输入:<会话名>] ...` | 微信消息（OCR，来自白名单会话） | 用 `tools/wechat_send.sh --to "<会话名>" "内容"` 回微信；会话名是「文件传输助手」时可省略 `--to` |
+
+> **白名单模式**：只有白名单会话（`wechat-ocr/whitelist.txt`，首个为「文件传输助手」）的消息会被转发。
+> 回微信时**务必回到消息来源的那个会话**（用 `--to <会话名>`），不要发错人。
 
 - 没有前缀的消息（如手动 attach 打字）→ 做任务，但**不自动回程**。
 - 回程内容要**简短、口语化**，适合朗读/微信阅读；不要输出 Markdown 表格。
@@ -35,9 +38,9 @@
 | 工具 | 用途 | 用法 |
 |------|------|------|
 | `tools/say.sh` | USB 音响播放语音 | `tools/say.sh "你好"` |
-| `tools/wechat_send.sh` | 发微信（默认文件传输助手） | `tools/wechat_send.sh "内容"` / `tools/wechat_send.sh --to 小王 "内容"` |
+| `tools/wechat_send.sh` | 发微信（默认文件传输助手，自动加 `#ai助手` 前缀） | `tools/wechat_send.sh "内容"` / `tools/wechat_send.sh --to 小王 "内容"` |
 | `tools/wechat_send_file.sh` | 发文件/图片 | `tools/wechat_send_file.sh /tmp/a.png [--to 小王]` |
-| `tools/screenshot.sh` | 截屏 | `tools/screenshot.sh`（返回图片路径） |
+| `tools/screenshot.sh` | 截屏（默认全屏，走系统 Print 键自动保存） | `tools/screenshot.sh`（返回图片路径） |
 | `tools/now.sh` | 取当前日期时间 | `tools/now.sh`（回答“现在几点/今天几号”） |
 | `tools/music.sh` | 无损音乐搜索/播放/停止/音量（VLC→USB 音响） | `tools/music.sh search <关键词>` / `play <歌手或歌名>` / `random` / `next` / `stop` / `volup` / `voldown` |
 | `tools/image.sh` | 生成图片并发到微信文件传输助手 | `tools/image.sh "提示词"`（默认 2560x1440） |
@@ -75,8 +78,9 @@
 ## 3. 回程示例
 
 - 收到 `[语音输入] 现在几点了` → `tools/say.sh "现在是下午三点二十"`。
-- 收到 `[微信输入] 帮我打开浏览器` → `tools/browser.sh new_tab`，然后 `tools/wechat_send.sh "浏览器已打开"`。
-- 收到 `[微信输入] 截个屏发我` → `tools/screenshot.sh`，再用 `tools/wechat_send.sh` 发送返回的图片路径。
+- 收到 `[微信输入:文件传输助手] 帮我打开浏览器` → `tools/browser.sh new_tab`，然后 `tools/wechat_send.sh "浏览器已打开"`。
+- 收到 `[微信输入:小王] 截个屏发我` → `tools/screenshot.sh`，再 `tools/wechat_send.sh --to 小王 "<图片路径>"` 回给小王。
+- 收到 `[微信输入:文件传输助手] 截个屏发我` → `tools/screenshot.sh`，再 `tools/wechat_send.sh "<图片路径>"`（默认即文件传输助手）。
 
 ## 4. 输出要求
 

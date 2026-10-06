@@ -178,6 +178,29 @@ luajit tests/calibrate_icons.lua
 
 ### 3. 启动监控
 
+#### 3.1 常驻入口（推荐）：`bridge.sh`
+
+后台常驻，把微信新消息转发给大脑（opencode:4097）。每 `WECHAT_POLL_SEC`（默认 10）秒一轮：
+
+1. `import -window` 后台抓微信窗口（**不抢焦点**）；
+2. OCR 第二列，对**白名单**（`whitelist.txt`，首个=`文件传输助手`）里的每个会话，
+   找到其行 **且** 该行有未读红点（双重认证）；
+3. **不点开会话**，读该行预览文字（=最新消息）；**必须带 `#ai` 标签**才当作指令
+   （`#ai助手` 也兼容；无标签不响应），去掉标签后以 `[微信输入:<会话名>] ...` 转发大脑，**红点保留**；
+4. 大脑回复经 `operator/tools/wechat_send.sh --to <会话名>` 发送，自动加 `#ai助手` 前缀。
+
+白名单文件：`wechat-ocr/whitelist.txt`（每行一个会话名，`#` 注释）。可用 `WECHAT_WHITELIST`、`WECHAT_CMD_TAG` 覆盖。
+
+```bash
+./bridge.sh                    # 常驻（默认 60s）
+WECHAT_POLL_SEC=15 ./bridge.sh  # 调试：15s
+WECHAT_ONCE=1 WECHAT_DRY=1 ./bridge.sh   # 只跑一轮、只打印不转发
+```
+
+> 前提：桌面微信窗口**保持可见**（可被其它窗口遮挡，但不能最小化），且已登录。
+
+#### 3.2 Lua 直接监控
+
 ```bash
 ./run.sh
 ```

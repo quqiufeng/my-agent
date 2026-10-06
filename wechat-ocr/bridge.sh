@@ -8,5 +8,7 @@ export LUA_PATH="${DIR}/lua/?.lua;${DIR}/lua/?/init.lua;/usr/local/lualib/?.lua;
 export LUA_CPATH="${DIR}/lib/?.so;/usr/local/lualib/?.so;;"
 export DISPLAY="${DISPLAY:-:0}"
 export AGENT_URL="${AGENT_URL:-http://localhost:4097}"
+export WECHAT_POLL_SEC="${WECHAT_POLL_SEC:-10}"
+export WECHAT_SENT_LOG="${WECHAT_SENT_LOG:-/tmp/myagent_wechat_sent.log}"
 
 exec luajit "${DIR}/bridge.lua"
