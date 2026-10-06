@@ -29,8 +29,13 @@ local CMD_TAG   = os.getenv("WECHAT_CMD_TAG") or "ai助手"           -- 指令�
 -- 容错：`#` 可能被 OCR 成「并/井」，`ai` 的 i 可能变 1/l/L。命中返回正文，否则 nil。
 local function to_command(text)
     local t = text:gsub("^%s+", ""):gsub("^[#并井]%s*", "")
-    local rest, n = t:gsub("^[Aa][Ii1lL]", "", 1)
-    if n == 0 then return nil end
+    -- 双字标签 ai 及其 OCR 变体（a/i/l/1 组合）
+    local rest, n = t:gsub("^[Aa][Ii1lL][Ii1lL]?", "", 1)
+    if n == 0 then
+        -- OCR 常把 "ai" 读成单个 l / L / 1
+        rest, n = t:gsub("^[lL1]", "", 1)
+        if n == 0 then return nil end
+    end
     if rest:match("^[A-Za-z0-9]") then return nil end   -- 排除 air/aid 等英文词
     rest = rest:gsub("^%s*助手", ""):gsub("^%s+", "")
     return (rest:gsub("%s+$", ""))

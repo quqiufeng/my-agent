@@ -101,6 +101,9 @@ voice/voice.sh tutor
 # 5. 文本转语音（USB 音响）
 voice/voice.sh say "你好"
 
+# 6. 手机控制 / 自主测试闭环（ADB；手机开 USB 调试并授权）
+operator/tools/phone.sh status   # 截屏 / 点击 / 中文输入 / 开应用（详见根 AGENTS.md）
+
 # 新增一个“能力”（不用改 AGENTS.md）
 operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → 重启大脑
 ```
@@ -113,7 +116,7 @@ operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → �
 
 1. **权限**（`operator/opencode.json`）：`bash` 默认 `deny`、只放行 `tools/*`；`read/edit/webfetch/task` 全部 `deny`。
 2. **兜底插件**（`operator/.opencode/plugin/guard.js`）：执行前正则校验，禁止 `&&`、`;`、`|`、重定向等拼接绕过。
-3. **契约**（`operator/AGENTS.md` + `operator/TOOLS.md`）：告诉大脑“只能调用白名单里的 21 个工具，不认识的请求就拒绝”。
+3. **契约**（`operator/AGENTS.md` + `operator/TOOLS.md`）：告诉大脑“只能调用白名单里的 26 个工具，不认识的请求就拒绝”。
 
 回程规则：`[语音输入]` → `say.sh` / `wechat_send.sh`；`[微信输入:<会话名>]` → `wechat_send.sh --to <会话名>`（默认「文件传输助手」）；`[英语口语]` → `say.sh` 英文音色。
 
@@ -146,10 +149,11 @@ operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → �
 - ✅ 文本转语音（Kokoro → USB 音响，中英音色）
 - ✅ 摄像头窗口 / 人脸门控 / 统一界面
 - ✅ 微信 OCR 机器人（搜索/发送/截图/监控）
-- ✅ 单脑 + **插件式白名单**（`plugin.sh` 生成 `TOOLS.md`，21 工具）
+- ✅ 单脑 + **插件式白名单**（`plugin.sh` 生成 `TOOLS.md`，26 工具）
 - ✅ 微信入口：白名单会话；后台**不抢焦点**读预览，带 `ai助手` 标签触发 → `[微信输入:<会话>]` 转发 → 回复带 `ai助手` 前缀回来源
 - ✅ 能力：音乐 / 美剧·电影(VLC) / USB 拍照 / 截屏 / 找文件(本机+NAS) / 出图 / 股票行情·估值·财务 / 行情大屏 / 开发进度 / 备忘 / **英语口语陪练** / **记单词(发音判定)** / 开应用·浏览器 / 集群 / 结果分发
 - ✅ 股票数据源：同花顺 fuyao（REST，API Key 在 `~/.env`）
+- ✅ **手机控制**（`phone.sh`，ADB：截屏/点击/滑动/中文输入/开应用）+ **手机微信自主测试闭环**（手机发指令 → 大脑执行 → 回程到手机）
 - ⏳ 生产守护（systemd）待定；微信读屏受「最小化/列表滚动」限制
 
 ---

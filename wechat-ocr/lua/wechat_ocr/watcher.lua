@@ -142,7 +142,7 @@ function M.read_preview(shot, win, row)
     local w = math.min(win.w - x, 560)
     local h = 46
     local crop = string.format("/tmp/wx_prev_%d.png", PID)
-    sh(string.format("convert '%s' +repage -crop %dx%d+%d+%d +repage -resize 400%% -sharpen 0x1.5 '%s'",
+    sh(string.format("convert '%s' +repage -crop %dx%d+%d+%d +repage -resize 400%% -colorspace Gray -level 20%%,85%% -sharpen 0x1.5 '%s'",
         shot, w, h, x, y, crop))
     local s = lib.ocr_capture_file(engine, crop, 0, 0)
     os.remove(crop)

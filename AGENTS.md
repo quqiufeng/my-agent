@@ -68,6 +68,42 @@ luajit bridge.lua                        # 微信监控→转发
 
 ---
 
+## 自主测试（手机微信 → 大脑 端到端闭环）
+
+用**手机微信**给「文件传输助手」发指令，就能让大脑把整条链路自己跑一遍（无需人在电脑前）：
+
+```
+手机微信发 "ai 现在几点"
+  → 微信云同步到 PC 微信「文件传输助手」
+  → wechat-ocr/bridge.sh 后台读预览(OCR) → 以 [微信输入:文件传输助手] 转发大脑
+  → 大脑执行白名单工具 → wechat_send.sh 回复(自动加 "ai助手" 前缀)
+  → PC 微信发出 → 手机微信收到
+```
+
+前提：PC 微信在线，且 `bridge.sh` 与大脑(`operator/start.sh`)都在跑；手机开 USB 调试。
+
+**用 `operator/tools/phone.sh` 自动操作手机发指令：**
+
+```bash
+phone.sh status                 # 确认手机已连接/已授权
+phone.sh open com.tencent.mm    # 打开微信
+phone.sh screen /tmp/p.png      # 截图自查界面与坐标
+phone.sh tap X Y                # 按坐标点击（分辨率见 status）
+phone.sh type "ai 现在几点"     # 输入中文（自动切 ADBKeyboard，用完复原）
+```
+
+要点 / 坑：
+
+- 预览 OCR 对**浅灰小字**易错：`watcher.read_preview` 已加「灰度 + level 20%,85%」预处理；
+  `bridge.to_command` 容忍 `ai` / `ai助手` 及 OCR 变体 `al`/`l`/`1`（`#` 可省）。
+- `phone.sh type` 打中文靠临时切到 **ADBKeyboard**（`com.android.adbkeyboard`，需先 `adb install` 一次），用完恢复原输入法；ASCII 可直接 `phone.sh text`。
+- bridge 一直「无新指令」时，跑 `WECHAT_ONCE=1 WECHAT_DRY=1 wechat-ocr/bridge.sh` 看它实际读到的预览。
+- 手机端发送后，PC 微信若未显示，稍等几秒再轮询（bridge 默认每 10s 一轮）。
+
+> 完整的**测试项清单 + 回归流程**见 [`operator/TESTING.md`](operator/TESTING.md)（新加功能后照它做回归）。
+
+---
+
 ## 模型 / 外部依赖位置
 
 | 用途 | 路径 |
