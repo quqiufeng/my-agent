@@ -21,6 +21,12 @@ export VOICE_SPEAKER="${VOICE_SPEAKER:-plughw:3,0}"   # ALSA 兜底设备（USB 
 export VOICE_SINK="${VOICE_SINK:-}"                   # PipeWire sink（留空=默认，本机默认即 DTC 480）
 export TTS_OUT="${TTS_OUT:-/tmp/voice_tts.wav}"
 
+# ── 英语口语陪练 ──────────────────────────────────────────────
+export VOICE_PREFIX="${VOICE_PREFIX:-[语音输入]}"       # 转发前缀（陪练=[英语口语]）
+export VOICE_ALWAYS="${VOICE_ALWAYS:-0}"               # 1=跳过唤醒词门控（陪练=1）
+export KOKORO_SID_EN="${KOKORO_SID_EN:-3}"             # 英文音色 3=af_heart（0-19 为英文）
+export SENSEVOICE_LANG_EN="${SENSEVOICE_LANG_EN:-auto}" # 英文识别语言（auto 自动识别）
+
 # ── 唤醒词（语音交互模式） ────────────────────────────────────
 # 只有听到唤醒词才响应，否则静默；命中唤醒词后 VOICE_ACTIVE_MS 内持续响应后续指令。
 # 若此时正在放歌（存在 /tmp/myagent_music.pid 且进程存活），唤醒即暂停音乐，窗口结束自动恢复。

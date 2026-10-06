@@ -8,6 +8,11 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=config.sh
 . "$DIR/config.sh"
 
+# 英语陪练模式：用英文音色（0-19 为英文女/男声）
+if [ -f /tmp/myagent_english_mode ]; then
+    export KOKORO_SID="${KOKORO_SID_EN:-3}"
+fi
+
 TEXT="${1:-}"
 if [ -z "$TEXT" ]; then
     echo "用法: $0 <文本>" >&2

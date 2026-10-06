@@ -63,6 +63,8 @@ struct Config {
     int active_ms          = env_int("VOICE_ACTIVE_MS", 10000);          // 唤醒后持续响应窗口
     std::string ack        = env_or("VOICE_ACK", "在的，老板");          // 仅唤醒时的语音应答
     int max_seg_ms         = env_int("VOICE_MAX_SEG_MS", 6000);          // 最大片段时长(持续噪声时强制断句)
+    std::string prefix     = env_or("VOICE_PREFIX", "[语音输入]");       // 转发前缀（陪练用 [英语口语]）
+    bool always            = env_int("VOICE_ALWAYS", 0) != 0;            // 跳过唤醒词门控（陪练=1）
 };
 
 constexpr int kSampleRate = 16000;
@@ -158,7 +160,7 @@ void forward(const Config &cfg, const std::string &text) {
             fprintf(stderr, "[voice] 警告: 拉起 TUI 失败，指令可能无法处理\n");
     }
 
-    std::string body = "{\"text\": \"" + json_escape("[语音输入] " + text) + "\"}";
+    std::string body = "{\"text\": \"" + json_escape(cfg.prefix + " " + text) + "\"}";
     std::string path = "/tmp/voice_listen_" + std::to_string(getpid()) + ".json";
     FILE *f = fopen(path.c_str(), "wb"); if (!f) return;
     fwrite(body.data(), 1, body.size(), f); fclose(f);
@@ -213,7 +215,7 @@ bool handle_text(const Config &cfg, const std::string &text) {
     bool woke = wake::strip(norm, cfg.wake_words, rest);
     auto now = std::chrono::steady_clock::now();
     bool active = now < g_active_until;
-    if (!woke && !active) {
+    if (!cfg.always && !woke && !active) {
         printf("[voice] 未唤醒(静默): %s\n", text.c_str());
         return false;
     }
