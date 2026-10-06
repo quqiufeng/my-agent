@@ -13,20 +13,30 @@
 
 ```
 operator/
-├── AGENTS.md                     # 操作契约（模型读：来源识别/回程/白名单/禁止项）
-├── opencode.json                 # 权限：默认全拒，只放行 tools/*
+├── AGENTS.md                     # 操作契约（模型读：来源识别/回程/示例等散文）
+├── TOOLS.md                      # 白名单清单+各工具规则（plugin.sh index 自动生成，instructions 加载）
+├── plugin.sh                     # 轻插件：new 生成模板 / index 重建 TOOLS.md / list
+├── opencode.json                 # 权限：默认全拒，只放行 tools/*；instructions 加载 TOOLS.md
 ├── .opencode/plugin/guard.js     # 兜底：拦截 `tools/x.sh && rm -rf` 这类拼接
 ├── start.sh                      # 启动 tmux + opencode serve/attach
-├── tools/                        # 白名单工具（唯一可执行入口）
-│   ├── say.sh                    # 语音回程（USB 音响）
-│   ├── wechat_send.sh            # 发微信文本（默认文件传输助手，可 --to 指定）
-│   ├── wechat_send_file.sh       # 发文件/图片
-│   ├── screenshot.sh             # 截屏，返回路径
-│   ├── open_app.sh               # 打开白名单应用
-│   ├── browser.sh                # 操作 Chrome
-│   └── remote.sh                 # 管理 tmux/opencode 集群
+├── tools/                        # 白名单工具（唯一可执行入口，每个自带 @desc/@usage/@rule）
+│   ├── say.sh / wechat_send.sh / wechat_send_file.sh / screenshot.sh
+│   ├── music.sh / tv.sh / photo.sh / image.sh / find_file.sh
+│   ├── note.sh / progress.sh / now.sh / open_app.sh / browser.sh / remote.sh / gemini_out.sh
+│   └── ...
 └── README.md
 ```
+
+## 插件模式（新增能力）
+
+```bash
+operator/plugin.sh new mytool     # 生成 tools/mytool.sh 模板，头部写 @desc/@usage/@rule
+# 实现脚本 …
+operator/plugin.sh index          # 重建 TOOLS.md（工具表 + 规则）
+operator/start.sh                 # 重启大脑让新 TOOLS.md 生效（opencode 不热重载）
+```
+
+新增工具**不必手改** `AGENTS.md`：清单与规则都从各工具头部注释自动生成；`opencode.json` 已用 `tools/*` 放行、`guard.js` 覆盖。
 
 ## 启动
 

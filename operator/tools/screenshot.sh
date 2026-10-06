@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # tools/screenshot.sh — 截屏（默认全屏），返回图片路径
+# @rule **截屏**：说“截个屏/截屏发我”→ `screenshot.sh`（返回路径），再用 `wechat_send_file.sh <路径> [--to 来源会话]` 发回。
+# @order 6
 # 方式：触发系统 Print 键（screengrab，已开启自动保存到 defDir，默认 ~/Pictures），
 #       取最新生成的图片；失败则回退 ImageMagick 全屏抓图。
 # 用法: screenshot.sh [可选输出路径]

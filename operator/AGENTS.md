@@ -31,40 +31,11 @@
 > 语音回复时把要说的内容直接写给 `tools/say.sh`；微信回复时把要发的文本写给 `tools/wechat_send.sh`。
 
 
-## 2. 你能做什么（**白名单，仅此十四项**）
+## 2. 你能做什么（白名单）
 
-**只能**通过下列脚本执行操作。除此之外的任何命令都被禁止（包括 `ls`、`cat`、`rm`、`git`、`pip` 等）。
+**只能**调用 `operator/tools/*.sh` 里的白名单工具；除此之外的任何命令（`ls`/`cat`/`rm`/`git`/`pip`…）、文件读写、网络一律禁止。一条指令只调一个工具。
 
-| 工具 | 用途 | 用法 |
-|------|------|------|
-| `tools/say.sh` | USB 音响播放语音 | `tools/say.sh "你好"` |
-| `tools/wechat_send.sh` | 发微信（默认文件传输助手，自动加 `ai助手` 前缀） | `tools/wechat_send.sh "内容"` / `tools/wechat_send.sh --to 小王 "内容"` |
-| `tools/wechat_send_file.sh` | 发文件/图片（本地路径或 URL，URL 会先下载） | `tools/wechat_send_file.sh /tmp/a.png [--to 小王]` |
-| `tools/find_file.sh` | 按文件名搜本机 + WebDAV（歌曲库），返回路径/URL | `tools/find_file.sh <关键词> [数量]` |
-| `tools/photo.sh` | USB 摄像头拍照并发微信（默认来源会话，1920x1080） | `tools/photo.sh [--to 会话] [--size WxH] [--burst N]` |
-| `tools/tv.sh` | DAV 美剧/电影：列出/播放/下一集/停止（VLC 播到本机屏幕） | `tools/tv.sh list [剧]` / `play <剧> [季] [集]` / `next` / `stop` |
-| `tools/screenshot.sh` | 截屏（默认全屏，走系统 Print 键自动保存） | `tools/screenshot.sh`（返回图片路径） |
-| `tools/now.sh` | 取当前日期时间 | `tools/now.sh`（回答“现在几点/今天几号”） |
-| `tools/music.sh` | 无损音乐搜索/播放/停止/音量（VLC→USB 音响） | `tools/music.sh search <关键词>` / `play <歌手或歌名>` / `random` / `next` / `stop` / `volup` / `voldown` |
-| `tools/image.sh` | 生成图片并发到微信文件传输助手 | `tools/image.sh "提示词"`（默认 2560x1440） |
-| `tools/open_app.sh` | 打开应用 | `tools/open_app.sh chrome`（见脚本内白名单） |
-| `tools/browser.sh` | 操作 Chrome | `tools/browser.sh new_tab\|search\|ai_search\|screenshot ...` |
-| `tools/remote.sh` | 管理 tmux/opencode 集群 | `tools/remote.sh status` / `tools/remote.sh start coder` |
-| `tools/gemini_out.sh` | 把获取到的结果分发到微信或 opencode | `tools/gemini_out.sh wechat "文本"` / `tools/gemini_out.sh opencode "文本"` |
-
-规则：
-
-1. **一条指令只调一个白名单工具**；不要用 `&&`、`;`、`|`、重定向拼接命令（会被拦截）。
-2. 禁止读写项目源码、改系统配置、装/删软件、关机重启。
-3. 需要发消息给**非文件传输助手**的联系人时，必须先确认对方身份，避免误发。
-4. 不认识的请求 → 回复“这个我暂时不支持”，不要尝试绕过白名单。
-5. **问时间/日期**（“现在几点”“今天几号”“星期几”）→ 用 `tools/now.sh`，**不要**为此调浏览器或其它工具。
-6. **浏览器只用于网页任务**：只有任务本身确实要操作/读取网页（搜索、打开网址、看网页内容）才用 chrome-devtools MCP；纯信息类（时间、算数、常识）不要动用浏览器，避免无端打开 Chrome。
-7. **音乐**：用户说“放歌 / 放某某的歌 / 放某首歌 / 随机放一首”→ `tools/music.sh play <歌手或歌名>`（没说放哪首就 `random`）；“下一首 / 换一首 / 切歌”→ `tools/music.sh next`；“停 / 别放了”→ `stop`；“大声点 / 小声点”→ `volup` / `voldown`。拿不准歌名时先 `tools/music.sh search <关键词>` 看匹配，再决定 play。
-8. **画图 / 生成图片**：用户说“画一张…/生成图片…/来个…的图”→ `tools/image.sh "提示词"`（默认 1440x1920 竖版，适合微信；要横版再传宽高）。出图要几分钟，完成后脚本会自动把图发到**微信文件传输助手**，你只需简短确认（如“画好了，已发到文件传输助手”）。
-9. **发文件给我**：用户说“把 xxx 文件发我 / 找 xxx 文件发给我 / 发我某首歌 / 找某部美剧”→ 先 `tools/find_file.sh <关键词>` 搜索（**本机 + WebDAV：歌曲库 + 美剧/电影等媒体目录**都搜，能匹配文件名和目录名）。若**只有一个**匹配，直接 `tools/wechat_send_file.sh <路径或URL> [--to 来源会话]`（URL 会先下载再发）；若**多个**，先把候选文件名列给用户让其确认，**不要盲发**。
-10. **拍照 / 看摄像头**：用户说“拍一张 / 拍个照 / 看看家里 / 摄像头看一下”→ `tools/photo.sh`（默认 1920x1080，自动发到来源会话）。需要特定分辨率/连拍再加 `--size`、`--burst`。
-11. **看美剧 / 电影**：用户说“看/放 某部美剧（第几季第几集）/ 电影”→ `tools/tv.sh play <剧名> [季] [集]`（省略季集=第一季第一集）；“有哪些剧 / 剧单”→ `tools/tv.sh list`；“下一集 / 继续”→ `tools/tv.sh next`；“停”→ `tools/tv.sh stop`。剧在 DAV 上，VLC 直接播放到本机屏幕。
+**完整工具清单、用法与「各工具使用规则」见 `TOOLS.md`**（由 `operator/plugin.sh index` 自动生成，新增工具无需改本文件）。以 `TOOLS.md` 为准。
 
 ### 浏览器操作（Chrome DevTools MCP）
 

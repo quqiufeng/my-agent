@@ -81,13 +81,20 @@ luajit bridge.lua                        # 微信监控→转发
 
 ---
 
-## 修改清单（新增一个“能力”时）
+## 修改清单（新增一个“能力”时）——插件模式
 
-1. 写 `operator/tools/<name>.sh`（参数固定、stdout 简洁、`exit` 明确）。
-2. 在 `operator/AGENTS.md` 表格加一行（用途 + 用法）。
-3. 在 `operator/opencode.json` 的 `bash` 里放行对应命令形态。
-4. 必要时在 `operator/tools/` 里加配套 `.lua`。
-5. 本地手测脚本可用，再重启 opencode 验证大脑能调用。
+> 工具清单与规则**自动生成**，不再手改 `AGENTS.md`。
+
+1. `operator/plugin.sh new <name>` 生成模板（或手写 `operator/tools/<name>.sh`）；
+   在头部写元数据：`# @desc 用途`、`# @usage 用法`、`# @rule 给大脑的规则`（可选）、`# @order N`（规则排序）。
+2. 实现脚本（参数固定、stdout 简洁、`exit` 明确）。
+3. `operator/plugin.sh index` —— 重新生成 `operator/TOOLS.md`（工具表 + 各工具规则）。
+4. 权限：`opencode.json` 已用 `tools/*` 放行、`guard.js` 正则也覆盖，**无需改**。
+   如需给大脑**额外**能力开关，才动 `opencode.json`。
+5. 必要时在 `operator/tools/` 加配套 `.lua`。
+6. 手测脚本 → 重启大脑（`operator/start.sh`，opencode 不热重载）让新 `TOOLS.md` 生效。
+
+`TOOLS.md` 由 `opencode.json` 的 `instructions` 自动加载；`AGENTS.md` 只留来源/回程/示例等散文契约。
 
 ---
 
