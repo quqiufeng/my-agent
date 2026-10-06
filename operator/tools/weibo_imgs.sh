@@ -92,7 +92,8 @@ args=(); [ -n "$EACH" ] && args+=(--each); [ -n "$LIMIT" ] && args+=(--limit "$L
 if [ -n "$TO" ]; then
     "$DIR/send_images.sh" --to "$TO" "${args[@]}" < "$TMPURL"
 else
-    OUTDIR="${SAVE:-$HOME/微博图/${KW}_$(date +%Y%m%d_%H%M%S)}"
+    export SAVE_PREFIX="$(date +%m%d_%H%M%S)_"          # 一个明星一个目录，文件名带运行时间
+    OUTDIR="${SAVE:-$HOME/微博图/${KW}}"
     "$DIR/send_images.sh" --save "$OUTDIR" "${args[@]}" < "$TMPURL"
 fi
 rm -f "$TMPURL"

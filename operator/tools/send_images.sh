@@ -58,7 +58,7 @@ if [ -n "$SAVE" ]; then
     n=0
     for f in "${FILES[@]}"; do
         n=$((n+1))
-        cp -f "$f" "$SAVE/$(printf '%03d' "$n").jpg" 2>/dev/null
+        cp -f "$f" "$SAVE/$(printf '%s%03d.jpg' "${SAVE_PREFIX:-}" "$n")" 2>/dev/null
     done
     rm -rf "$D"
     echo "已保存 ${#FILES[@]} 张到 $SAVE"
