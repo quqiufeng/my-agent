@@ -7,7 +7,7 @@
 | 工具 | 用途 | 用法 |
 |------|------|------|
 | `tools/browser.sh` | 操作本机 Chrome（不新开浏览器） | `browser.sh new_tab` |
-| `tools/dash.sh` | 股票大屏（指数头+自选股+小K线，白底多面板） | `tools/dash.sh [--to 会话] [--show]` |
+| `tools/dash.sh` | 股票大屏（点阵风·暗色：指数环+自选股+小K线） | `tools/dash.sh [--to 会话] [--show]` |
 | `tools/english.sh` | 英语口语陪练（麦克风识别英文，回复用英文音色朗读） | `tools/english.sh start|stop|status` |
 | `tools/find_file.sh` | 按文件名关键词搜索本机文件 + WebDAV，返回匹配（本地路径 或 可下载 URL） | `find_file.sh <关键词> [数量=15]` |
 | `tools/gemini_out.sh` | 把（Gemini 等）获取到的结果按目标转发 | `tools/gemini_out.sh` |

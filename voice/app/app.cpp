@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "../wake.h"
+#include "dotui.h"
 
 namespace {
 
@@ -393,8 +394,8 @@ void draw_into(cv::Mat &canvas, const cv::Mat &frame, int ox, int ow, int oy, in
     cv::Mat r;
     cv::resize(frame, r, cv::Size(dw, dh));
     r.copyTo(canvas(cv::Rect(ox + (ow - dw) / 2, oy + (oh - dh) / 2, dw, dh)));
-    cv::putText(canvas, label, cv::Point(ox + 8, oy + 26), cv::FONT_HERSHEY_SIMPLEX, 0.6,
-                cv::Scalar(200, 220, 255), 2, cv::LINE_AA);
+    cv::rectangle(canvas, cv::Rect(ox + 8, oy + 8, 78, 36), dotui::card_bot(), cv::FILLED);
+    dotui::text(canvas, ox + 16, oy + 14, label, 2.0, 0.8, dotui::ink());
 }
 
 } // namespace
@@ -493,7 +494,7 @@ int main(int argc, char **argv) {
         int rw = 0, rh = 0;
         SDL_GetRendererOutputSize(ren, &rw, &rh);
         if (rw <= 0 || rh <= 0) { SDL_Delay(16); continue; }
-        int BH = 96;                 // 状态栏高度
+        int BH = 104;                // 状态栏高度
         int VH = std::max(1, rh - BH);
 
         cv::Mat f1, f2;
@@ -509,7 +510,28 @@ int main(int argc, char **argv) {
             v2 = v2 && (tnow - g_face_seen2.load() <= cfg.face_timeout_ms);
         }
 
-        cv::Mat canvas = cv::Mat::zeros(rh, rw, CV_8UC3);
+        // 背景：暗色 + 左上角余烬光晕（按尺寸缓存，避免每帧重算）
+        static cv::Mat g_bg;
+        static int g_bgw = 0, g_bgh = 0;
+        if (g_bgw != rw || g_bgh != rh) {
+            g_bg = cv::Mat(rh, rw, CV_8UC3, dotui::bg());
+            cv::Mat glow = cv::Mat::zeros(rh, rw, CV_8UC3);
+            int cxg = static_cast<int>(rw * 0.12), cyg = static_cast<int>(-rh * 0.05);
+            int maxr = static_cast<int>(std::max(rw, rh) * 0.7);
+            cv::Scalar ember(0xE9, 0xFA, 0xF4); // 霜地亮 #F4FAE9
+            for (int i = 0; i < 48; ++i) {
+                double t = i / 47.0;
+                int rad = std::max(1, static_cast<int>(maxr * (1.0 - 0.7 * t)));
+                double a = 0.015 + 0.04 * (1.0 - t);
+                cv::Mat ov = glow.clone();
+                cv::circle(ov, {cxg, cyg}, rad, ember, cv::FILLED, cv::LINE_AA);
+                cv::addWeighted(glow, 1.0 - a, ov, a, 0, glow);
+            }
+            cv::addWeighted(g_bg, 1.0, glow, 1.0, 0, g_bg);
+            g_bgw = rw; g_bgh = rh;
+        }
+        cv::Mat canvas;
+        g_bg.copyTo(canvas);
         int fs = g_fullscreen.load();
         bool drew = false;
         if (v1 && fs == 1) { draw_into(canvas, f1, 0, rw, 0, VH, "USB"); drew = true; }
@@ -527,25 +549,30 @@ int main(int argc, char **argv) {
             text(canvas, hint, rw / 2 - 210, VH / 2, 30, cv::Scalar(150, 165, 190), 1);
         }
 
-        // 底部状态栏
-        cv::rectangle(canvas, cv::Rect(0, VH, rw, BH), cv::Scalar(24, 20, 14), cv::FILLED);
+        // 底部状态栏（点阵卡片）
         std::string st, last, rep;
         int lvl; bool spk;
         g_ui.snapshot(st, last, rep, lvl, spk);
-        cv::Scalar dot = spk ? cv::Scalar(60, 200, 255) : cv::Scalar(80, 200, 120);
-        cv::circle(canvas, cv::Point(20, VH + 30), 8, dot, cv::FILLED);
-        text(canvas, st, 38, VH + 16, 22, cv::Scalar(230, 235, 245), 1);
+        dotui::card(canvas, VH, BH);
 
-        // 电平条
-        int bx = 220, bw = std::min(320, rw - 500), by = VH + 20, bh = 16;
-        if (bw > 40) {
-            cv::rectangle(canvas, cv::Rect(bx, by, bw, bh), cv::Scalar(50, 55, 65), cv::FILLED);
-            int fill = std::min(bw, lvl * bw / 12000);
-            cv::Scalar c = lvl > 6000 ? cv::Scalar(60, 200, 255) : cv::Scalar(90, 190, 110);
-            cv::rectangle(canvas, cv::Rect(bx, by, fill, bh), c, cv::FILLED);
+        cv::Scalar dotc = spk ? dotui::accent() : dotui::ok();
+        dotui::dot(canvas, 28, VH + 34, 5, dotc);
+        text(canvas, st, 46, VH + 26, 22, dotui::ink(), 1);
+
+        // 麦克风电平点阵条
+        int bx = 300, bw = std::min(340, rw - 760), by = VH + 34;
+        if (bw > 60) {
+            text(canvas, "MIC", bx, VH + 8, 15, dotui::muted(), 1);
+            cv::Scalar lc = lvl > 6000 ? dotui::crit() : (lvl > 3000 ? dotui::warn() : dotui::accent());
+            dotui::bar(canvas, bx, by, bw, lvl, 12000.0, lc);
         }
-        if (!rep.empty()) text(canvas, rep, bx + bw + 16, VH + 16, 18, cv::Scalar(120, 150, 180), 1);
-        if (!last.empty()) text(canvas, "识别: " + last, 20, VH + 58, 22, cv::Scalar(220, 225, 200), 1);
+
+        // 点阵时钟（右上）
+        dotui::text(canvas, rw - 160, VH + 16, dotui::clock_now(), 2.4, 1.0, dotui::ink());
+
+        // 最近识别 / 转发状态
+        if (!last.empty()) text(canvas, "识别: " + last, 46, VH + 76, 20, dotui::muted(), 1);
+        if (!rep.empty()) text(canvas, rep, std::max(46, rw - 240), VH + 76, 18, dotui::dim(), 1);
 
         if (!tex || tw != rw || thgt != rh) {
             if (tex) SDL_DestroyTexture(tex);

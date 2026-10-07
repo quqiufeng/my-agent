@@ -41,6 +41,7 @@
 3. **两层 AGENTS.md 别混**：根目录本文件=开发说明；`operator/AGENTS.md`=运行时契约。
 4. **不提交大文件**：模型（`*.onnx/*.gguf`）、`build*/`、编译产物已在 `.gitignore`，不要 `git add -f`。
 5. **改完 opencode 配置需重启**：`opencode.json`、`guard.js`、`operator/AGENTS.md` 不会被热重载。
+6. **第三方素材保留署名**：点阵 UI kit（`operator/tools/dotkit/`，来自 karminski-design-skills）为 **CC BY-NC-SA 4.0**，勿删 `NOTICE.md`/`LICENSE`，仅非商业使用。
 
 ---
 

@@ -153,6 +153,7 @@ operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → �
 - ✅ 微信入口：白名单会话；后台**不抢焦点**读预览，带 `ai助手` 标签触发 → `[微信输入:<会话>]` 转发 → 回复带 `ai助手` 前缀回来源
 - ✅ 能力：音乐 / 美剧·电影(VLC) / USB 拍照 / 截屏 / 找文件(本机+NAS) / 出图 / 股票行情·估值·财务 / 行情大屏 / 开发进度 / 备忘 / **英语口语陪练** / **记单词(发音判定)** / 开应用·浏览器 / 集群 / 结果分发
 - ✅ 股票数据源：同花顺 fuyao（REST，API Key 在 `~/.env`）
+- ✅ **点阵风 UI**：行情大屏（`dash.sh`：TSV→HTML(Canvas)→headless Chrome 截图）与统一界面（`voice/app` 状态栏）采用暗色点阵风；组件来自 [karminski-design-skills](https://github.com/karminski/karminski-design-skills)（CC BY-NC-SA 4.0，署名见 `operator/tools/dotkit/NOTICE.md`）
 - ✅ **手机控制**（`phone.sh`，ADB：截屏/点击/滑动/中文输入/开应用）+ **手机微信自主测试闭环**（手机发指令 → 大脑执行 → 回程到手机）
 - ⏳ 生产守护（systemd）待定；微信读屏受「最小化/列表滚动」限制
 

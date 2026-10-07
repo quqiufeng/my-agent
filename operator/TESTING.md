@@ -77,7 +77,7 @@ operator/tools/<name>.sh <参数>        # 直接看 stdout / 效果，绕过大
 | 13 | find_file.sh | 搜文件 | `ai 找 xxx 文件` | 返回本机/WebDAV 匹配 | | | |
 | 14 | note.sh | 备忘 | `ai 记一下…` / `有什么待办` | 增/列 | | | |
 | 15 | stock.sh | 股票 | `ai 茅台多少钱` / `kline 茅台` / `value` / `fin` / `list` | 行情/图表 | | | |
-| 16 | dash.sh | 自选股大屏 | `ai 自绘大屏` | 大屏图到来源会话 | | | |
+| 16 | dash.sh | 点阵风自选股大屏 | `ai 自绘大屏` | 点阵风大屏图到来源会话 | ✓ | 2026-10-07 10:29 | TSV→HTML(Canvas)→headless Chrome 截图 |
 | 17 | quote_web.sh | 看盘网页截图 | `ai 看下大盘` | 搜狐行情截图 | | | |
 | 18 | weibo.sh | 微博搜索截图 | `ai 微博搜 周杰伦` | 搜索页截图 | | | |
 | 19 | weibo_imgs.sh | 下载微博图 | `ai 下载微博图 刘浩存` | 存 `~/微博图/刘浩存/` 并报张数 | ✓ | 2026-10-06 20:00 | 375 张/38s |
@@ -89,6 +89,7 @@ operator/tools/<name>.sh <参数>        # 直接看 stdout / 效果，绕过大
 | 25 | english.sh | 英语陪练 | `english.sh start` / `stop` / `status` | 进入/退出陪练 | | | |
 | 26 | vocab.sh | 记单词 | `ai 开始背单词` / `add x y` / `list` | 弹卡/发音判定 | | | |
 | 27 | gemini_out.sh | 结果分发 | `gemini_out.sh wechat "…"` | 按目标转发 | | | |
+| 28 | voice/app | 统一界面（点阵风） | `voice/voice.sh app`（需显示器） | 摄像头 + 点阵状态栏/电平条/点阵时钟 | ✓ | 2026-10-07 10:32 | C++ 编译 `make -C voice/app` |
 
 ### 3.3 链路级测试
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# tools/dash.sh — 股票大屏：汇总指数 + 自选股 + 主指数K线，渲染白底多面板大屏图并发微信
-# @desc 股票大屏（指数头+自选股+小K线，白底多面板）
+# tools/dash.sh — 股票大屏：汇总指数 + 自选股 + 主指数K线，渲染「点阵风」大屏图并发微信
+# @desc 股票大屏（点阵风·暗色：指数环+自选股+小K线）
 # @usage tools/dash.sh [--to 会话] [--show]
 # @rule **自绘数据大屏**：说“自绘大屏 / 汇总我的自选股 / 把指数和自选股汇总成一张图”→ `tools/dash.sh`。若只是“看行情/看盘”→ 用 `quote_web.sh` 开浏览器截图。
 # @order 17
@@ -81,7 +81,16 @@ done < "$WL"
 [ -s "$DATA" ] || { echo "没有数据（检查自选股/网络）" >&2; exit 1; }
 
 OUT="/tmp/myagent_dash_$(date +%Y%m%d_%H%M%S).png"
-luajit "$DIR/dash.lua" "$OUT" "$DATA" "${DASH_W:-1600}" "${DASH_H:-1000}" "行情大屏" || exit 1
+HTML="/tmp/myagent_dash_$$.html"
+luajit "$DIR/dash_html.lua" "$DATA" "$HTML" "行情大屏" >/dev/null || exit 1
+
+CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+[ -n "$CHROME" ] || { echo "需要 Chrome/Chromium（无头截图）" >&2; exit 3; }
+"$CHROME" --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
+    --window-size="${DASH_W:-820},${DASH_H:-1380}" --virtual-time-budget=4000 \
+    --screenshot="$OUT" "file://$HTML" >/dev/null 2>&1
+rm -f "$HTML"
+[ -s "$OUT" ] || { echo "大屏渲染失败" >&2; exit 1; }
 echo "大屏已生成: $OUT"
 
 [ "$SHOW" = "1" ] && display -window root "$OUT" >/dev/null 2>&1 &
