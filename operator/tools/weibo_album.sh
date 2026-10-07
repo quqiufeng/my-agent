@@ -18,7 +18,7 @@ while [ $# -gt 0 ]; do
         --limit) LIMIT="${2:-}"; shift 2 ;;
         --refresh-cookie) REFRESH=1; shift ;;
         all|全部) PAGES=0; shift ;;
-        [0-9]*)  PAGES="$1"; shift ;;
+        [0-9]*)  if [ -z "$KW" ]; then KW="$1"; else PAGES="$1"; fi; shift ;;
         *)       [ -z "$KW" ] && KW="$1"; shift ;;
     esac
 done
@@ -58,20 +58,26 @@ echo "目标：$NAME （uid=$WUID）"
 
 # ── 2) 翻页取相册 pid ───────────────────────────────────────
 TMPURL="/tmp/wb_album_urls_$$.txt"; : > "$TMPURL"
-since="0"; page=0
+MAXPAGE="${WEIBO_ALBUM_MAX_PAGE:-60}"
+since="0"; page=0; stale=0; prev=0
 while :; do
     page=$((page+1))
     [ "$PAGES" -gt 0 ] && [ "$page" -gt "$PAGES" ] && break
+    [ "$page" -gt "$MAXPAGE" ] && { echo "  · 达到页数上限 $MAXPAGE" >&2; break; }
     resp="$(get "https://weibo.com/u/$WUID" "https://weibo.com/ajax/profile/getImageWall?uid=$WUID&sinceid=$since")"
     n="$(printf '%s' "$resp" | jq -r '.data.list | length' 2>/dev/null)"
     if ! [ "${n:-0}" -gt 0 ] 2>/dev/null; then
-        if [ "$page" -eq 1 ]; then echo "相册为空或接口异常（cookie 失效？）" >&2; fi
+        [ "$page" -eq 1 ] && echo "相册为空或接口异常（cookie 失效？）" >&2
         break
     fi
     printf '%s' "$resp" | jq -r '.data.list[] | select(.type=="pic") | .pid' \
         | while IFS= read -r pid; do [ -n "$pid" ] && printf 'https://wx1.sinaimg.cn/large/%s.jpg\n' "$pid"; done >> "$TMPURL"
     since="$(printf '%s' "$resp" | jq -r '.data.since_id')"
-    echo "  · 第 $page 页 +$n（累计 $(sort -u "$TMPURL" | grep -c .)）" >&2
+    cur="$(sort -u "$TMPURL" | grep -c .)"
+    echo "  · 第 $page 页 +$n（累计 $cur）" >&2
+    if [ "$cur" -le "$prev" ]; then stale=$((stale + 1)); else stale=0; fi
+    prev="$cur"
+    [ "$stale" -ge 2 ] && { echo "  · 连续 2 页无新增，结束" >&2; break; }
     [ -n "$since" ] && [ "$since" != "null" ] || break
 done
 sort -u "$TMPURL" -o "$TMPURL"
