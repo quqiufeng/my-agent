@@ -11,7 +11,7 @@
 | `tools/english.sh` | 英语口语陪练（麦克风识别英文，回复用英文音色朗读） | `tools/english.sh start|stop|status` |
 | `tools/find_file.sh` | 按文件名关键词搜索本机文件 + WebDAV，返回匹配（本地路径 或 可下载 URL） | `find_file.sh <关键词> [数量=15]` |
 | `tools/gemini_out.sh` | 把（Gemini 等）获取到的结果按目标转发 | `tools/gemini_out.sh` |
-| `tools/image.sh` | 生成图片并发送到微信（默认文件传输助手） | `tools/image.sh` |
+| `tools/image.sh` | 生成图片并发送到微信（可指定 小红书/小红薯、朋友圈 尺寸） | `tools/image.sh [小红书|小红薯|朋友圈] "提示词" [--to 会话] [--force]` |
 | `tools/music.sh` | WebDAV 无损音乐：搜索 / 随机 / 播放 / 停止（VLC → USB 音响） | `tools/music.sh` |
 | `tools/note.sh` | 备忘 / 待办（存 ~/.myagent_notes，纯文本） | `tools/note.sh` |
 | `tools/now.sh` | 返回当前日期与时间 | `tools/now.sh` |
