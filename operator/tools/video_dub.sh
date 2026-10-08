@@ -14,16 +14,17 @@ set -uo pipefail
 ORIG_ARGS=("$@")
 DIR="$(cd "$(dirname "$0")" && pwd)"
 . /opt/my-agent/voice/config.sh
-FONT_STYLE="Default,Noto Sans CJK SC Bold,14,&H0000A5FF,&H0000A5FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,30,1"
+FONT_STYLE="Default,Noto Sans CJK SC Bold,14,&H0000D2FF,&H0000D2FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,2,10,10,24,1"
 BLUR=""
 PAUSE=0.3; INTRO=0.3
 
-VIDEO=""; TEXT=""; REF=""; VOICE="${SAY_VOICE:-}"; OUT=""; TO=""; NOSEND=1; KEEPAUDIO=0; FG=0; SPEED="${VDUB_SPEED:-0.85}"; PROBE=0; FIT=0
+VIDEO=""; TEXT=""; REF=""; VOICE="${SAY_VOICE:-}"; OUT=""; TO=""; NOSEND=1; KEEPAUDIO=0; FG=0; SPEED="${VDUB_SPEED:-0.85}"; PROBE=0; FIT=0; CLONE_SPEED="${VDUB_CLONE_SPEED:-1.0}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --ref)   REF="${2:-}"; shift 2 ;;
         --voice) VOICE="${2:-}"; shift 2 ;;
         --speed) SPEED="${2:-0.85}"; shift 2 ;;
+        --clone-speed) CLONE_SPEED="${2:-1.0}"; shift 2 ;;
         --probe) PROBE=1; shift ;;
         --fit)   FIT=1; shift ;;
         --out)   OUT="${2:-}"; shift 2 ;;
@@ -71,12 +72,12 @@ emit_subs() { # $1=start $2=dur $3=text
 
 # 逐段配音（含语速调节）；使用 run_dub 的局部变量（bash 动态作用域）
 tts_all() {
-    local i wav tx
+    local i wav tx used_clone
     for i in $(seq 0 $((${#SEG[@]} - 1))); do
-        wav="$WORK/aud/$((i+1)).wav"; tx="${SEG[$i]}"; rm -f "$wav"
+        wav="$WORK/aud/$((i+1)).wav"; tx="${SEG[$i]}"; rm -f "$wav"; used_clone=0
         [ -z "$tx" ] && continue
         if [ -n "$USE_VOICE" ] && [ -f "$VOICES_DIR/$USE_VOICE.gguf" ]; then
-            "$DIR/../voice/cosyvoice.sh" synth "$USE_VOICE" "$tx" "$wav" >>"$LOG" 2>&1 || true
+            "$DIR/../../voice/cosyvoice.sh" synth "$USE_VOICE" "$tx" "$wav" "$CLONE_SPEED" >>"$LOG" 2>&1 && [ -s "$wav" ] && used_clone=1
         fi
         if [ ! -s "$wav" ]; then
             LD_LIBRARY_PATH="${SHERPA_LIB}:${LD_LIBRARY_PATH:-}" "$SHERPA_BIN" \
@@ -86,10 +87,11 @@ tts_all() {
                 --tts-rule-fsts="$KOKORO_DIR/date-zh.fst,$KOKORO_DIR/number-zh.fst" \
                 --num-threads="${TTS_THREADS:-4}" --sid="${KOKORO_SID:-47}" \
                 --output-filename="$wav" "$tx" >>"$LOG" 2>&1 || true
-        fi
-        if [ "$SPEED" != "1" ] && [ "$SPEED" != "1.0" ] && [ -s "$wav" ]; then
-            if ffmpeg -y -i "$wav" -filter:a "atempo=$SPEED" "$WORK/aud/sp_$i.wav" >>"$LOG" 2>&1; then
-                mv -f "$WORK/aud/sp_$i.wav" "$wav"
+            # Kokoro 才套 atempo（克隆已用原生语速）
+            if [ "$used_clone" != "1" ] && [ "$SPEED" != "1" ] && [ "$SPEED" != "1.0" ] && [ -s "$wav" ]; then
+                if ffmpeg -y -i "$wav" -filter:a "atempo=$SPEED" "$WORK/aud/sp_$i.wav" >>"$LOG" 2>&1; then
+                    mv -f "$WORK/aud/sp_$i.wav" "$wav"
+                fi
             fi
         fi
     done
@@ -122,7 +124,7 @@ run_dub() {
     # 参考音频 → 临时克隆音色
     local TMPVOICE=""
     if [ -n "$REF" ] && [ "$REF" != "none" ]; then
-        "$DIR/../voice/cosyvoice.sh" add _vdub_tmp "$REF" >>"$LOG" 2>&1 && TMPVOICE="_vdub_tmp"
+        "$DIR/../../voice/cosyvoice.sh" add _vdub_tmp "$REF" >>"$LOG" 2>&1 && TMPVOICE="_vdub_tmp"
     fi
     local USE_VOICE="$VOICE"; [ -n "$TMPVOICE" ] && USE_VOICE="$TMPVOICE"
 
@@ -145,7 +147,7 @@ run_dub() {
     if awk "BEGIN{exit !($total > $Vd + 0.01)}"; then
         echo "自动精简后仍超出（约 ${total}s / 视频 ${Vd}s），请手工删减文案。" >&2
         [ -n "$TO" ] && "$DIR/wechat_send.sh" --to "$TO" "自动精简后仍超出视频时长（约 ${total}s / ${Vd}s），请删减文案。"
-        rm -rf "$WORK"; [ -n "$TMPVOICE" ] && "$DIR/../voice/cosyvoice.sh" del "$TMPVOICE" >/dev/null 2>&1
+        rm -rf "$WORK"; [ -n "$TMPVOICE" ] && "$DIR/../../voice/cosyvoice.sh" del "$TMPVOICE" >/dev/null 2>&1
         return 1
     fi
     echo "  · 配音总时长 ${total}s / 视频 ${Vd}s（精简 ${attempt} 次）" >>"$LOG"
@@ -158,7 +160,7 @@ run_dub() {
             [ -s "$WORK/aud/$k2.wav" ] || continue
             printf '  段%d: %.2fs  %s\n' "$k2" "$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$WORK/aud/$k2.wav")" "${SEG[$((k2-1))]}"
         done
-        rm -rf "$WORK"; [ -n "$TMPVOICE" ] && "$DIR/../voice/cosyvoice.sh" del "$TMPVOICE" >/dev/null 2>&1
+        rm -rf "$WORK"; [ -n "$TMPVOICE" ] && "$DIR/../../voice/cosyvoice.sh" del "$TMPVOICE" >/dev/null 2>&1
         return 0
     fi
 
@@ -214,7 +216,7 @@ run_dub() {
             -map 0:v -map 1:a -c:v libx264 -c:a aac "$OUT" >>"$LOG" 2>&1 || true
     fi
 
-    [ -n "$TMPVOICE" ] && "$DIR/../voice/cosyvoice.sh" del "$TMPVOICE" >/dev/null 2>&1
+    [ -n "$TMPVOICE" ] && "$DIR/../../voice/cosyvoice.sh" del "$TMPVOICE" >/dev/null 2>&1
     if [ -s "$OUT" ]; then
         echo "[video_dub] done -> $OUT" >> "$LOG"
         if [ "$NOSEND" = "0" ]; then

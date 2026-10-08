@@ -42,9 +42,9 @@ if ! out="$(node "$DIR/douyin_fetch.js" "$N" "$SEC" 2>&1)"; then
 fi
 echo "$out"
 [ -s /tmp/douyin_list.json ] || { echo "未取到作品列表" >&2; exit 1; }
-# 保存目录：~/douyin/<uid>/
-SEC_R="$(cat /tmp/douyin_sec.txt 2>/dev/null || true)"; [ -n "$SEC_R" ] || SEC_R="self"
-D="${DOUYIN_DIR:-$HOME/douyin}/$SEC_R"; mkdir -p "$D/video" "$D/wav"
+# 保存目录：自己 → ~/douyin/base ；指定用户 → ~/douyin/<uid>/
+if [ -n "$SEC" ]; then D="${DOUYIN_DIR:-$HOME/douyin}/$SEC"; else D="${DOUYIN_DIR:-$HOME/douyin}/base"; fi
+mkdir -p "$D/video" "$D/wav"
 
 # 2) 文案 / 标签（用 jq，避免字段错位）
 jq -r '.[] | ((.i)|tostring)+" | 赞"+((.digg)|tostring)+" | "+(.desc|gsub("#[^# ]+";"")|gsub("[ \t\n\r]+";" ")|sub("^ +";"")|sub(" +$";""))' /tmp/douyin_list.json > "$D/文案.txt"

@@ -19,6 +19,7 @@ cosyvoice_prompt_t cosyvoice_prompt_init_from_prompt_speech(cosyvoice_context_t,
 cosyvoice_tts_context_t cosyvoice_tts_context_new(cosyvoice_context_t, cosyvoice_prompt_t);
 bool cosyvoice_tts_zero_shot(cosyvoice_tts_context_t, const char* text, float speed, cosyvoice_generated_speech_ptr result);
 bool cosyvoice_save_wav(const char* filename, const float* data, uint32_t len, uint32_t sr);
+bool cosyvoice_set_sampler_seed(cosyvoice_context_t, uint32_t seed);
 void cosyvoice_free(cosyvoice_context_t);
 void cosyvoice_prompt_speech_free(cosyvoice_prompt_speech_t);
 void cosyvoice_prompt_free(cosyvoice_prompt_t);
@@ -50,6 +51,10 @@ if not ok_load then lib = ffi.load(LIB_DIR .. "/libcosyvoice.so") end
 lib.cosyvoice_init_backend_from_path(BIN_DIR)
 local ctx = lib.cosyvoice_load_from_file(MODEL)
 if ctx == nil then io.stderr:write("[cosyvoice] 载入模型失败: " .. MODEL .. "\n"); os.exit(1) end
+
+-- 固定随机种子（默认开，保证同文本同结果、时长可预测；COSYVOICE_SEED=0 关闭）
+local seed = tonumber(os.getenv("COSYVOICE_SEED") or "20261008") or 0
+if seed > 0 then pcall(lib.cosyvoice_set_sampler_seed, ctx, seed) end
 
 local psp = lib.cosyvoice_prompt_speech_load_from_file(ps_path)
 if psp == nil then io.stderr:write("[cosyvoice] 载入音色失败: " .. ps_path .. "\n"); lib.cosyvoice_free(ctx); os.exit(1) end

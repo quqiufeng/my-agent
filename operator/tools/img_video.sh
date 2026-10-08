@@ -182,7 +182,7 @@ run_pipeline() {
         local wav="$WORK/aud/$((j+1)).wav" textx="${SEG_TXT[$j]}"
         [ -z "$textx" ] && textx="　"
         if [ -n "$VOICE" ] && [ -f "$VOICES_DIR/$VOICE.gguf" ]; then
-            "$DIR/../voice/cosyvoice.sh" synth "$VOICE" "$textx" "$wav" >>"$LOG" 2>&1 || true
+            "$DIR/../../voice/cosyvoice.sh" synth "$VOICE" "$textx" "$wav" >>"$LOG" 2>&1 || true
         fi
         if [ ! -s "$wav" ]; then
             LD_LIBRARY_PATH="${SHERPA_LIB}:${LD_LIBRARY_PATH:-}" "$SHERPA_BIN" \
@@ -210,7 +210,7 @@ YCbCr Matrix: None
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Noto Sans CJK SC Bold,14,&H0000A5FF,&H0000A5FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,30,1
+Style: Default,Noto Sans CJK SC Bold,14,&H0000D2FF,&H0000D2FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,2,10,10,24,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
