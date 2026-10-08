@@ -210,7 +210,7 @@ YCbCr Matrix: None
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Noto Sans CJK SC Bold,14,&H0000D2FF,&H0000D2FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,2,10,10,24,1
+Style: Default,Noto Sans CJK SC Bold,14,&H00FFCC66,&H00FFCC66,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,1,0,2,10,10,24,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

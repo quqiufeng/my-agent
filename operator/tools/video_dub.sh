@@ -14,7 +14,7 @@ set -uo pipefail
 ORIG_ARGS=("$@")
 DIR="$(cd "$(dirname "$0")" && pwd)"
 . /opt/my-agent/voice/config.sh
-FONT_STYLE="Default,Noto Sans CJK SC Bold,14,&H0000D2FF,&H0000D2FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,2,10,10,24,1"
+FONT_STYLE="Default,Noto Sans CJK SC Bold,14,&H00FFCC66,&H00FFCC66,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,1,0,2,10,10,24,1"
 BLUR=""
 PAUSE=0.3; INTRO=0.3
 
@@ -112,13 +112,19 @@ run_dub() {
     local Vd; Vd="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$VIDEO")"
 
     mapfile -t SEG < <(printf '%s' "$TEXT" | tr '|' '\n')
-    # 每段≤24字（=字幕最多两行）→ 逐段配音，字幕与语音一一对应（防错位）
-    local -a _seg2=(); local _s _len _j
-    for _s in "${SEG[@]}"; do
-        _len="${#_s}"
-        if [ "$_len" -le 24 ]; then _seg2+=("$_s")
-        else for ((_j = 0; _j < _len; _j += 24)); do _seg2+=("${_s:_j:24}"); done; fi
+    # 文案分段：按标点切成小句 → 贪心打包成"字数相近"的段（每段≈18–24字，只在标点处断）
+    local _all="" _s
+    for _s in "${SEG[@]}"; do _all+="$_s"; done
+    local -a _cl=(); local _c
+    while IFS= read -r _c; do [ -n "$_c" ] && _cl+=("$_c"); done \
+        < <(printf '%s' "$_all" | sed -E 's/([，。！？、；：])/\1\n/g' | sed '/^$/d')
+    local -a _seg2=(); local _buf="" _target="${VDUB_SEG_CHARS:-20}"
+    for _c in "${_cl[@]}"; do
+        if [ -z "$_buf" ]; then _buf="$_c"
+        elif [ $(( ${#_buf} + ${#_c} )) -le $(( _target + 6 )) ]; then _buf="$_buf$_c"
+        else _seg2+=("$_buf"); _buf="$_c"; fi
     done
+    [ -n "$_buf" ] && _seg2+=("$_buf")
     SEG=("${_seg2[@]}")
 
     # 参考音频 → 临时克隆音色
