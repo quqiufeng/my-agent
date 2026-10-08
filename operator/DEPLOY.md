@@ -148,3 +148,25 @@ PORT=80 setsid bash -c "PORT=80 python3 web/server.py" >/tmp/web.log 2>&1 </dev/
 
 **依赖**：CosyVoice 克隆栈 + **SenseVoice**（转写上传音频为 prompt 文本）+ ffmpeg + Noto CJK 字体
 （即上述“另需补”的 3~5 项）。上传目录 `web/uploads/`、成片 `web/outputs/`（已 gitignore）。
+
+### 开机自启（该容器**不是 systemd**）
+
+实例 PID1 = `/sbin/docker-init -- /scripts/start.sh`，**无 systemd、无 cron**。但入口脚本 `/scripts/start.sh`
+会在每次启动时**执行 `/scripts/start.d/*`** —— 把启动脚本丢进该目录即可自启：
+
+```bash
+cat > /scripts/start.d/myagent-web.sh <<'EOF'
+#!/bin/bash
+cd /opt/my-agent
+export HOST=0.0.0.0 PORT=80
+exec /usr/bin/python3 /opt/my-agent/web/server.py >>/var/log/myagent-web.log 2>&1
+EOF
+chmod +x /scripts/start.d/myagent-web.sh
+```
+
+手动重启（不重启容器时）：
+```bash
+setsid /scripts/start.d/myagent-web.sh </dev/null >/dev/null 2>&1 &
+```
+> 坑：别用 `pkill -f "web/server.py"` —— ssh 命令行自身含该串，会**误杀当前命令**。用 `pgrep -af server.py` 查 PID 再 kill。
+> 日志：`/var/log/myagent-web.log`。
