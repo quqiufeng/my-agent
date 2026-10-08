@@ -28,7 +28,7 @@ LOCK = threading.Lock()
 
 # 用 opencode 免费模型把「参考文案/卖点」整理成口播稿（免 key）
 OC_BIN = shutil.which("opencode") or "/usr/local/bin/opencode"
-OC_MODEL = os.environ.get("OC_MODEL", "opencode/ling-3.1-flash-free")
+OC_MODEL = os.environ.get("OC_MODEL", "opencode/mimo-v2.6-flash-free")
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 OC_LOCK = threading.Lock()   # 串行化 opencode 调用，避免并发抢同一个数据目录
 N_VERSIONS = int(os.environ.get("N_VERSIONS", "3"))
