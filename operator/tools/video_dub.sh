@@ -117,8 +117,8 @@ run_dub() {
     local _all="" _s
     for _s in "${SEG[@]}"; do _all+="$_s"; done
     local -a _cl=(); local _c
-    while IFS= read -r _c; do [ -n "$_c" ] && _cl+=("$_c"); done \
-        < <(printf '%s' "$_all" | sed -E 's/([，。！？、；：])/\1\n/g' | sed '/^$/d')
+    while IFS= read -r _c || [ -n "$_c" ]; do [ -n "$_c" ] && _cl+=("$_c"); done \
+        < <(printf '%s\n' "$_all" | sed -E 's/([，。！？、；：])/\1\n/g' | sed '/^$/d')
     local -a _seg2=(); local _buf="" _target="${VDUB_SEG_CHARS:-20}"
     for _c in "${_cl[@]}"; do
         if [ -z "$_buf" ]; then _buf="$_c"

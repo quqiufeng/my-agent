@@ -26,6 +26,12 @@ MAX_UPLOAD = int(os.environ.get("MAX_UPLOAD_MB", "500")) * 1024 * 1024
 JOBS = {}
 LOCK = threading.Lock()
 
+# 用 opencode 免费模型把「参考文案/卖点」整理成口播稿（免 key）
+OC_BIN = shutil.which("opencode") or "/usr/local/bin/opencode"
+OC_MODEL = os.environ.get("OC_MODEL", "opencode/ling-3.1-flash-free")
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+OC_LOCK = threading.Lock()   # 串行化 opencode 调用，避免并发抢同一个数据目录
+
 
 def _run(cmd, timeout=None):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -40,7 +46,60 @@ def probe_duration(path):
         return 0.0
 
 
-def worker(job_id, video, audio, text):
+def make_script(reference, dur, feedback="", target_chars=None):
+    """用 opencode 免费模型，把「参考文案/卖点」整理成受时长约束的口播稿。失败返回空串。"""
+    if target_chars is None:
+        target_chars = max(50, int((dur - 3) * 4.3))   # 按克隆语速约 4.3 字/秒估字数
+    n_sent = max(4, round(target_chars / 20))
+    prompt = (
+        "你是抖音带货短视频的口播文案写手。把下面的『参考文案/卖点』整理成一条【口播稿】，用于给视频配音+字幕。\n"
+        "硬性要求：\n"
+        f"1) 长度：必须写满约 {target_chars} 字（不少于 {int(target_chars*0.9)} 字），分成约 {n_sent} 句，每句 18~24 字；"
+        "宁可写满也不许只写一半；\n"
+        "2) 按语义断句，每句以换行分隔；\n"
+        "3) 口语顺、有钩子、连贯，把卖点融进话里，不要罗列参数；\n"
+        "4) 不出现具体品牌名（用『这个品牌』）；不写『防水』（改『不怕水』）；\n"
+        "5) 最后一句固定：想捡漏的来我直播间；\n"
+        "6) 只输出口播文案本身：不要解释、不要标题、不要序号、不要引号、不要空行。\n"
+    )
+    if feedback:
+        prompt += f"\n【上一版问题，务必修正】{feedback}\n"
+    prompt += "\n参考文案：\n" + reference
+    env = dict(os.environ)
+    env["PATH"] = "/usr/local/bin:" + env.get("PATH", "")
+    try:
+        with OC_LOCK:
+            r = subprocess.run([OC_BIN, "run", "--model", OC_MODEL, prompt],
+                               cwd=ROOT, capture_output=True, text=True, timeout=180, env=env)
+        out = ANSI.sub("", r.stdout or "")
+        lines = []
+        for ln in out.splitlines():
+            s = ln.strip()
+            if not s or s.startswith(">") or s.startswith("#"):
+                continue
+            lines.append(s)
+        return "\n".join(lines).strip()
+    except Exception:
+        return ""
+
+
+def probe_narration(video, script_segments, voice):
+    """用 video_dub --probe 实测配音时长（秒）。失败返回 None。"""
+    try:
+        r = _run([os.path.join(TOOLS, "video_dub.sh"), video, script_segments,
+                  "--voice", voice, "--probe", "--fg"], timeout=300)
+        m = re.search(r"配音\s*([\d.]+)s", (r.stdout or "") + (r.stderr or ""))
+        return float(m.group(1)) if m else None
+    except Exception:
+        return None
+
+
+def to_segments(text):
+    """口播稿 -> video_dub 的分段（换行视为段分隔）"""
+    return re.sub(r"[ \t]*\r?\n+[ \t]*", "|", text.strip())
+
+
+def worker(job_id, video, audio, text, dur):
     job = JOBS[job_id]
     tmp_voice = "vjob_" + job_id
     try:
@@ -54,13 +113,35 @@ def worker(job_id, video, audio, text):
             job["status"] = "error"
             job["error"] = "音色克隆失败：" + (r.stderr or r.stdout)[-400:]
             return
-        # 文案：把换行转成段分隔符 |
-        script = re.sub(r"[ \t]*\r?\n+[ \t]*", "|", text.strip())
-        if not script:
+        # 文案：先用免费模型按视频时长整理成口播稿；再用 --probe 实测配音时长，
+        #       偏短/偏长则反馈给模型重写（最多迭代 3 版），确保配音基本填满视频。
+        job["status"] = "writing"
+        script = make_script(text, dur) or text
+        feedback = ""
+        seg = to_segments(script)
+        for _ in range(3):
+            narr = probe_narration(video, seg, tmp_voice)
+            job["narration"] = round(narr, 1) if narr else None
+            if not narr or (0.82 * dur <= narr <= dur + 1.0):
+                break
+            chars = len(seg.replace("|", ""))
+            if narr < 0.82 * dur:
+                feedback = (f"上一版配音只有 {narr:.0f}s，视频 {dur:.0f}s，太短（尾部空了一半）。"
+                            f"请把文案加长到约 {int(chars * dur / narr)} 字，务必写满。")
+            else:
+                feedback = f"上一版配音 {narr:.0f}s 超过视频 {dur:.0f}s，请精简到约 {int(chars * dur / narr)} 字。"
+            new_script = make_script(text, dur, feedback=feedback)
+            if not new_script:
+                break
+            script = new_script
+            job["script"] = script
+            seg = to_segments(script)
+        job["script"] = script
+        if not seg:
             job["status"] = "error"; job["error"] = "参考文案为空"; return
         out = os.path.join(OUTPUTS, job_id + ".mp4")
         job["status"] = "generating"
-        r = _run([os.path.join(TOOLS, "video_dub.sh"), video, script,
+        r = _run([os.path.join(TOOLS, "video_dub.sh"), video, seg,
                   "--voice", tmp_voice, "--fg", "--no-send", "--fit", "--out", out])
         if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 0:
             job["status"] = "done"; job["out"] = out; job["size"] = os.path.getsize(out)
@@ -138,7 +219,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({
                     "status": job["status"], "error": job.get("error"),
                     "elapsed": round(time.time() - job["t0"], 1),
-                    "size": job.get("size"),
+                    "size": job.get("size"), "script": job.get("script"),
+                    "narration": job.get("narration"),
                 })
         m = re.match(r"^/download/([0-9a-zA-Z_-]+)$", self.path)
         if m:
@@ -185,7 +267,7 @@ class Handler(BaseHTTPRequestHandler):
             estimate = max(30, int(dur * 0.6) + 25)
             with LOCK:
                 JOBS[job_id] = {"status": "queued", "t0": time.time(), "estimate": estimate}
-            threading.Thread(target=worker, args=(job_id, vpath, apath, text), daemon=True).start()
+            threading.Thread(target=worker, args=(job_id, vpath, apath, text, dur), daemon=True).start()
             return self._json({"id": job_id, "estimate": estimate})
         except Exception as e:  # noqa
             return self._json({"error": repr(e)}, 500)

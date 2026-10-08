@@ -31,6 +31,7 @@
   .result{margin-top:18px;display:none}
   .result video{width:100%;border-radius:10px;background:#000;margin-bottom:14px}
   .dl{display:inline-block;background:var(--ok);color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:10px}
+  .script{white-space:pre-wrap;font-size:13px;color:#6b665b;background:#f7f6f2;border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:14px;line-height:1.7}
   .error{color:var(--err);background:#fdecea;border:1px solid #f5c6c1;border-radius:10px;padding:12px;font-size:13px;white-space:pre-wrap;word-break:break-all;margin-top:16px;display:none}
 </style>
 </head>
@@ -64,6 +65,7 @@
       <div id="result" class="result">
         <video id="preview" controls playsinline></video>
         <a class="dl" id="dl" download>下载视频</a>
+        <div id="script" class="script"></div>
       </div>
       <div id="error" class="error"></div>
     </div>
@@ -75,7 +77,7 @@ const $ = (id) => document.getElementById(id);
 $('video').addEventListener('change', e => $('fv').textContent = e.target.files[0] ? '✓ ' + e.target.files[0].name : '');
 $('audio').addEventListener('change', e => $('fa').textContent = e.target.files[0] ? '✓ ' + e.target.files[0].name : '');
 
-const STEPS = { queued: '排队中…', cloning: '正在克隆音色…', generating: '正在合成视频…', done: '完成！', error: '出错' };
+const STEPS = { queued: '排队中…', cloning: '正在克隆音色…', writing: '正在整理文案…', generating: '正在合成视频…', done: '完成！', error: '出错' };
 let timer = null;
 
 $('form').addEventListener('submit', async (e) => {
@@ -132,6 +134,7 @@ $('form').addEventListener('submit', async (e) => {
     $('preview').src = url;
     $('dl').href = url;
     $('result').style.display = 'block';
+    $('script').textContent = j.script ? ('文案：\n' + j.script) : '';
     $('go').disabled = false;
   }
   function fail(msg) {
