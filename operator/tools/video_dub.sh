@@ -5,7 +5,7 @@
 # 流程：先 `video_dub.sh <视频> "<文案>" --probe` 比对时长（配音 ≤ 视频），再 `--fg` 合成。
 # @desc 给已有视频配音+字幕（可克隆音色）；先用 --probe 生成配音比对时长，确保不超视频，再合成
 # @usage tools/video_dub.sh <视频> "文案1|文案2|…" [--probe] [--speed 0.85] [--fit] [--ref 参考.wav] [--voice 名] [--out out.mp4] [--to 会话] [--send] [--keep-audio] [--fg]
-# @rule **给视频配音+字幕 / 带货引流视频**：说“给这个视频配音+字幕 / 给视频配字幕 / 加旁白”→ **先读 `~/douyin/base/README.md` 与 `sale_points.txt`**，按其规则写**均衡分镜文案**（**不出现品牌名**，「防水」改「不怕水」；每段≈20字、长度均衡、**可短不可超视频时长**；**结尾固定「想捡漏的来我直播间」**），再先 `--probe` 比对时长、后 `--fg` 合成。**默认音色=克隆「话术」**（换音色 `--voice`，临时克隆 `--ref <音频>`）。默认不发微信（`--send` 才发）。
+# @rule **生成抖音素材 / 给视频配音+字幕 / 带货引流视频**：说“**生成抖音素材** / 做抖音素材 / 生成素材 / 给这个视频配音+字幕 / 给视频配字幕 / 做带货引流视频 / 给这个视频配文案和配音”→ **先跑 `tools/sale_points.sh` 读资料包**，**模仿其中 18 条参考口播稿的语气/结构**（像真人口播，别念参数：①钩子→②品牌价值→③口语串讲卖点→④收尾）**自己推理写文案**（不出现品牌名；「防水」改「不怕水」；`App`写「官方软件」；每段≈20字、长度均衡、**可短不可超视频时长**；结尾固定「想捡漏的来我直播间」），再用本工具先 `--probe`（自动前台）比对时长、后 `--fg` 合成。默认出**3 条不同文案**（同一素材），**必须一条跑完再跑下一条（串行，切勿并发）**；可加 `--ss/--trim-end` 换裁剪段。**默认音色=克隆「话术」**（换音色 `--voice`）。默认不发微信（`--send` 才发）。
 # @order 15
 set -uo pipefail
 ORIG_ARGS=("$@")
@@ -15,13 +15,15 @@ FONT_STYLE="Default,Noto Sans CJK SC Bold,14,&H00FFCC66,&H00FFCC66,&H00000000,&H
 BLUR=""
 PAUSE=0.3; INTRO=0.3
 
-VIDEO=""; TEXT=""; REF=""; VOICE="${VDUB_VOICE:-话术}"; OUT=""; TO=""; NOSEND=1; KEEPAUDIO=0; FG=0; SPEED="${VDUB_SPEED:-0.85}"; PROBE=0; FIT=0; CLONE_SPEED="${VDUB_CLONE_SPEED:-1.0}"
+VIDEO=""; TEXT=""; REF=""; VOICE="${VDUB_VOICE:-话术}"; OUT=""; TO=""; NOSEND=1; KEEPAUDIO=0; FG=0; SPEED="${VDUB_SPEED:-0.85}"; PROBE=0; FIT=0; CLONE_SPEED="${VDUB_CLONE_SPEED:-1.0}"; SS=0; ET=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --ref)   REF="${2:-}"; shift 2 ;;
         --voice) VOICE="${2:-}"; shift 2 ;;
         --speed) SPEED="${2:-0.85}"; shift 2 ;;
         --clone-speed) CLONE_SPEED="${2:-1.0}"; shift 2 ;;
+        --ss)    SS="${2:-0}"; shift 2 ;;
+        --trim-end) ET="${2:-0}"; shift 2 ;;
         --probe) PROBE=1; shift ;;
         --fit)   FIT=1; shift ;;
         --out)   OUT="${2:-}"; shift 2 ;;
@@ -38,6 +40,7 @@ done
 # 文案可来自文件
 if [ -f "$TEXT" ]; then TEXT="$(tr '\n' '|' < "$TEXT" | sed 's/|$//')"; fi
 [ -n "$OUT" ] || OUT="${VIDEO%.*}_dubbed.mp4"
+[ "$PROBE" = "1" ] && FG=1   # --probe 必须前台，才能把时长结果返回给调用者
 
 wrap_text() { # $1=文本 $2=每行汉字数（默认12）；去标点后硬折行
     local t="$1" n="${2:-12}" out="" i
@@ -107,6 +110,7 @@ run_dub() {
     local WORK="/tmp/vdub_$$"; mkdir -p "$WORK/aud"; local LOG=/tmp/vdub_$$.log
     echo "[video_dub] start $(date '+%T')" > "$LOG"
     local Vd; Vd="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$VIDEO")"
+    Vd="$(awk "BEGIN{v=$Vd-$SS-$ET; if(v<1)v=1; print v}")"
 
     mapfile -t SEG < <(printf '%s' "$TEXT" | tr '|' '\n')
     # 文案分段：按标点切成小句 → 贪心打包成"字数相近"的段（每段≈18–24字，只在标点处断）
@@ -211,11 +215,11 @@ run_dub() {
     local HAS_AUDIO
     HAS_AUDIO="$(ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 "$VIDEO" | head -1)"
     if [ "$KEEPAUDIO" = "1" ] && [ -n "$HAS_AUDIO" ]; then
-        ffmpeg -y -i "$VIDEO" -i "$WORK/narration.aac" \
+        ffmpeg -y -ss "$SS" -t "$Vd" -i "$VIDEO" -i "$WORK/narration.aac" \
             -filter_complex "[0:a]volume=0.35[a0];[1:a]volume=1.5[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[aout]" \
             -map 0:v -map "[aout]" -vf "ass=$ASS" -c:v libx264 -c:a aac "$OUT" >>"$LOG" 2>&1 || true
     else
-        ffmpeg -y -i "$VIDEO" -i "$WORK/narration.aac" -vf "ass=$ASS" -af "volume=1.5" \
+        ffmpeg -y -ss "$SS" -t "$Vd" -i "$VIDEO" -i "$WORK/narration.aac" -vf "ass=$ASS" -af "volume=1.5" \
             -map 0:v -map 1:a -c:v libx264 -c:a aac "$OUT" >>"$LOG" 2>&1 || true
     fi
 
@@ -233,8 +237,11 @@ run_dub() {
 }
 
 if [ "$FG" = "1" ] || [ "${VIDEO_DUB_RUN:-0}" = "1" ]; then
+    # 全局串行锁：多条并发出片时自动排队，避免并发抢 GPU/音色导致串味
+    exec 9>"/tmp/video_dub.lock"
+    flock 9
     run_dub
 else
     setsid env VIDEO_DUB_RUN=1 bash "$0" "${ORIG_ARGS[@]}" </dev/null >/tmp/vdub_$$.out 2>&1 &
-    echo "已后台开始配音+字幕，完成后文件在 $OUT${NOSEND:+（未发微信）}"
+    echo "已后台开始配音+字幕（串行排队），完成后文件在 $OUT${NOSEND:+（未发微信）}"
 fi
