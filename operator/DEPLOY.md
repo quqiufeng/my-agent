@@ -96,3 +96,55 @@ cd /opt/my-agent/wechat-ocr && cmake -S . -B build_lib -DCMAKE_BUILD_TYPE=Releas
 ## 待实测（等有卡后）
 
 拿到 GPU 后**照上面实跑一遍**，把缺的依赖/路径差异回填到本文件与 `deploy_pack.sh` 的清单里。
+
+---
+
+## 实跑记录（4090D 出图镜像 · 目标：只生成抖音短视频）
+
+**镜像自带**：Ubuntu 24.04、`/root/.opencode/bin/opencode`、gcc/g++/git/make/cmake/wget、luajit/tmux/ffmpeg、
+Noto CJK、CUDA 12.8（`/usr/local/cuda-12.8`，已进 ldconfig）、python、onnxruntime(py)、
+**出图**（`/opt/{sd,comfycli,musubi-tuner}`、`/data/models/image`）。
+
+**另需补（实测）**：
+1. `node` 22 + npm（chrome-devtools MCP 用）
+2. `google-chrome`（headless）
+3. **`apt install libicu74`** —— 克隆库要 `libicu{data,uc,i18n}.so.74`，镜像只有 `.70`
+4. 克隆栈：`/opt/cosyvoice.cpp/build/{bin,lib,_deps/onnxruntime/lib}`、`CosyVoice3-2512_F16.gguf`、
+   `Fun-CosyVoice3-0.5B/{speech_tokenizer_v3.onnx,campplus.onnx}`、`~/.myagent_voices`
+5. **SenseVoice**（`/opt/SenseVoice.cpp` + `/data/models/sense-voice-small-q4_k.gguf`）——
+   **Web 面板必装**：用它把上传的克隆音频转写成 prompt 文本，否则 `cosyvoice.sh add` 报“转写失败”。
+6. 代码 + `~/douyin/base`（资料包 + 样本）
+
+**仅“命令行出片”可省**：Kokoro/sherpa、`/data/venv/onnxruntime`、wechat-ocr、joycaption、
+微信/相机/adb/浏览器工具。（**SenseVoice 在“上传音频自动克隆”的 Web 流程里必需**）
+
+**坑**：
+- 素材若打包自 `/home/<user>/...`，而目标机以 root 运行（`HOME=/root`）→ **音色/资料要放到 `/root` 下**，
+  否则 `$HOME/.myagent_voices` 找不到。
+- 克隆库依赖 ICU **74**（不是 70）。
+- CUDA 用镜像自带的 `/usr/local/cuda-12.8`（ldconfig 已收录，无需额外设 `LD_LIBRARY_PATH`）。
+
+**验证结果**：`voice/cosyvoice.sh synth 话术 …` ≈7.4s/句；`video_dub.sh --fg` 出 **49.9s 成片 / 18.6s**，
+字幕已烧录（libass 在）。SSH 端口非 22（用 `xgc_ctl.py ssh <id>` 给出的 `-p`）。
+
+---
+
+## Web 面板（上传素材 → 生成短视频）
+
+代码 `web/`（`server.py` **纯标准库**、`index.html`）：表单上传「视频素材 / 克隆音频 / 参考文案」→
+后台克隆音色 → `operator/tools/video_dub.sh` 出片 → 前端**倒计时轮询** → 下载。
+
+**启动（在实例上）**：
+```bash
+cd /opt/my-agent
+PORT=80 setsid bash -c "PORT=80 python3 web/server.py" >/tmp/web.log 2>&1 </dev/null &
+```
+
+**访问**：
+- 实例内：`http://localhost:80/`
+- **公网**：`https://<容器ID>-<端口号>.container.x-gpu.com`（跑在 80 端口 → 用 `-80`）
+  - 本实例：**https://zkutektl3enbg1fd-80.container.x-gpu.com**
+  - 容器 ID = `python3 xgc_ctl.py list` 里的 `id` 字段
+
+**依赖**：CosyVoice 克隆栈 + **SenseVoice**（转写上传音频为 prompt 文本）+ ffmpeg + Noto CJK 字体
+（即上述“另需补”的 3~5 项）。上传目录 `web/uploads/`、成片 `web/outputs/`（已 gitignore）。
