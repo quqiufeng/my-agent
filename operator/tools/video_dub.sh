@@ -8,7 +8,7 @@
 #   每个配音段=一条字幕（≤24字/两行），声画一一对应，不会错位。
 # @desc 给已有视频配音+字幕（可克隆音色）；先用 --probe 生成配音比对时长，确保不超视频，再合成
 # @usage tools/video_dub.sh <视频> "文案1|文案2|…" [--probe] [--speed 0.85] [--fit] [--ref 参考.wav] [--voice 名] [--out out.mp4] [--to 会话] [--send] [--keep-audio] [--fg]
-# @rule **给视频配音+字幕**：说“给这个视频配音+字幕 / 给视频配字幕 / 加旁白” → 拿到视频和文案资料后，按**视频时长**把资料重构为分镜字幕（每段≤24字、可短不可超、每次措辞不同）。**务必先跑 `--probe` 只生成配音比对时长**（`工具会打印「视频 Xs ｜ 配音 Ys」`），确认 配音时长 ≤ 视频时长 再正式合成；超了就精简文案或调 `--speed`（默认0.85慢速）重测，直到放得下——这样保证成片正确。给了参考音频就 `--ref <wav>` 克隆音色，默认音色则不加；`--voice <名>` 用已注册音色。默认不发微信（加 `--send` 才发）。
+# @rule **给视频配音+字幕**：说“给这个视频配音+字幕 / 给视频配字幕 / 加旁白” → 拿到视频和文案资料后，按**视频时长**把资料重构为分镜字幕（**按标点断句、每段≈20字长度均衡、可短不可超、每次措辞不同**）。**务必先跑 `--probe` 只生成配音比对时长**（`工具会打印「视频 Xs ｜ 配音 Ys」`），确认 配音时长 ≤ 视频时长 再正式合成；超了就精简文案或调语速重测——这样保证成片正确。**默认音色=你的克隆音色「话术」**；要换用 `--voice <名>`；临时用某个音频克隆 `--ref <音频>`。默认不发微信（加 `--send` 才发）。
 # @order 15
 set -uo pipefail
 ORIG_ARGS=("$@")
@@ -18,7 +18,7 @@ FONT_STYLE="Default,Noto Sans CJK SC Bold,14,&H00FFCC66,&H00FFCC66,&H00000000,&H
 BLUR=""
 PAUSE=0.3; INTRO=0.3
 
-VIDEO=""; TEXT=""; REF=""; VOICE="${SAY_VOICE:-}"; OUT=""; TO=""; NOSEND=1; KEEPAUDIO=0; FG=0; SPEED="${VDUB_SPEED:-0.85}"; PROBE=0; FIT=0; CLONE_SPEED="${VDUB_CLONE_SPEED:-1.0}"
+VIDEO=""; TEXT=""; REF=""; VOICE="${VDUB_VOICE:-话术}"; OUT=""; TO=""; NOSEND=1; KEEPAUDIO=0; FG=0; SPEED="${VDUB_SPEED:-0.85}"; PROBE=0; FIT=0; CLONE_SPEED="${VDUB_CLONE_SPEED:-1.0}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --ref)   REF="${2:-}"; shift 2 ;;
