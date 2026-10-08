@@ -28,8 +28,10 @@
   .step{font-size:14px;color:#6b665b;line-height:1.6}
   .bar{height:6px;background:#eceae4;border-radius:4px;margin-top:16px;overflow:hidden}
   .bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
-  .result{margin-top:18px;display:none}
-  .result video{width:100%;border-radius:10px;background:#000;margin-bottom:14px}
+  .results{margin-top:18px;display:none}
+  .rcard{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px;background:#fdfdfb}
+  .rcard video{width:100%;border-radius:10px;background:#000;margin-bottom:10px}
+  .rcard .tag{font-size:12px;color:#8a8578;margin-bottom:8px}
   .dl{display:inline-block;background:var(--ok);color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:10px}
   .script{white-space:pre-wrap;font-size:13px;color:#6b665b;background:#f7f6f2;border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:14px;line-height:1.7}
   .error{color:var(--err);background:#fdecea;border:1px solid #f5c6c1;border-radius:10px;padding:12px;font-size:13px;white-space:pre-wrap;word-break:break-all;margin-top:16px;display:none}
@@ -62,11 +64,7 @@
         <div class="step" id="step">正在上传…</div>
       </div>
       <div class="bar"><i id="bar"></i></div>
-      <div id="result" class="result">
-        <video id="preview" controls playsinline></video>
-        <a class="dl" id="dl" download>下载视频</a>
-        <div id="script" class="script"></div>
-      </div>
+      <div id="results" class="results"></div>
       <div id="error" class="error"></div>
     </div>
   </form>
@@ -88,7 +86,7 @@ $('form').addEventListener('submit', async (e) => {
   fd.append('text', $('text').value);
   $('go').disabled = true;
   $('status').style.display = 'block';
-  $('result').style.display = 'none';
+  $('results').style.display = 'none'; $('results').innerHTML = '';
   $('error').style.display = 'none';
   $('count').textContent = '···';
   $('step').textContent = '正在上传…';
@@ -114,7 +112,7 @@ $('form').addEventListener('submit', async (e) => {
       const j = await r.json();
       if (j.status === 'done') return done(id, j);
       if (j.status === 'error') return fail(j.error || '生成失败');
-      $('step').textContent = STEPS[j.status] || j.status;
+      $('step').textContent = j.progress ? j.progress : (STEPS[j.status] || j.status);
       const elapsed = j.elapsed || 0;
       $('bar').style.width = Math.min(98, (elapsed / total) * 100).toFixed(0) + '%';
       if (left > 0) $('count').textContent = left;
@@ -130,11 +128,18 @@ $('form').addEventListener('submit', async (e) => {
     clearInterval(timer); clearInterval(poller);
     $('count').textContent = '✓'; $('step').textContent = STEPS.done;
     $('bar').style.width = '100%';
-    const url = '/download/' + jid;
-    $('preview').src = url;
-    $('dl').href = url;
-    $('result').style.display = 'block';
-    $('script').textContent = j.script ? ('文案：\n' + j.script) : '';
+    const box = $('results'); box.innerHTML = '';
+    const list = (j.outputs && j.outputs.length) ? j.outputs : [{ url: '/download/' + jid, script: j.script, n: 1, angle: '' }];
+    list.forEach(o => {
+      const card = document.createElement('div'); card.className = 'rcard';
+      const tag = document.createElement('div'); tag.className = 'tag';
+      tag.textContent = '第 ' + (o.n || 1) + ' 条' + (o.angle ? ' · ' + o.angle.split('：')[0] : '');
+      const v = document.createElement('video'); v.controls = true; v.playsInline = true; v.src = o.url;
+      const a = document.createElement('a'); a.className = 'dl'; a.href = o.url; a.download = ''; a.textContent = '下载视频';
+      const sc = document.createElement('div'); sc.className = 'script'; sc.textContent = o.script ? ('文案：\n' + o.script) : '';
+      card.append(tag, v, a, sc); box.appendChild(card);
+    });
+    box.style.display = 'block';
     $('go').disabled = false;
   }
   function fail(msg) {
