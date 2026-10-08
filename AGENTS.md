@@ -113,6 +113,8 @@ phone.sh type "ai 现在几点"     # 输入中文（自动切 ADBKeyboard，用
 | SenseVoice 程序 | `/opt/SenseVoice.cpp/bin/` |
 | Kokoro 模型 | `/data/models/kokoro-multi-lang-v1_0/` |
 | sherpa-onnx | `/opt/sherpa-onnx/` |
+| 语音克隆 CosyVoice3 | `/opt/cosyvoice.cpp/build/bin/cosyvoice-cli`（+ `build/lib/libcosyvoice.so`）、`/data/models/cosyvoice3-gguf/CosyVoice3-2512_F16.gguf`、frontend onnx 在 `/data/models/Fun-CosyVoice3-0.5B/`（`speech_tokenizer_v3.onnx`、`campplus.onnx`） |
+| 克隆音色库 | `~/.myagent_voices/`（`<名>.gguf` = prompt_speech；用 `tools/voices.sh add` 注册） |
 | 微信 OCR 模型 | `wechat-ocr/models/`（不含在库） |
 | ONNX Runtime | `/data/venv/onnxruntime-linux-x64-gpu-1.26.0/` |
 

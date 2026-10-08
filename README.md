@@ -129,6 +129,7 @@ operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → �
 | opencode + tmux | 单脑与常驻会话 | operator |
 | SenseVoice.cpp + gguf | 语音转文本（纯 C++） | voice |
 | sherpa-onnx + Kokoro | 文本转语音（纯 C++） | voice |
+| Lourdle/cosyvoice.cpp + GGUF | 克隆音色 TTS（C++/GGML，LuaJIT FFI；`/opt/cosyvoice.cpp`） | voice |
 | SDL2 + OpenCV + ALSA | 统一界面 / 摄像头 / 采集 | voice |
 | LuaJIT + ONNX Runtime GPU | 微信 OCR | wechat-ocr |
 | PaddleOCR PP-OCRv4 | 聊天文字识别 | wechat-ocr |
@@ -147,6 +148,8 @@ operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → �
 
 - ✅ 语音转文本（SenseVoice.cpp，中/英）
 - ✅ 文本转语音（Kokoro → USB 音响，中英音色）
+- ✅ **语音克隆发声**（CosyVoice3 的 C++/GGUF 移植 [Lourdle/cosyvoice.cpp] + LuaJIT FFI）：可**指定某人音色**发声；音色用 `tools/voices.sh` 注册/管理，`tools/say.sh --voice <名>` 使用
+- ✅ **动画短片**（`img_video.sh`）：用出图功能生成若干动漫分镜 → 配音+字幕 → 竖版短片发微信；默认主题=中国传统童话（内置《神笔马良》分镜）
 - ✅ 摄像头窗口 / 人脸门控 / 统一界面
 - ✅ 微信 OCR 机器人（搜索/发送/截图/监控）
 - ✅ 单脑 + **插件式白名单**（`plugin.sh` 生成 `TOOLS.md`，26 工具）

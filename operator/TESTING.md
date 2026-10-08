@@ -90,6 +90,8 @@ operator/tools/<name>.sh <参数>        # 直接看 stdout / 效果，绕过大
 | 26 | vocab.sh | 记单词 | `ai 开始背单词` / `add x y` / `list` | 弹卡/发音判定 | | | |
 | 27 | gemini_out.sh | 结果分发 | `gemini_out.sh wechat "…"` | 按目标转发 | | | |
 | 28 | voice/app | 统一界面（点阵风） | `voice/voice.sh app`（需显示器） | 摄像头 + 点阵状态栏/电平条/点阵时钟 | ✓ | 2026-10-07 10:32 | C++ 编译 `make -C voice/app` |
+| 29 | say.sh / voices.sh | 克隆音色发声 | `voices.sh add <名> <ref.wav> "文本"` → `say.sh --voice <名> "内容"` | 用指定音色出声 | ✓ | 2026-10-08 09:20 | CosyVoice3(C++/GGUF)+LuaJIT FFI；`list/del` 管理 |
+| 30 | img_video.sh | 动画短片（出图→配音→字幕） | `img_video.sh`（默认传统童话）/ `--n 2 --fg` | 生成竖版带配音字幕短片 | ✓ | 2026-10-08 09:27 | 合成链路用假 backup 验证；真跑需 SD 出图(慢) |
 
 ### 3.3 链路级测试
 

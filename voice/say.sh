@@ -1,22 +1,35 @@
 #!/usr/bin/env bash
 # voice/say.sh — 文本转语音 → USB 音响
 # 用法: say.sh "要说的文本"
-#   TTS: sherpa-onnx + Kokoro（纯 C++）；失败时回退 espeak-ng。
+#       say.sh --voice <音色名> "文本"     # 用克隆音色（CosyVoice3，LuaJIT FFI）
+# 默认 TTS: sherpa-onnx + Kokoro（纯 C++）；失败回退 espeak-ng。
 set -uo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=config.sh
 . "$DIR/config.sh"
 
+# 解析 --voice / 文本
+VOICE_OVERRIDE=""
+TEXT=""
+args=("$@"); i=0
+while [ $i -lt ${#args[@]} ]; do
+    a="${args[$i]}"
+    case "$a" in
+        --voice) VOICE_OVERRIDE="${args[$((i+1))]:-}"; i=$((i+2)); continue ;;
+        --kokoro) VOICE_OVERRIDE="__kokoro__"; i=$((i+1)); continue ;;
+    esac
+    TEXT="${TEXT}${TEXT:+ }${a}"
+    i=$((i+1))
+done
+if [ -z "$TEXT" ]; then
+    echo "用法: $0 [--voice 音色名] <文本>" >&2
+    exit 2
+fi
+
 # 英语陪练模式：用英文音色（0-19 为英文女/男声）
 if [ -f /tmp/myagent_english_mode ]; then
     export KOKORO_SID="${KOKORO_SID_EN:-3}"
-fi
-
-TEXT="${1:-}"
-if [ -z "$TEXT" ]; then
-    echo "用法: $0 <文本>" >&2
-    exit 2
 fi
 
 # TTS 播放期间置标志：语音监听据此静音麦克风，避免把自己的播报当输入（回环）
@@ -25,6 +38,16 @@ touch "$TTS_FLAG" 2>/dev/null
 trap 'rm -f "$TTS_FLAG"' EXIT INT TERM
 
 WAV="${TTS_OUT:-/tmp/voice_tts.wav}"
+
+# 0) 克隆音色（CosyVoice3）——指定了音色名且已注册时优先
+VOICE="${VOICE_OVERRIDE:-$SAY_VOICE}"
+if [ -n "$VOICE" ] && [ "$VOICE" != "__kokoro__" ] && [ -f "$VOICES_DIR/$VOICE.gguf" ]; then
+    if "$DIR/cosyvoice.sh" speak "$VOICE" "$TEXT"; then
+        exit 0
+    fi
+    echo "[say] 克隆音色合成失败，回退 Kokoro" >&2
+fi
+
 ok=0
 
 # 1) Kokoro（首选）

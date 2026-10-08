@@ -21,6 +21,16 @@ export VOICE_SPEAKER="${VOICE_SPEAKER:-plughw:3,0}"   # ALSA 兜底设备（USB 
 export VOICE_SINK="${VOICE_SINK:-}"                   # PipeWire sink（留空=默认，本机默认即 DTC 480）
 export TTS_OUT="${TTS_OUT:-/tmp/voice_tts.wav}"
 
+# ── 语音克隆（CosyVoice3，C++/GGUF，LuaJIT FFI） ──────────────
+export COSYVOICE_LIB_DIR="${COSYVOICE_LIB_DIR:-/opt/cosyvoice.cpp/build/lib}"
+export COSYVOICE_BIN_DIR="${COSYVOICE_BIN_DIR:-/opt/cosyvoice.cpp/build/bin}"
+export COSYVOICE_CLI="${COSYVOICE_CLI:-/opt/cosyvoice.cpp/build/bin/cosyvoice-cli}"
+export COSYVOICE_MODEL="${COSYVOICE_MODEL:-/data/models/cosyvoice3-gguf/CosyVoice3-2512_F16.gguf}"
+export COSYVOICE_TOKENIZER="${COSYVOICE_TOKENIZER:-/data/models/Fun-CosyVoice3-0.5B/speech_tokenizer_v3.onnx}"
+export COSYVOICE_CAMPPLUS="${COSYVOICE_CAMPPLUS:-/data/models/Fun-CosyVoice3-0.5B/campplus.onnx}"
+export VOICES_DIR="${VOICES_DIR:-$HOME/.myagent_voices}"   # 克隆音色库（<name>.gguf）
+export SAY_VOICE="${SAY_VOICE:-}"                          # 默认克隆音色名（留空=用 Kokoro）
+
 # ── 英语口语陪练 ──────────────────────────────────────────────
 export VOICE_PREFIX="${VOICE_PREFIX:-[语音输入]}"       # 转发前缀（陪练=[英语口语]）
 export VOICE_ALWAYS="${VOICE_ALWAYS:-0}"               # 1=跳过唤醒词门控（陪练=1）
