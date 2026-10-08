@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>抖音短视频生成 · my-agent</title>
+<style>
+  :root{--bg:#f5f3ee;--ink:#2b2b2b;--accent:#2f6fb0;--ok:#2e9e5b;--err:#c0392b;--card:#fff;--line:#e3ded4}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Noto Sans CJK SC","PingFang SC",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+  h1{font-size:22px;font-weight:700;margin:0 0 4px}
+  .sub{color:#8a8578;font-size:13px;margin-bottom:24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 2px 12px rgba(0,0,0,.04)}
+  .field{margin-bottom:18px}
+  label{display:block;font-weight:600;font-size:14px;margin-bottom:8px}
+  label .hint{font-weight:400;color:#9b9589;font-size:12px;margin-left:6px}
+  input[type=file],textarea{width:100%;border:1.5px dashed var(--line);border-radius:10px;padding:12px;font-size:14px;background:#fbfaf7;font-family:inherit}
+  textarea{min-height:120px;border-style:solid;resize:vertical;line-height:1.6}
+  input[type=file]:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  .file-name{font-size:12px;color:var(--ok);margin-top:6px;min-height:14px}
+  button{width:100%;border:0;border-radius:10px;background:var(--accent);color:#fff;font-size:16px;font-weight:700;padding:14px;cursor:pointer;transition:.15s}
+  button:hover{filter:brightness(1.08)}
+  button:disabled{background:#b9c4cf;cursor:not-allowed}
+  #status{margin-top:22px;display:none}
+  .ring{display:flex;align-items:center;gap:16px}
+  .count{font-size:40px;font-weight:800;color:var(--accent);min-width:76px;text-align:center;font-variant-numeric:tabular-nums}
+  .step{font-size:14px;color:#6b665b;line-height:1.6}
+  .bar{height:6px;background:#eceae4;border-radius:4px;margin-top:16px;overflow:hidden}
+  .bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+  .result{margin-top:18px;display:none}
+  .result video{width:100%;border-radius:10px;background:#000;margin-bottom:14px}
+  .dl{display:inline-block;background:var(--ok);color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:10px}
+  .error{color:var(--err);background:#fdecea;border:1px solid #f5c6c1;border-radius:10px;padding:12px;font-size:13px;white-space:pre-wrap;word-break:break-all;margin-top:16px;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>抖音短视频生成</h1>
+  <div class="sub">上传视频素材 + 克隆音频素材 + 参考文案 → 自动合成带配音/字幕的竖版短视频</div>
+
+  <form class="card" id="form">
+    <div class="field">
+      <label>① 视频素材 <span class="hint">mp4 / mov</span></label>
+      <input type="file" name="video" id="video" accept="video/*" required>
+      <div class="file-name" id="fv"></div>
+    </div>
+    <div class="field">
+      <label>② 克隆音频素材 <span class="hint">3~20 秒清晰人声，wav / mp3 / m4a</span></label>
+      <input type="file" name="audio" id="audio" accept="audio/*" required>
+      <div class="file-name" id="fa"></div>
+    </div>
+    <div class="field">
+      <label>③ 参考文案 <span class="hint">每行一段，或直接一整段</span></label>
+      <textarea name="text" id="text" placeholder="重低音天花板，声音纯正通透。&#10;空间音频环绕，身临其境。&#10;不怕水，泡水里都没事。&#10;想捡漏的来我直播间。" required></textarea>
+    </div>
+    <button type="submit" id="go">开始生成</button>
+    <div id="status">
+      <div class="ring">
+        <div class="count" id="count">--</div>
+        <div class="step" id="step">正在上传…</div>
+      </div>
+      <div class="bar"><i id="bar"></i></div>
+      <div id="result" class="result">
+        <video id="preview" controls playsinline></video>
+        <a class="dl" id="dl" download>下载视频</a>
+      </div>
+      <div id="error" class="error"></div>
+    </div>
+  </form>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+$('video').addEventListener('change', e => $('fv').textContent = e.target.files[0] ? '✓ ' + e.target.files[0].name : '');
+$('audio').addEventListener('change', e => $('fa').textContent = e.target.files[0] ? '✓ ' + e.target.files[0].name : '');
+
+const STEPS = { queued: '排队中…', cloning: '正在克隆音色…', generating: '正在合成视频…', done: '完成！', error: '出错' };
+let timer = null;
+
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData();
+  fd.append('video', $('video').files[0]);
+  fd.append('audio', $('audio').files[0]);
+  fd.append('text', $('text').value);
+  $('go').disabled = true;
+  $('status').style.display = 'block';
+  $('result').style.display = 'none';
+  $('error').style.display = 'none';
+  $('count').textContent = '···';
+  $('step').textContent = '正在上传…';
+  $('bar').style.width = '0%';
+
+  let id, estimate = 60;
+  try {
+    const r = await fetch('/api/generate', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    id = j.id; estimate = j.estimate || 60;
+  } catch (err) {
+    return fail(err.message);
+  }
+
+  let left = estimate;
+  const total = estimate;
+  $('step').textContent = STEPS.queued;
+  $('count').textContent = left;
+  const poll = async () => {
+    try {
+      const r = await fetch('/api/status/' + id);
+      const j = await r.json();
+      if (j.status === 'done') return done(id, j);
+      if (j.status === 'error') return fail(j.error || '生成失败');
+      $('step').textContent = STEPS[j.status] || j.status;
+      const elapsed = j.elapsed || 0;
+      $('bar').style.width = Math.min(98, (elapsed / total) * 100).toFixed(0) + '%';
+      if (left > 0) $('count').textContent = left;
+    } catch (err) { /* 忽略瞬时错误，继续轮询 */ }
+  };
+  timer = setInterval(() => { if (left > 0) left--; }, 1000);
+  const poller = setInterval(poll, 2000);
+  poll();
+  $('form').dataset.poller = poller;
+  $('form').dataset.job = id;
+
+  function done(jid, j) {
+    clearInterval(timer); clearInterval(poller);
+    $('count').textContent = '✓'; $('step').textContent = STEPS.done;
+    $('bar').style.width = '100%';
+    const url = '/download/' + jid;
+    $('preview').src = url;
+    $('dl').href = url;
+    $('result').style.display = 'block';
+    $('go').disabled = false;
+  }
+  function fail(msg) {
+    clearInterval(timer); clearInterval(poller);
+    $('count').textContent = '×'; $('step').textContent = STEPS.error;
+    $('error').textContent = msg; $('error').style.display = 'block';
+    $('go').disabled = false;
+  }
+});
+</script>
+</body>
+</html>
