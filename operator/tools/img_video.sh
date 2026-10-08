@@ -6,11 +6,13 @@
 # @rule **做动画短片 / 故事短片**：说“做个动画短片 / 用<成语/故事>生成动画短片 / 把 <故事> 做成动画”→ `tools/img_video.sh`。默认主题=**中国传统童话**。你可自己拟故事与分镜：`--scenes "分镜提示词1|分镜2|…"`、`--text "旁白1|旁白2|…"`（两者段数需一致；只复用已有图时只需 `--text`）。成语类可加 `--title <成语>`（片名长图，霜地国风）、`--pinyin <拼音>`、`--source <出处>`、`--end <释义>`（结尾卡）。出图默认 `--img-preset xhs`(1920×2560)/`pyq`(2048×2048)，`--outimg ~/image` 存图。克隆音色加 `--voice <名>`。**默认不发微信**——生成后用 `tools/wechat_send_file.sh <路径>` 再发（或加 `--send [--to 会话]`）；默认后台跑、立即返回。
 # @order 16
 set -uo pipefail
+ORIG_ARGS=("$@")
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 BACKUP="${IMAGE_BACKUP:-/opt/static_comfyui/cpp/sd/backup.sh}"
 . /opt/my-agent/voice/config.sh
 FONT="${IMGVID_FONT:-/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc}"
+BLUR=""
 
 TO=""; VOICE="${SAY_VOICE:-}"; N=""; SCENES=""; TEXTS=""; OUT=""; FG=0; NOSEND=1
 TITLE=""; END=""; PYN=""; SRC=""
@@ -45,21 +47,32 @@ DEF_TEXTS="从前有个穷孩子叫马良，他特别喜欢画画。|一天夜�
 
 collect() { printf '%s' "$1" | tr '|' '\n'; }
 
-# 字幕自动换行：优先按中文标点断句，单行 ≤ max 字（libass 用 \N）
+# 字幕折行：去标点，每行 N 个汉字硬折行（默认12）
 wrap_text() {
-    local t="$1" max="${2:-18}" out="" line="" seg
-    while IFS= read -r seg; do
-        [ -z "$seg" ] && continue
-        while [ "${#seg}" -gt "$max" ]; do
-            [ -n "$line" ] && { out="${out:+$out\\N}$line"; line=""; }
-            out="${out:+$out\\N}${seg:0:$max}"; seg="${seg:$max}"
-        done
-        if [ -z "$line" ]; then line="$seg"
-        elif [ $(( ${#line} + ${#seg} )) -le "$max" ]; then line="$line$seg"
-        else out="${out:+$out\\N}$line"; line="$seg"; fi
-    done < <(printf '%s' "$t" | sed -E 's/([，。！？、；：])/\1\n/g')
-    [ -n "$line" ] && out="${out:+$out\\N}$line"
+    local t="$1" n="${2:-12}" out="" i
+    t="$(printf '%s' "$t" | sed -E "s/[，。！？、；：·,.!?;:…—－（）()【】「」『』《》〈〉“”‘’\"' 　]//g")"
+    local len="${#t}"
+    for ((i = 0; i < len; i += n)); do
+        local c="${t:i:n}"
+        out="${out:+$out\\N}$c"
+    done
     printf '%s' "$out"
+}
+
+clean_punct() { printf '%s' "$1" | sed -E "s/[，。！？、；：·,.!?;:…—－（）()【】「」『』《》〈〉“”‘’\"' 　]//g"; }
+emit_subs() { # $1=start $2=dur $3=text 每≤2行(24字)，超长拆多条
+    local clean n i dt part st en
+    clean="$(clean_punct "$3")"
+    local len="${#clean}"
+    n=$(( (len + 23) / 24 )); [ "$n" -lt 1 ] && n=1
+    dt="$(awk "BEGIN{print $2/$n}")"
+    for ((i = 0; i < n; i++)); do
+        part="${clean:i*24:24}"
+        [ -z "$part" ] && continue
+        st="$(awk "BEGIN{printf \"0:%02d:%05.2f\", int(($1+$i*$dt)/60), ($1+$i*$dt)%60}")"
+        en="$(awk "BEGIN{printf \"0:%02d:%05.2f\", int(($1+($i+1)*$dt)/60), ($1+($i+1)*$dt)%60}")"
+        printf 'Dialogue: 0,%s,%s,Default,,0,0,0,,%s%s\n' "$st" "$en" "$BLUR" "$(wrap_text "$part" 12)" >> "$ASS"
+    done
 }
 
 # 生成卡片（片名/结尾）1080x1920，中国传统配色（霜地·墨色·黛蓝·朱砂）
@@ -185,34 +198,29 @@ run_pipeline() {
         fi
     done
 
-    # 4) ASS 字幕（按配音时长+停顿）
+    # 4) ASS 字幕（3080 样式：Noto Sans CJK SC Bold 白字+橙边，按配音时长+停顿）
     local ASS="$WORK/sub.ass"
     cat > "$ASS" <<ASS
 [Script Info]
+Title: ImgVideo
 ScriptType: v4.00+
-PlayResX: ${VW}
-PlayResY: ${VH}
-WrapStyle: 2
+WrapStyle: 1
 ScaledBorderAndShadow: yes
-YCbCr Format: None
+YCbCr Matrix: None
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,WenQuanYi Zen Hei,46,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,70,70,150,1
+Style: Default,Noto Sans CJK SC Bold,14,&H0000A5FF,&H0000A5FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,30,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 ASS
-    local t=0 k wtext
+    local t=0 k aud
     for k in $(seq 0 $((NALL-1))); do
-        local dur st en
-        dur="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$WORK/aud/$((k+1)).wav")"
-        dur="$(awk "BEGIN{print $dur+$P}")"
-        st="$(awk "BEGIN{printf \"0:%02d:%05.2f\", int($t/60), $t%60}")"
-        en="$(awk "BEGIN{printf \"0:%02d:%05.2f\", int(($t+$dur)/60), ($t+$dur)%60}")"
-        wtext="$(wrap_text "${SEG_TXT[$k]}" 18)"
-        [ -n "$wtext" ] && printf 'Dialogue: 0,%s,%s,Default,,0,0,0,,%s\n' "$st" "$en" "$wtext" >> "$ASS"
-        t="$(awk "BEGIN{print $t+$dur}")"
+        [ -s "$WORK/aud/$((k+1)).wav" ] || continue
+        aud="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$WORK/aud/$((k+1)).wav")"
+        [ -n "${SEG_TXT[$k]}" ] && emit_subs "$t" "$aud" "${SEG_TXT[$k]}"
+        t="$(awk "BEGIN{print $t+$aud+$P}")"
     done
 
     # 5) 图片 → 片段（Ken Burns 运镜 + 白场淡入淡出）
@@ -270,7 +278,7 @@ finish_fail() {
 if [ "$FG" = "1" ] || [ "${IMGVIDEO_RUN:-0}" = "1" ]; then
     run_pipeline
 else
-    setsid env IMGVIDEO_RUN=1 bash "$0" "$@" </dev/null >/tmp/imgvideo_$$.out 2>&1 &
+    setsid env IMGVIDEO_RUN=1 bash "$0" "${ORIG_ARGS[@]}" </dev/null >/tmp/imgvideo_$$.out 2>&1 &
     if [ "$NOSEND" = "1" ]; then
         echo "已后台开始生成动画短片（每张图约数分钟），完成后文件在 $OUT（未发微信；发送用 wechat_send_file.sh）"
     else
