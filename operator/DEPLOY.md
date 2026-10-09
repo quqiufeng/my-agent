@@ -170,3 +170,43 @@ setsid /scripts/start.d/myagent-web.sh </dev/null >/dev/null 2>&1 &
 ```
 > 坑：别用 `pkill -f "web/server.py"` —— ssh 命令行自身含该串，会**误杀当前命令**。用 `pgrep -af server.py` 查 PID 再 kill。
 > 日志：`/var/log/myagent-web.log`。
+
+---
+
+## 仙宫云镜像初始化（远程部署面板）
+
+把「短视频生成面板」做成**可复用镜像**，镜像里必须带上这些（部署后即用，无需再配）：
+
+| 项 | 内容 |
+|----|------|
+| 代码 | `/opt/my-agent`（`operator/tools/*.sh`、`voice/*`、`web/*`） |
+| 系统依赖 | `node`22+npm、`google-chrome`、`apt install libicu74`；`luajit`/`tmux`/`ffmpeg`/Noto CJK/`CUDA(/usr/local/cuda-12.8)` 镜像自带 |
+| 语音栈 | CosyVoice：`/opt/cosyvoice.cpp/build/{bin,lib,_deps/onnxruntime/lib}` + `CosyVoice3-…F16.gguf` + `Fun-CosyVoice3-0.5B/{speech_tokenizer_v3,campplus}.onnx`；SenseVoice：`/opt/SenseVoice.cpp` + `sense-voice-small-q4_k.gguf`；音色：`~/.myagent_voices` |
+| 开机自启 | `/scripts/start.d/myagent-web.sh`（入口 `/scripts/start.sh` 会执行 `start.d/*`）→ 起 `python3 web/server.py`（`PORT=80`）。**这是接收网页表单的关键** |
+| 桌面快捷方式 | `/.xgcos/desktop/shortvideo.app/`：`info.yaml`(`type: browser` + `props.port: 80`) + `web.png` |
+| 资料（可选） | `~/douyin/base`；如需大脑再配 `~/.local/share/opencode/auth.json` |
+
+**桌面快捷方式格式（仙宫云OS，共 3 类）**
+```yaml
+# web端口类（本项目用这个）
+name: 短视频生成
+title: 抖音短视频生成面板
+icon: web.png
+type: browser
+props:
+    port: 80
+```
+> `type` 取值：`browser`(web端口) / `terminal`(自定义脚本，配 `main.sh`) / `filemanager`(快速进入文件夹，配 `path`)。
+> 官方模板：`wget https://public.x-gpu.com/f/xkNwTx/kjfs240401.zip`，解压参照。
+> 改完 `info.yaml` 需**刷新仙宫云OS 页面**才生效；做好后**存成镜像**即随镜像分发。
+
+**部署后验证**
+- 容器内：`curl http://localhost:80/api/health` → `{"ok":true}`
+- 公网：`https://<实例ID>-80.container.x-gpu.com`
+- 容器内网：`http://<实例ID>-80.c.x-gpu.com`
+- 仙宫云OS 桌面 → 点「短视频生成」→ 在新窗口打开面板
+
+**坑（速查）**
+- SSH 端口**非 22**（用 `python3 xgc_ctl.py ssh <id>` 给出的 `-p`）。
+- 桌面快捷方式必须用 `type: browser`；`terminal` 类在无 DISPLAY/非真 X 桌面下起不了 Chrome（报 `Missing X server or $DISPLAY`）。
+- 存镜像前确认 `/scripts/start.d/myagent-web.sh` 存在且可执行——否则部署后端口 80 没人监听，表单打不开。
