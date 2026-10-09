@@ -261,13 +261,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
+        path = self.path.split("?", 1)[0]      # 忽略 querystring
+        if path in ("/", "/index.html"):
             return self._serve_file(os.path.join(BASE, ROOT_PAGE))
-        if self.path in ("/image", "/image.html"):
+        if path in ("/image", "/image.html"):
             return self._serve_file(os.path.join(BASE, "image.html"))
-        if self.path == "/api/health":
+        if path == "/api/health":
             return self._json({"ok": True})
-        m = re.match(r"^/api/status/([0-9a-zA-Z_-]+)$", self.path)
+        m = re.match(r"^/api/status/([0-9a-zA-Z_-]+)$", path)
         if m:
             with LOCK:
                 job = JOBS.get(m.group(1))
@@ -281,14 +282,14 @@ class Handler(BaseHTTPRequestHandler):
                     "progress": job.get("progress"),
                     "outputs": job.get("outputs") or [],
                 })
-        m = re.match(r"^/download/([0-9a-zA-Z_-]+)(?:/(\d+))?$", self.path)
+        m = re.match(r"^/download/([0-9a-zA-Z_-]+)(?:/(\d+))?$", path)
         if m:
             jid, n = m.group(1), m.group(2)
             out = os.path.join(OUTPUTS, f"{jid}_{n}.mp4" if n else jid + ".mp4")
             if not os.path.exists(out):
                 return self._json({"error": "not found"}, 404)
             return self._serve_file(out, download=True)
-        m = re.match(r"^/api/image/status/([0-9a-zA-Z_-]+)$", self.path)
+        m = re.match(r"^/api/image/status/([0-9a-zA-Z_-]+)$", path)
         if m:
             with LOCK:
                 job = IJOBS.get(m.group(1))
@@ -299,12 +300,12 @@ class Handler(BaseHTTPRequestHandler):
                     "elapsed": round(time.time() - job["t0"], 1),
                     "url": job.get("url"), "size": job.get("size"),
                 })
-        m = re.match(r"^/image/([0-9a-zA-Z_-]+)\.png$", self.path)
+        m = re.match(r"^/image/([0-9a-zA-Z_-]+)\.png$", path)
         if m:
             out = os.path.join(IMG_OUT, m.group(1) + ".png")
             if not os.path.exists(out):
                 return self._json({"error": "not found"}, 404)
-            return self._serve_file(out, download=True)
+            return self._serve_file(out)   # 内联(预览用；<a download> 负责下载)
         return self._json({"error": "not found"}, 404)
 
     def _handle_image(self):
