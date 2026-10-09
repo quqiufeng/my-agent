@@ -7,7 +7,7 @@
 #
 # 流程: 表单上传(视频素材 + 克隆音频 + 参考文案) -> 后台 clone 音色 -> 调
 #       operator/tools/video_dub.sh 出片 -> 前端倒计时轮询 -> 下载成片。
-import os, re, json, uuid, time, shutil, threading, subprocess, mimetypes
+import os, re, json, uuid, time, glob, shutil, threading, subprocess, mimetypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -24,7 +24,9 @@ HOST = os.environ.get("HOST", "0.0.0.0")
 MAX_UPLOAD = int(os.environ.get("MAX_UPLOAD_MB", "500")) * 1024 * 1024
 
 JOBS = {}
+IJOBS = {}
 LOCK = threading.Lock()
+IMG_LOCK = threading.Lock()
 
 # 用 opencode 免费模型把「参考文案/卖点」整理成口播稿（免 key）
 OC_BIN = shutil.which("opencode") or "/usr/local/bin/opencode"
@@ -37,6 +39,16 @@ ANGLES = [
     "核心卖点：突出主要功能、参数、性能等硬实力",
     "使用场景：突出使用场景与解决的痛点、实际体验",
 ]
+
+# ── 图片生成（backup.sh） ─────────────────────────────
+IMG_BACKUP = os.environ.get("IMG_BACKUP_SH", "/root/backup.sh")
+IMG_OUT = os.path.join(BASE, "images")
+os.makedirs(IMG_OUT, exist_ok=True)
+IMG_SIZES = {                       # 三个固定尺寸
+    "wallpaper": ["2560", "1440"],  # 壁纸
+    "pyq": ["--preset", "pyq"],     # 朋友圈 2048x2048
+    "xhs": ["--preset", "xhs"],     # 小红书 1920x2560
+}
 
 
 def _run(cmd, timeout=None):
@@ -167,6 +179,37 @@ def worker(job_id, video, audio, text, dur):
         except OSError: pass
 
 
+def worker_img(job_id, prompt, size):
+    """调 backup.sh 出图（壁纸/朋友圈/小红书），完成后把图放到 images/<id>.png"""
+    job = IJOBS[job_id]
+    try:
+        job["status"] = "generating"
+        flags = IMG_SIZES.get(size, IMG_SIZES["wallpaper"])
+        prefix = os.path.join(IMG_OUT, f"img_{job_id}.png")   # 指定输出路径(脚本会加_时间戳)
+        cmd = [IMG_BACKUP] + flags + [prompt, prefix]
+        with IMG_LOCK:
+            r = subprocess.run(cmd, capture_output=True, text=True,
+                               timeout=900, cwd=os.path.expanduser("~"))
+        g = sorted(glob.glob(os.path.join(IMG_OUT, f"img_{job_id}*.png")),
+                   key=os.path.getmtime)
+        out = g[-1] if g else ""
+        if not out:
+            m = re.search(r"File:\s+(\S+\.png)", ANSI.sub("", (r.stdout or "") + "\n" + (r.stderr or "")))
+            if m:
+                out = m.group(1)
+        if out and os.path.exists(out):
+            final = os.path.join(IMG_OUT, f"{job_id}.png")
+            if out != final:
+                os.replace(out, final)
+            job["status"] = "done"; job["url"] = f"/image/{job_id}.png"
+            job["size"] = os.path.getsize(final)
+        else:
+            job["status"] = "error"
+            job["error"] = "生成失败：" + ((r.stderr or r.stdout)[-500:])
+    except Exception as e:  # noqa
+        job["status"] = "error"; job["error"] = repr(e)
+
+
 def parse_multipart(body, boundary):
     fields, files = {}, {}
     delim = b"--" + boundary
@@ -219,6 +262,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/index.html"):
             return self._serve_file(os.path.join(BASE, "index.html"))
+        if self.path in ("/image", "/image.html"):
+            return self._serve_file(os.path.join(BASE, "image.html"))
         if self.path == "/api/health":
             return self._json({"ok": True})
         m = re.match(r"^/api/status/([0-9a-zA-Z_-]+)$", self.path)
@@ -242,9 +287,47 @@ class Handler(BaseHTTPRequestHandler):
             if not os.path.exists(out):
                 return self._json({"error": "not found"}, 404)
             return self._serve_file(out, download=True)
+        m = re.match(r"^/api/image/status/([0-9a-zA-Z_-]+)$", self.path)
+        if m:
+            with LOCK:
+                job = IJOBS.get(m.group(1))
+                if not job:
+                    return self._json({"error": "not found"}, 404)
+                return self._json({
+                    "status": job["status"], "error": job.get("error"),
+                    "elapsed": round(time.time() - job["t0"], 1),
+                    "url": job.get("url"), "size": job.get("size"),
+                })
+        m = re.match(r"^/image/([0-9a-zA-Z_-]+)\.png$", self.path)
+        if m:
+            out = os.path.join(IMG_OUT, m.group(1) + ".png")
+            if not os.path.exists(out):
+                return self._json({"error": "not found"}, 404)
+            return self._serve_file(out, download=True)
         return self._json({"error": "not found"}, 404)
 
+    def _handle_image(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length) if length > 0 else b"{}"
+            data = json.loads(raw.decode("utf-8", "replace") or "{}")
+            prompt = (data.get("prompt") or "").strip()
+            size = (data.get("size") or "wallpaper").strip()
+            if not prompt:
+                return self._json({"error": "提示词为空"}, 400)
+            if size not in IMG_SIZES:
+                size = "wallpaper"
+            job_id = uuid.uuid4().hex[:12]
+            with LOCK:
+                IJOBS[job_id] = {"status": "queued", "t0": time.time()}
+            threading.Thread(target=worker_img, args=(job_id, prompt, size), daemon=True).start()
+            return self._json({"id": job_id, "estimate": 180})
+        except Exception as e:  # noqa
+            return self._json({"error": repr(e)}, 500)
+
     def do_POST(self):
+        if self.path == "/api/image":
+            return self._handle_image()
         if self.path != "/api/generate":
             return self._json({"error": "not found"}, 404)
         try:

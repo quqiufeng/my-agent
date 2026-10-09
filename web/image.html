@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>高清出图 · my-agent</title>
+<style>
+  :root{--bg:#f5f3ee;--ink:#2b2b2b;--accent:#2f6fb0;--ok:#2e9e5b;--err:#c0392b;--card:#fff;--line:#e3ded4}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Noto Sans CJK SC","PingFang SC",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+  h1{font-size:22px;font-weight:700;margin:0 0 4px}
+  .sub{color:#8a8578;font-size:13px;margin-bottom:24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 2px 12px rgba(0,0,0,.04)}
+  .field{margin-bottom:18px}
+  label{display:block;font-weight:600;font-size:14px;margin-bottom:8px}
+  textarea{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:12px;font-size:14px;background:#fbfaf7;font-family:inherit;min-height:110px;resize:vertical;line-height:1.6}
+  textarea:focus{outline:none;border-color:var(--accent)}
+  .sizes{display:flex;gap:10px;flex-wrap:wrap}
+  .sizes label{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:10px;padding:10px 14px;font-weight:500;font-size:14px;cursor:pointer;background:#fbfaf7;margin:0}
+  .sizes input{accent-color:var(--accent)}
+  .sizes label:has(input:checked){border-color:var(--accent);background:#eef4fb}
+  button{width:100%;border:0;border-radius:10px;background:var(--accent);color:#fff;font-size:16px;font-weight:700;padding:14px;cursor:pointer;transition:.15s}
+  button:hover{filter:brightness(1.08)}
+  button:disabled{background:#b9c4cf;cursor:not-allowed}
+  #status{margin-top:22px;display:none}
+  .ring{display:flex;align-items:center;gap:16px}
+  .count{font-size:40px;font-weight:800;color:var(--accent);min-width:76px;text-align:center;font-variant-numeric:tabular-nums}
+  .step{font-size:14px;color:#6b665b;line-height:1.6}
+  .bar{height:6px;background:#eceae4;border-radius:4px;margin-top:16px;overflow:hidden}
+  .bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+  .result{margin-top:18px;display:none;text-align:center}
+  .result img{max-width:100%;border-radius:12px;border:1px solid var(--line);background:#fff}
+  .dl{display:inline-block;margin-top:14px;background:var(--ok);color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:10px}
+  .error{color:var(--err);background:#fdecea;border:1px solid #f5c6c1;border-radius:10px;padding:12px;font-size:13px;white-space:pre-wrap;word-break:break-all;margin-top:16px;display:none}
+  .nav{margin-top:14px;font-size:13px}
+  .nav a{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>高清出图</h1>
+  <div class="sub">输入提示词，选择尺寸 → 生成高清大图</div>
+
+  <form class="card" id="form">
+    <div class="field">
+      <label>① 提示词</label>
+      <textarea id="prompt" placeholder="描述你想要的画面…（留空将使用默认肖像提示词）"></textarea>
+    </div>
+    <div class="field">
+      <label>② 尺寸</label>
+      <div class="sizes">
+        <label><input type="radio" name="size" value="wallpaper" checked> 壁纸 2560×1440</label>
+        <label><input type="radio" name="size" value="pyq"> 朋友圈 2048×2048</label>
+        <label><input type="radio" name="size" value="xhs"> 小红书 1920×2560</label>
+      </div>
+    </div>
+    <button type="submit" id="go">开始生成</button>
+    <div id="status">
+      <div class="ring">
+        <div class="count" id="count">--</div>
+        <div class="step" id="step">正在提交…</div>
+      </div>
+      <div class="bar"><i id="bar"></i></div>
+      <div id="result" class="result">
+        <img id="img" alt="result">
+        <br><a class="dl" id="dl" download>下载图片</a>
+      </div>
+      <div id="error" class="error"></div>
+    </div>
+  </form>
+  <div class="nav">← <a href="/">短视频生成</a></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const STEPS = { queued: '排队中…', generating: '正在出图…', done: '完成！', error: '出错' };
+let timer = null;
+
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const prompt = $('prompt').value.trim();
+  const size = document.querySelector('input[name=size]:checked').value;
+  $('go').disabled = true;
+  $('status').style.display = 'block';
+  $('result').style.display = 'none';
+  $('error').style.display = 'none';
+  $('count').textContent = '···';
+  $('step').textContent = '正在提交…';
+  $('bar').style.width = '0%';
+
+  let id, estimate = 180;
+  try {
+    const r = await fetch('/api/image', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, size }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    id = j.id; estimate = j.estimate || 180;
+  } catch (err) { return fail(err.message); }
+
+  let left = estimate; const total = estimate;
+  $('step').textContent = STEPS.queued; $('count').textContent = left;
+  const poll = async () => {
+    try {
+      const r = await fetch('/api/image/status/' + id);
+      const j = await r.json();
+      if (j.status === 'done') return done(id, j);
+      if (j.status === 'error') return fail(j.error || '生成失败');
+      $('step').textContent = STEPS[j.status] || j.status;
+      $('bar').style.width = Math.min(98, ((j.elapsed || 0) / total) * 100).toFixed(0) + '%';
+      if (left > 0) $('count').textContent = left;
+    } catch (err) {}
+  };
+  timer = setInterval(() => { if (left > 0) left--; }, 1000);
+  const poller = setInterval(poll, 3000);
+  poll();
+
+  function done(jid, j) {
+    clearInterval(timer); clearInterval(poller);
+    $('count').textContent = '✓'; $('step').textContent = STEPS.done; $('bar').style.width = '100%';
+    const url = j.url || ('/image/' + jid + '.png');
+    $('img').src = url + '?t=' + Date.now();
+    $('dl').href = url;
+    $('result').style.display = 'block';
+    $('go').disabled = false;
+  }
+  function fail(msg) {
+    clearInterval(timer); clearInterval(poller);
+    $('count').textContent = '×'; $('step').textContent = STEPS.error;
+    $('error').textContent = msg; $('error').style.display = 'block';
+    $('go').disabled = false;
+  }
+});
+</script>
+</body>
+</html>
