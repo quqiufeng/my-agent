@@ -21,6 +21,7 @@ os.makedirs(OUTPUTS, exist_ok=True)
 
 PORT = int(os.environ.get("PORT", "8080"))
 HOST = os.environ.get("HOST", "0.0.0.0")
+ROOT_PAGE = os.environ.get("ROOT_PAGE", "index.html")
 MAX_UPLOAD = int(os.environ.get("MAX_UPLOAD_MB", "500")) * 1024 * 1024
 
 JOBS = {}
@@ -261,7 +262,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path in ("/", "/index.html"):
-            return self._serve_file(os.path.join(BASE, "index.html"))
+            return self._serve_file(os.path.join(BASE, ROOT_PAGE))
         if self.path in ("/image", "/image.html"):
             return self._serve_file(os.path.join(BASE, "image.html"))
         if self.path == "/api/health":
