@@ -166,6 +166,19 @@ function Window:move(rx, ry)  return lib.ak_move(self.x + rx, self.y + ry) end
 function Window:key(combo) return lib.ak_key(combo) end
 function Window:type(s) return lib.ak_type(s) end
 
+-- 在窗口中心滚轮：clicks 次，up=true 向上
+function Window:scroll(clicks, up)
+    M.ensure_display()
+    self:move(math.floor(self.w / 2), math.floor(self.h / 2))
+    os.execute("sleep 0.05")
+    local btn = up and 4 or 5
+    for _ = 1, (clicks or 3) do
+        sh(("xdotool click %d"):format(btn))
+        os.execute("sleep 0.05")
+    end
+    return self
+end
+
 -- 在窗口截图内做模板匹配，返回窗口相对中心坐标
 function Window:find_image(needle_png, opts)
     opts = opts or {}

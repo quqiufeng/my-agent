@@ -70,4 +70,12 @@ function M.map(app)
     return require("agentkit.map").load(app)
 end
 
+-- 录制器：边执行边记录，固化为可回放脚本
+function M.record(app)
+    return require("agentkit.record").new(app)
+end
+
+-- 批量执行 + 批量记录（生成结果集）
+M.batch = require("agentkit.batch")
+
 return M
