@@ -114,6 +114,22 @@ agentkit/
 └── lib/libagentkit.so
 ```
 
+## 多分辨率：生成另一套映射
+
+映射按**参考分辨率（本机 2560×1440）**存绝对像素；换分辨率时用脚本**按键位线性缩放**，
+另生成一套映射代码（不改运行格式）：
+
+```bash
+luajit agentkit/tools/scale_maps.lua <app|all> <WxH> [--ref 2560x1440]
+# 例:
+luajit agentkit/tools/scale_maps.lua all 1920x1080
+#   -> agentkit/maps/<app>.1920x1080.lua
+```
+
+- 启用某套：把该套文件「放成」`<app>.lua`（或放到单独目录并设 `AGENTKIT_MAPS`）。
+- **注意**：线性缩放只对随分辨率缩放的内容区成立；固定高度的 bars（聊天工具条、浏览器标签栏）
+  在换机后仍应靠 OCR 校验/重试（agentkit 已内置）微调。
+
 ## 稳定性要点
 
 - **相对坐标**：所有点击以窗口左上角为原点，窗口移动不影响。
