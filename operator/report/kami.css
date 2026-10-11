@@ -1,0 +1,61 @@
+/* operator/report/kami.css — Kami 排版令牌（暖米纸 · 单一墨蓝 · 衬线承载层级）
+   规范源自 tw93/Kami(design.md, MIT)；令牌取自 WordCard gui/flutter/lib/theme/app_theme.dart 的 Kami 类。
+   字体：TsangerJinKai02（仓耳今楷，个人免费）用于正文/标题；Maple Mono NF CN 用于眉标/页脚。 */
+:root{
+  --parchment:#f5f4ed;   /* 页底（暖米，非纯白） */
+  --ivory:#faf9f5;       /* 卡片面 */
+  --brand:#1B365D;       /* 唯一强调色：墨蓝（≤5% 面积） */
+  --ink:#2b2a26;         /* 正文（暖黑） */
+  --muted:#6b665c;       /* 次要文字（暖灰） */
+  --stone:#9a948a;       /* 更弱：元信息/页脚 */
+  --hairline:#e4dfd3;    /* 细线（仅用于分隔） */
+  --tint:#f1efe6;        /* 浅暖底 */
+  --serif:"TsangerJinKai02","仓耳今楷02","Source Han Serif SC","Noto Serif CJK SC",Georgia,serif;
+  --mono:"Maple Mono NF CN","JetBrains Mono","SF Mono",Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--parchment);color:var(--ink);
+  font-family:var(--serif);-webkit-font-smoothing:antialiased}
+.page{width:820px;margin:0 auto;padding:56px 64px 48px;background:var(--parchment)}
+
+/* 页眉：眉标 + 标题 + 右侧元信息 + 结构细线 */
+.eyebrow{font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--stone)}
+h1{font-size:34px;font-weight:500;line-height:1.2;margin:.15em 0 .1em}
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:24px}
+.head .meta{font-family:var(--mono);font-size:12px;color:var(--stone);white-space:nowrap}
+hr.hairline{border:0;height:1px;background:var(--hairline);margin:22px 0 26px}
+
+/* 层级：字号/字重/留白，不用装饰 */
+h2{font-size:20px;font-weight:500;line-height:1.25;margin:30px 0 10px}
+h3{font-size:16px;font-weight:500;line-height:1.3;margin:18px 0 6px}
+p,li{font-size:16px;line-height:1.55;letter-spacing:.3pt}
+p{margin:.5em 0}
+.muted{color:var(--muted)}
+.lede{font-size:17px;line-height:1.6;color:var(--muted);letter-spacing:.4pt}
+
+/* 指标行 */
+.metrics{display:flex;gap:34px;margin:10px 0 2px}
+.metric .v{font-size:26px;font-weight:500;color:var(--brand);font-variant-numeric:tabular-nums;line-height:1.1}
+.metric .l{font-size:12px;color:var(--muted);margin-top:3px}
+
+/* 卡片：仅用 ivory 填充，不加边框/阴影（Kami·减法） */
+.card{background:var(--ivory);border-radius:6px;padding:16px 20px}
+ul,ol{padding-left:1.25em;margin:.4em 0}
+li{margin:.28em 0}
+li::marker{color:var(--brand)}
+b,strong{font-weight:500}
+
+/* 表格：仅水平细线，表头/合计 0.6，正文 0.25 */
+table{width:100%;border-collapse:collapse;font-size:14px;margin:10px 0}
+th{text-align:left;font-weight:500;color:var(--muted);padding:8px;
+  border-bottom:1px solid var(--hairline)}
+td{padding:7px 8px;border-bottom:1px solid var(--hairline);vertical-align:top}
+.num{font-variant-numeric:tabular-nums;text-align:right}
+
+/* 标签（实色 hex，禁 rgba）与页脚 */
+.tag{background:#E4ECF5;color:var(--brand);font-size:12px;font-weight:500;
+  padding:1px 7px;border-radius:4px;letter-spacing:.3pt}
+.footer{margin-top:34px;padding-top:12px;border-top:1px solid var(--hairline);
+  font-family:var(--mono);font-size:12px;color:var(--stone);display:flex;justify-content:space-between}
+a{color:var(--brand);text-decoration:none}
