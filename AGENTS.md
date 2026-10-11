@@ -29,6 +29,7 @@
 | `wechat-ocr/` | 微信入口：OCR + 窗口操作（LuaJIT + C++） |
 | `remote.sh` | tmux + opencode 会话/集群管理（大脑可调用的工具之一） |
 | `chrome.md` / `rule.md` | 参考文档（Chrome 控制、UTEL 编码） |
+| `automation.md` | 全自动化开发模式（Fully-Automated Mode）：Agent 自构建/运行/驱动/看图闭环 |
 
 ---
 
