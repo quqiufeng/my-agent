@@ -34,11 +34,29 @@ M.sh = sh
 
 local function shq(s) return "'" .. tostring(s):gsub("'", "'\\''") .. "'" end
 
--- ── 输入法（IBus）：新应用默认中文，打字前切成目标语言 ──
+-- ── 输入法（IBus）：新应用默认中文，打字前切成目标语言；用完可还原 ──
 local IME_EN = os.getenv("AGENTKIT_IME_EN") or "xkb:us::eng"
 local IME_ZH = os.getenv("AGENTKIT_IME_ZH") or "libpinyin"
-function M.ime_en() M.ensure_display(); sh("ibus engine " .. shq(IME_EN)) end
-function M.ime_zh() M.ensure_display(); sh("ibus engine " .. shq(IME_ZH)) end
+local _ime_saved                                    -- 切换前用户的引擎
+
+function M.ime_get() M.ensure_display(); return (sh("ibus engine"):gsub("%s+", "")) end
+function M.ime_set(e) M.ensure_display(); if e and e ~= "" then sh("ibus engine " .. shq(e)) end end
+
+function M.ime_en()
+    local cur = M.ime_get()
+    if cur ~= "" and cur ~= IME_EN then _ime_saved = cur end
+    M.ime_set(IME_EN)
+end
+function M.ime_zh()
+    local cur = M.ime_get()
+    if cur ~= "" and cur ~= IME_ZH then _ime_saved = cur end
+    M.ime_set(IME_ZH)
+end
+-- 还原到切换前用户的引擎（并在结束时清空记忆）
+function M.ime_restore()
+    if _ime_saved and _ime_saved ~= "" then M.ime_set(_ime_saved) end
+    _ime_saved = nil
+end
 
 -- 通过剪贴板输入任意文本（绕过输入法，支持中英混合/符号）
 function M.paste(text)

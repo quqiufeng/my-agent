@@ -22,6 +22,7 @@ function M.goto(url)
     xdo("xdotool key --clearmodifiers ctrl+a"); sleep(0.2)
     require("agentkit.x11").ime_en(); sleep(0.15)          -- URL 用英文输入法
     xdo(("xdotool type --delay 20 %q"):format(url)); sleep(0.5)
+    require("agentkit.x11").ime_restore()                  -- 还原用户输入法
     xdo("xdotool key --clearmodifiers Return"); sleep(1.2)
     return true
 end

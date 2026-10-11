@@ -78,6 +78,7 @@ function Map:type(name, s, win, opts)
     if lang == "en" then x11.ime_en() else x11.ime_zh() end
     os.execute("sleep 0.15")
     os.execute(("xdotool type --delay 40 %q"):format(s))
+    x11.ime_restore()
 end
 
 -- 记录/更新一个控件（探索时调用），可 chain: map:learn("x",1,2,3,4):save()
