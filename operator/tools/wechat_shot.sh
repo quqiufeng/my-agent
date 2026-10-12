@@ -11,37 +11,31 @@ set -uo pipefail
 export DISPLAY="${DISPLAY:-:0}"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-TO="文件传输助手"
-if [ "${1:-}" = "--to" ]; then TO="${2:-文件传输助手}"; fi
+TO="文件传输助手"; APP=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --to) TO="${2:-文件传输助手}"; shift 2 ;;
+        --app) APP="${2:-}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
 
 SHOT="/tmp/myagent_shot_$$.png"
 trap 'rm -f "$SHOT"' EXIT
-read -r SW SH < <(xdotool getdisplaygeometry)
 
-# 1) 微信全局快捷键 Alt+A 截当前前台画面(全屏) → 进剪贴板
-#    非微信前台：双击即可取全屏（快）。
-#    微信在前台：双击会只截到空图，须改用「拖拽框选整屏 + 双击」。
-grab() {
-    xdotool key --clearmodifiers alt+a
+# 抓图：默认「显示桌面」——最小化所有可见窗口抓全屏再恢复；--app <名> 则先调出该应用
+if [ -n "$APP" ]; then
+    wmctrl -a "$APP" 2>/dev/null || xdotool search --name "$APP" windowactivate 2>/dev/null
     sleep 1.0
-    xdotool mousemove "$((SW / 2))" "$((SH / 2))"; sleep 0.3
-    xdotool click --repeat 2 --delay 130 1
-    sleep 1.3
-    xclip -selection clipboard -t image/png -o > "$SHOT" 2>/dev/null
-}
-grab
-# 图过小（微信在前台时常见，约 90B 空图）→ 拖拽框选整屏重试
-if [ ! -s "$SHOT" ] || [ "$(stat -c%s "$SHOT" 2>/dev/null || echo 0)" -lt 2000 ]; then
-    xdotool key --clearmodifiers alt+a
+    import -window root "$SHOT"
+else
+    VIS="$(mktemp)"
+    wmctrl -l | awk '$4!~/pcmanfm-desktop|LXQt/{print $1}' > "$VIS"
+    while read -r w; do xdotool windowminimize "$w" 2>/dev/null; done < "$VIS"
     sleep 1.0
-    xdotool mousemove 0 0; sleep 0.2
-    xdotool mousedown 1; sleep 0.2
-    xdotool mousemove "$((SW - 1))" "$((SH - 1))"; sleep 0.3
-    xdotool mouseup 1; sleep 0.3
-    xdotool mousemove "$((SW / 2))" "$((SH / 2))"; sleep 0.2
-    xdotool click --repeat 2 --delay 130 1
-    sleep 1.3
-    xclip -selection clipboard -t image/png -o > "$SHOT" 2>/dev/null
+    import -window root "$SHOT"
+    while read -r w; do xdotool windowmap "$w" 2>/dev/null; wmctrl -i -r "$w" -b remove,hidden 2>/dev/null; done < "$VIS"
+    rm -f "$VIS"
 fi
 
 # 2) 已把图片转存到文件（后面搜索会话要用剪贴板输入中文，会覆盖它）
@@ -50,28 +44,5 @@ if [ ! -s "$SHOT" ]; then
     exit 1
 fi
 
-# 3) 打开目标会话并聚焦输入框
-export LD_LIBRARY_PATH="/opt/my-agent/wechat-ocr/lib:/data/venv/onnxruntime-linux-x64-gpu-1.26.0/lib:${LD_LIBRARY_PATH:-}"
-export LUA_PATH="/opt/my-agent/wechat-ocr/?.lua;/opt/my-agent/wechat-ocr/lua/?.lua;/opt/my-agent/wechat-ocr/lua/?/init.lua;/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;;"
-export LUA_CPATH="/opt/my-agent/wechat-ocr/lib/?.so;/usr/local/lualib/?.so;;"
-export WECHAT_TO="$TO"
-luajit "$DIR/wechat_shot.lua" >/dev/null || { echo "进入会话失败：$TO" >&2; exit 1; }
-
-# 4) 把图片放回剪贴板 → 粘贴到输入框 → 等暂存完成 → 回车发送
-#    （xclip 需常驻持有选区；Ctrl+V 后要等图片上传/暂存完成，否则回车发不出去）
-nohup setsid xclip -selection clipboard -t image/png -i "$SHOT" </dev/null >/dev/null 2>&1 &
-sleep 1.0
-xdotool key --clearmodifiers ctrl+v
-sleep 4.0
-# 确保焦点在微信输入框（robot 搜索后偶发焦点漂移），再回车；连按两次兜底
-eval "$(xdotool getactivewindow getwindowgeometry --shell 2>/dev/null)"
-if [ -n "${WIDTH:-}" ]; then
-    xdotool mousemove "$((X + WIDTH * 47 / 100))" "$((Y + HEIGHT * 874 / 100))" click 1 2>/dev/null
-    sleep 0.5
-fi
-xdotool key --clearmodifiers Return
-sleep 1.2
-xdotool key --clearmodifiers Return
-sleep 0.8
-
-echo "已截屏并发送 -> $TO"
+# 3) 发送图片：走可靠的 wechat_send_file 通道（已验证能到）
+"$DIR/wechat_send_file.sh" "$SHOT" --to "$TO"
