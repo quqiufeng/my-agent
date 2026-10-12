@@ -43,6 +43,7 @@
 4. **不提交大文件**：模型（`*.onnx/*.gguf`）、`build*/`、编译产物已在 `.gitignore`，不要 `git add -f`。
 5. **改完 opencode 配置需重启**：`opencode.json`、`guard.js`、`operator/AGENTS.md` 不会被热重载。
 6. **第三方素材保留署名**：点阵 UI kit（`operator/tools/dotkit/`，来自 karminski-design-skills）为 **CC BY-NC-SA 4.0**，勿删 `NOTICE.md`/`LICENSE`，仅非商业使用。
+7. **Chrome 相关功能**：一律先 `operator/tools/chrome_debug.sh` 启动**专用固定端口 Chrome**（MCP 走 `--browser-url`，免授权弹窗、保留登录）；**不要让任何工具直连日常默认 Chrome**。详见 `chrome.md`。
 
 ---
 
@@ -51,6 +52,7 @@
 ```bash
 # 大脑
 operator/start.sh [--bg]                 # 启停 tmux + opencode(4097)
+operator/tools/chrome_debug.sh           # 启动专用 Chrome（固定端口，供 MCP 免授权、带登录）
 
 # 语音（纯 C/C++）
 make -C voice/listen                     # 编译麦克风监听

@@ -2,6 +2,8 @@
 
 > **官方完整文档（chrome-devtools-mcp 工具参考）**：https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md
 
+**关键约定：凡是要用 Chrome 的功能，一律先启动「专用 Chrome 实例」（固定调试端口），MCP 通过 `--browser-url` 连它 —— 免授权弹窗、保留登录。**
+
 本机 Chrome 的控制分两种方式：
 
 | 方式 | 谁执行 | 能力 | 适用 |
@@ -15,27 +17,32 @@
 
 ## 方式一：Chrome DevTools MCP（推荐）
 
-### 配置
-`operator/opencode.json`：
+### 1) 启动专用 Chrome 实例（免授权的前提）
+
+```bash
+operator/tools/chrome_debug.sh            # 默认端口 9222（可传端口）
+```
+
+- 用**专用 profile** `~/.chrome-debug-profile`：首次/每次启动前从你的默认 profile **同步登录数据**（排除大缓存、端上模型），所以**登录态保留**；
+- 以 `--remote-debugging-port=9222` 启动 → **经典调试端口，连多少客户端都不弹授权**；
+- 与日常 profile **隔离**（Chrome 强制要求非默认目录）。
+
+### 2) MCP 配置（`operator/opencode.json`）
+
 ```json
 {
   "mcp": {
     "chrome-devtools": {
       "type": "local",
-      "command": ["npx", "-y", "chrome-devtools-mcp@latest", "--autoConnect", "--channel", "stable", "--no-usage-statistics"],
+      "command": ["npx", "-y", "chrome-devtools-mcp@latest", "--browser-url=http://127.0.0.1:9222", "--no-usage-statistics"],
       "enabled": true
     }
   }
 }
 ```
 
-### 前置（一次性，Chrome 144+）
-在你**日常已登录**的 Chrome 里打开：
-```
-chrome://inspect/#remote-debugging
-```
-打开「允许远程调试」。`--autoConnect` 会连这个已登录实例（保留 cookie/登录态），不再单起隔离小号。
-（Chrome 重启后可能要重新放行。）
+- `--browser-url` 挂到上面那个**固定端口实例**（长连接）→ **不再每次弹授权**；
+- 改配置后需**重启大脑**（opencode 不热重载）：`operator/start.sh`。
 
 ### 大脑可用的 MCP 工具（名如 `chrome-devtools_*`）
 
@@ -57,8 +64,6 @@ chrome://inspect/#remote-debugging
 - WebMCP / 第三方工具 / PWA —— `--categoryExperimentalWebmcp` / `--categoryExperimentalThirdParty` / `--categoryPwa`
 
 \* `click_at`（按坐标点击）需 `--experimentalVision`；录屏需 `--experimentalScreencast`。
-
-**常用启动参数**：`--slim`（只露导航/脚本/截图 3 个工具）、`--headless`（无界面）、`--autoConnect`（连已登录 Chrome）、`--channel stable`。
 
 **关键用法**：读网页优先 `take_snapshot`（拿元素 uid + 文本）→ 据此 `click`/`fill`；抓数据用 `evaluate_script`。**禁止 OCR 网页。**
 
@@ -104,43 +109,31 @@ tools/browser.sh screenshot [输出路径]
       ▼
 opencode 大脑（tmux 常驻 TUI，4097）
       │  读 operator/AGENTS.md 规则
-      ├─ 浏览器 → 直接用 chrome-devtools MCP 工具
+      ├─ 浏览器 → 直接用 chrome-devtools MCP 工具（连固定端口实例）
       └─ 本机动作 → 调 operator/tools/*.sh（白名单，如 browser.sh / screenshot.sh / say.sh / wechat_send.sh）
 ```
-要点：**MCP 由 opencode 直接调用**；**sh 脚本也由 opencode 调用**（受 `operator/opencode.json` 白名单 + `guard.js` 约束）。
 
 ---
 
 ## 必须遵守的规则
 
 1. **只用 MCP 读网页** — 网页交互/内容读取走 `chrome-devtools_*` 工具；**禁止 OCR 识别浏览器页面**。
-2. **操作现有 Chrome** — 不启动新浏览器进程；用 `--autoConnect` 连已登录实例。
+2. **用 Chrome 前先启动专用实例** — `tools/chrome_debug.sh`（固定端口、免授权、带登录）；**不要让工具直连日常默认 Chrome**。
 3. **`browser.sh` 只做粗动作** — 开标签/搜索/截图；不要靠它读页面。
 4. **白名单** — opencode 侧只能调 `operator/tools/*.sh`，不得任意 shell。
 
 ---
 
-*相关：`operator/AGENTS.md`（运行时契约）、`operator/tools/browser.sh`、`wechat-ocr/lua/wechat_ocr/chrome.lua`*
-*文档版本: 2.1 · 更新日期: 2026-10-04*
+## 附：为什么固定端口就不弹授权
+
+- `chrome://inspect` 的 `--autoConnect`：暴露的是你**已登录的日常实例** → 出于安全，**每来一个客户端都要点“允许”**。
+- `--remote-debugging-port`（本方案）：**启动即授权**（flag 就是 opt-in）＋**专用隔离 profile** ＋ **仅绑 127.0.0.1** → 无需每次点。
+
+> 旧的「视觉点授权」方式（`tools/chrome_auth.sh`：`enable/consent/watch/daemon/status`，
+> 识别复选框与「要允许/充许」弹窗、识别「自动测试软件正在控制 Chrome」控制条）**仅作备选/兜底保留**，
+> 常规一律用上面的**固定端口实例**。
 
 ---
 
-## 与 MCP 结合：授权自动化（视觉 → MCP）
-
-MCP 是主力（结构化、**禁止 OCR 网页**）；**视觉只负责“放行”这一步授权**，之后全程走 MCP：
-
-1. **配置允许**（`chrome://inspect/#remote-debugging`）：勾选
-   `Allow remote debugging for this browser instance` → 出现 `Server running at 127.0.0.1:9222`。
-   自动化：`tools/chrome_auth.sh enable`（**视觉点复选框**；状态用**端口 9222** 判断，已开则不动）。
-2. **连接同意**：MCP 连接时若弹出“同意/允许”按钮 → `tools/chrome_auth.sh consent`
-   （或后台 `tools/chrome_auth.sh watch 60`）用视觉自动点掉。
-3. **之后**：网页交互全走 MCP（`take_snapshot` 拿元素 → `click`/`fill` → `evaluate_script`），不再用 OCR。
-
-> 分工一句话：**视觉 = 授权 + 无 CDP 场景的兜底；MCP = 网页主力。**
-> 关联实现：`agentkit/adapters/chrome.lua` 的 `port_open / enable_remote_debugging / accept_consent / watch_consent`。
-
-> 授权成功后，地址栏下方会出现控制条 **「自动测试软件正在控制 Chrome」**（含「在“设置”中关闭」）。
-> 这是“已受控/MCP 可用”的标志：`chrome.is_controlled()` / `tools/chrome_auth.sh status` 可识别；`stop_controlled()` 可关闭。
-
-> **授权弹窗最简处理**：识别到「要允许远程调试吗?」后，直接 **方向键→右，再回车**（焦点移到「允许」并确认）。
-> 已封装：`chrome.accept_consent()`（先试 `Right`+`Return`，失败再按坐标点「允/充许」）。
+*相关：`operator/AGENTS.md`（运行时契约）、`operator/tools/chrome_debug.sh`、`operator/tools/browser.sh`、`agentkit/tools/gemini.js`*
+*文档版本: 3.0 · 更新日期: 2026-10-12*
