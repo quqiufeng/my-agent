@@ -18,7 +18,7 @@ local watcher = require("wechat_ocr.watcher")
 local DIR       = os.getenv("WECHAT_DIR") or "/opt/my-agent/wechat-ocr"
 local AGENT_URL = os.getenv("AGENT_URL") or "http://localhost:4097"
 local SENT_LOG  = os.getenv("WECHAT_SENT_LOG") or "/tmp/myagent_wechat_sent.log"
-local POLL      = tonumber(os.getenv("WECHAT_POLL_SEC") or "10")   -- 轮询间隔（秒）
+local POLL      = tonumber(os.getenv("WECHAT_POLL_SEC") or "15")   -- 轮询间隔（秒）
 local ONCE      = os.getenv("WECHAT_ONCE") == "1"                  -- 只跑一轮（调试）
 local DRY       = os.getenv("WECHAT_DRY") == "1"                   -- 只打印不转发（调试）
 local REPLY_WAIT = tonumber(os.getenv("WECHAT_REPLY_WAIT") or "40") -- 等大脑回复上限（秒）
