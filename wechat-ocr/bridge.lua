@@ -157,8 +157,109 @@ io.flush()
 -- 全程后台读第二列预览：不聚焦、不激活、不点开会话（quiet）。
 -- 白名单会话的预览以标签开头且与上次不同 → 作为指令转发。
 -- 微信被最小化/隐藏时抓不到（不抢焦点，跳过）；遮挡不影响。
+-- ── 每轮开关微信：点开读取；无新指令则再点回后台（静默）──────────────
+local TOGGLE = os.getenv("WECHAT_TOGGLE") ~= "0"
+local function sh(cmd) os.execute(cmd .. " >/dev/null 2>&1") end
+local function wechat_open(win)
+    if not win then return end
+    sh("xdotool windowmap " .. win.id)          -- 取消最小化
+    sh("wmctrl -i -a " .. win.id)               -- 激活
+    os.execute("sleep 0.8")
+end
+local function wechat_background(win)
+    if not win then return end
+    sh("xdotool windowminimize " .. win.id)     -- 最小化 → 后台静默
+end
+
+-- ── 语音消息 → 右键「语音转文字」→ OCR 识别 ──────────────────────
+local OCR_TEXT = DIR .. "/ocr_text.sh"
+local VPID = os.time()
+local function sh_out(cmd)
+    local f = io.popen(cmd .. " 2>/dev/null")
+    if not f then return "" end
+    local s = f:read("*a"); f:close(); return s or ""
+end
+local function is_voice(text) return text and text:find("语音") ~= nil end
+-- 聊天区起始 x（与 wechat_robot.col_geometry 一致）
+local function chat_x0(win)
+    local scale = (win.w or 2560) / 2560
+    return math.floor(75 * scale) + math.floor(445 * scale)
+end
+-- 聊天区里最新的「微信绿」语音气泡（窗口坐标）
+local function green_bubble(shot, win)
+    local cx = chat_x0(win); local cw = win.w - cx
+    local info = sh_out(string.format(
+        "convert '%s' -crop %dx%d+%d+0 +repage -fuzz 10%% -transparent '#95EC69' "
+        .. "-alpha extract -negate -trim info:", shot, cw, win.h, cx))
+    local W, H, X, Y = info:match("PNG (%d+)x(%d+) %d+x%d+%+(%d+)%+(%d+)")
+    if not W then return nil end
+    return { x = cx + tonumber(X), y = tonumber(Y), w = tonumber(W), h = tonumber(H) }
+end
+-- 点开会话 → 右键语音气泡 → 语音转文字 → 裁白底文字 OCR
+local OCR_BOXES = DIR .. "/ocr_boxes.sh"
+local function convert_voice(win, row)
+    local shot, b
+    for _ = 1, 3 do
+        os.execute(string.format("xdotool mousemove %d %d click 1",
+            win.x + row.x + math.floor(row.w / 2), win.y + row.y + math.floor(row.h / 2)))
+        os.execute("sleep 0.8")
+        for _ = 1, 4 do
+            shot = watcher.window_capture()
+            if shot then b = green_bubble(shot, win) end
+            if b then break end
+            os.execute("sleep 0.5")
+        end
+        if b then break end
+    end
+    if not b then io.write("[bridge] 未找到语音气泡\n"); return nil end
+    local bx = win.x + b.x + math.floor(b.w * 0.35)
+    local by = win.y + b.y + math.floor(b.h / 2)
+    os.execute(string.format("xdotool mousemove %d %d click 3", bx, by))   -- 右键气泡
+    os.execute("sleep 1.2")
+    -- 全屏抓图，OCR 找含「转文字」的菜单项
+    local mpng = string.format("/tmp/wx_menu_%d.png", VPID)
+    os.execute(string.format("import -window root '%s'", mpng))
+    local mx, my
+    for line in sh_out(OCR_BOXES .. " '" .. mpng .. "'"):gmatch("[^\n]+") do
+        local x, y, w2, h2, t = line:match("^(%d+)\t(%d+)\t(%d+)\t(%d+)\t(.+)$")
+        if t and t:find("转文字") then
+            mx = tonumber(x) + math.floor(tonumber(w2) / 2)
+            my = tonumber(y) + math.floor(tonumber(h2) / 2)
+            break
+        end
+    end
+    os.remove(mpng)
+    if mx then
+        os.execute(string.format("xdotool mousemove %d %d click 1", mx, my))
+        os.execute("sleep 2.5")
+    else
+        -- 已转换（菜单项是「收起文字」）→ 点标题栏空白关菜单（勿用 Esc，会关会话）
+        os.execute(string.format("xdotool mousemove %d %d click 1", win.x + 800, win.y + 22))
+        os.execute("sleep 0.4")
+    end
+    local shot2 = watcher.window_capture()
+    if not shot2 then return nil end
+    local tx = win.x + b.x - 280
+    local ty = win.y + b.y + b.h + 6
+    local crop = string.format("/tmp/wx_voice_%d.png", VPID)
+    local outt = string.format("/tmp/wx_voicetext_%d.txt", VPID)
+    os.execute(string.format(
+        "convert '%s' -crop 560x150+%d+%d +repage -resize 300%% -colorspace Gray -normalize '%s'",
+        shot2, tx, ty, crop))
+    sh_out(OCR_TEXT .. " '" .. crop .. "' '" .. outt .. "'")
+    local text = ""
+    local f = io.open(outt, "r")
+    if f then text = f:read("*a") or ""; f:close() end
+    os.remove(crop); os.remove(outt)
+    text = text:gsub("%s+", "")
+    if text == "" then return nil end
+    return text
+end
+
 while true do
-    local shot, win = watcher.window_capture()
+    local win = watcher.window()
+    if TOGGLE then wechat_open(win) end
+    local shot, w = watcher.window_capture()
     if not shot then
         io.write("[bridge] 微信不可见（最小化），跳过（保持微信未最小化即可）\n")
     else
@@ -169,7 +270,28 @@ while true do
             if row then
                 local text = watcher.read_preview(shot, win, row)
                 local cmd = text and to_command(text) or nil
-                if text and text ~= "" and text ~= last[user] and cmd and cmd ~= "" then
+                if text and text ~= "" and text ~= last[user] and is_voice(text) then
+                    -- 语音消息：转文字 → 转发
+                    has_cmd = true
+                    last[user] = text; save_last()
+                    io.write("[bridge] 语音消息 → 转文字(" .. user .. ")\n"); io.flush()
+                    local vtext = convert_voice(win, row)
+                    if vtext and vtext ~= "" then
+                        io.write("[微信语音:" .. user .. "] " .. vtext .. "\n"); io.flush()
+                        if not DRY then
+                            notify()
+                            local before = sent_lines()
+                            forward(user, vtext)
+                            for _ = 1, REPLY_WAIT do
+                                if sent_lines() > before then break end
+                                os.execute("sleep 1")
+                            end
+                            os.execute("sleep 4")
+                        end
+                    else
+                        io.write("[bridge] 语音转文字为空\n")
+                    end
+                elseif text and text ~= "" and text ~= last[user] and cmd and cmd ~= "" then
                     has_cmd = true
                     if is_self(text, cmd) then
                         io.write("[bridge] 跳过(自己发的): " .. text .. "\n")
@@ -193,7 +315,10 @@ while true do
                 end
             end
         end
-        if not has_cmd then io.write("[bridge] 无新指令\n") end
+        if not has_cmd then
+            io.write("[bridge] 无新指令\n")
+            if TOGGLE then wechat_background(w) end     -- 无消息 → 点回后台静默
+        end
     end
     io.flush()
     if ONCE then break end
