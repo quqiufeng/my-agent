@@ -6,6 +6,7 @@ local URL   = (os.getenv("WEBDAV_URL") or ""):gsub("/+$", "")
 local USER  = os.getenv("WEBDAV_USER") or ""
 local PASS  = os.getenv("WEBDAV_PASS") or ""
 local MUSIC = os.getenv("WEBDAV_MUSIC") or ""
+local cjson = require("cjson")
 local PIDF  = "/tmp/myagent_music.pid"
 local LOGF  = "/tmp/myagent_music.log"
 
@@ -50,6 +51,76 @@ local function stop()
     end
     os.execute("pkill -x vlc 2>/dev/null")   -- VLC 运行进程名是 vlc（cvlc 只是启动方式）
     os.remove(PIDF)
+end
+
+-- ── 在线无损（flac.music.hi.cn，免浏览器）──────────────────────
+local API = "https://flac.music.hi.cn/ajax.php"
+local function gbk_pct(s)
+    local p = io.popen("printf '%s' " .. shq(s) .. " | iconv -f utf-8 -t gbk 2>/dev/null | od -An -tx1 | tr -d ' \\n'")
+    if not p then return "" end
+    local hex = p:read("*a"); p:close()
+    return (hex:gsub("(%x%x)", "%%%1"))
+end
+local function api_post(act, body)
+    local p = io.popen(string.format(
+        "curl -sS -m 25 '%s?act=%s' -H 'Content-Type: application/x-www-form-urlencoded;charset=UTF-8' -H 'Referer: https://flac.music.hi.cn/' -A 'Mozilla/5.0' --data %s",
+        API, act, shq(body)))
+    if not p then return nil end
+    local o = p:read("*a"); p:close(); return o
+end
+local function online_search(kw, plat)
+    plat = plat or "kuwo"
+    local body = "type=search&keyword=" .. urlencode(kw) .. "&id=&platform=" .. plat
+    local ok, res = pcall(cjson.decode, api_post("search", body) or "")
+    return (ok and res and res.data and res.data.list) or {}
+end
+local function online_url(song, fmt, br)
+    local body = string.format("platform=%s&songid=%s&format=%s&bitrate=%s&time=%s&sign=%s",
+        song.platform or _G._onplat or "kuwo", song.id, fmt or "flac", br or "2000", song.time or 0, song.sign or "")
+    local ok, res = pcall(cjson.decode, api_post("getUrl", body) or "")
+    return (ok and res and res.data and res.data.url) or nil
+end
+-- 播放单个流（VLC，复用 stop/pid）
+local function play_stream(url, label)
+    if not url or url == "" then return false end
+    stop()
+    local cmd = string.format("setsid cvlc --intf dummy --no-video %s </dev/null >%s 2>&1 & echo $!", shq(url), LOGF)
+    local p = io.popen(cmd); local pid = p and p:read("*a"):match("%d+") or nil; if p then p:close() end
+    if pid then write_file(PIDF, pid) end
+    write_file("/tmp/myagent_music_now", label or "")
+    print("正在播放（在线·无损优先）: " .. (label or url))
+    return true
+end
+-- 同时把流下载并上传保存到 NAS（WebDAV）
+local function save_to_nas(url, title)
+    if URL == "" or MUSIC == "" or not url or url == "" then return end
+    local fn = (title or "song"):gsub("[\\/:?*\"<>|]", "_"):gsub("%s+", " ")
+    fn = fn:sub(1, 120) .. ".flac"
+    local tmp = "/tmp/myagent_dl_" .. os.time() .. ".flac"
+    local cmd = string.format(
+        "setsid sh -c 'curl -sL -m 300 -A \"Mozilla/5.0\" -o %s %s && curl -s -m 120 -u \"$WEBDAV_USER:$WEBDAV_PASS\" -T %s \"%s%s/%s\" && rm -f %s' </dev/null >/dev/null 2>&1 &",
+        shq(tmp), shq(url), shq(tmp), URL, urlencode(MUSIC), urlencode(fn), shq(tmp))
+    os.execute(cmd)
+    print("已在后台保存到 NAS: " .. fn)
+end
+
+-- 在线播一首：搜关键词 → 取 FLAC（失败退 320k mp3）→ VLC
+local function play_online(kw, plat)
+    local list = online_search(kw, plat)
+    if #list == 0 then print("在线没有找到: " .. kw); return false end
+    local pick = list[1]
+    for _, s in ipairs(list) do
+        local hasflac = false
+        for _, q in ipairs(s.minfo or {}) do if q.format == "flac" then hasflac = true end end
+        if hasflac then pick = s; break end
+    end
+    _G._onplat = plat or "kuwo"
+    local url = online_url(pick, "flac", "2000") or online_url(pick, "mp3", "320")
+    if not url then print("取直链失败"); return false end
+    local label = (pick.name or "") .. " - " .. (pick.artist or "")
+    play_stream(url, label)
+    save_to_nas(url, label)
+    return true
 end
 
 -- 播放一组曲目（VLC 播放列表）
@@ -118,8 +189,12 @@ elseif mode == "play" then
     local kw = arg[2] or ""
     if kw == "" then print("用法: music.sh play <歌手或歌名>"); os.exit(2) end
     local hits = filter_tracks(kw)
-    if #hits == 0 then print("没有找到包含「" .. kw .. "」的歌"); os.exit(1) end
-    play_list(hits)
+    if #hits > 0 then play_list(hits)
+    else play_online(kw, arg[3] or "kuwo") end
+
+elseif mode == "online" then
+    local kw = arg[2] or ""; if kw == "" then print("用法: music.sh online <关键词> [kuwo|wyy]"); os.exit(2) end
+    play_online(kw, arg[3] or "kuwo")
 
 elseif mode == "random" then
     local ts = list_tracks()
@@ -148,5 +223,5 @@ elseif mode == "volume" then
     volume(arg[2])
 
 else
-    print("用法: music.sh search <关键词> | play <歌手或歌名> | random | next | stop | volup | voldown | volume <0-100>")
+    print("用法: music.sh search <关键词> | play <歌手或歌名>(本地,无则在线) | online <关键词> [kuwo|wyy] | random | next | stop | volup | voldown | volume <0-100>")
 end

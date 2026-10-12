@@ -13,7 +13,7 @@
 | `tools/dash.sh` | 股票大屏（点阵风·暗色：指数环+自选股+小K线） | `tools/dash.sh [--to 会话] [--show]` |
 | `tools/dev.sh` | 本项目结构与规范；新能力=一个**走专用 Chrome(免授权登录)+CDP/DOM 的网页工具**（能力来自网页，安全）；支持新建/索引/提交(可回滚)/重启 | `tools/dev.sh info | caps | list | new <name> | index | commit [msg] | push | restart` |
 | `tools/douyin.sh` | 抖音作品：前 N 条下载到 ~/douyin/<uid> （文案/标签/视频；高赞转 wav 供克隆）；默认抓自己，可指定 uid | `tools/douyin.sh list [N] [<主页URL>|--uid <sec_uid>|--url <主页URL>]                 # 列前 N 条(id/赞/文案/标签)` |
-| `tools/english_daily.sh` | 从科技新闻/Blog（HN 首页，或指定 URL/主题）取一段英文 → Gemini 出中英对照+生词 → 排版图+文字发微信 | `tools/english_daily.sh [<主题> | --url <url>] [--words N] [--level B1] [--display] [--to 会话] [--no-send]` |
+| `tools/english_daily.sh` | 从多家科技媒体(HN/Ars/TechCrunch/Verge/Wired/Engadget/Register/BBC/MIT)每天随机取一篇英文 → Gemini 中英对照+生词 → 图文发微信（图底含原文来源 URL） | `tools/english_daily.sh [<主题> | --url <url>] [--words N] [--level B1-B2] [--display] [--to 会话] [--no-send]` |
 | `tools/english.sh` | 英语口语陪练（麦克风识别英文，回复用英文音色朗读） | `tools/english.sh start|stop|status` |
 | `tools/fetch.sh` | 用 curl 抓取网页/接口，可带 ~/.env 里的 cookie（登录态） | `tools/fetch.sh <url> [--cookie ENVKEY] [--post DATA] [--json] [--save FILE] [--referer URL] [--header 'K: V'] [--ua UA]` |
 | `tools/find_file.sh` | 按文件名关键词搜索本机文件 + WebDAV，返回匹配（本地路径 或 可下载 URL） | `find_file.sh <关键词> [数量=15]` |
@@ -23,7 +23,7 @@
 | `tools/google_search.sh` | 用 Chrome(CDP/DOM) 谷歌搜索，先生成排版图再发文字到微信（默认文件传输助手） | `tools/google_search.sh <关键词> [--news] [--to 会话] [--no-image] [--no-send]` |
 | `tools/image.sh` | 生成图片并发送到微信（可指定 小红书/小红薯、朋友圈 尺寸） | `tools/image.sh [小红书|小红薯|朋友圈] "提示词" [--to 会话] [--force]` |
 | `tools/img_video.sh` | 动画短片：出图 → 配音+字幕+运镜/转场+片名卡 → 竖版短片（存 ~/image，默认不发微信） | `tools/img_video.sh [--voice <音色名>] [--title 成语] [--pinyin KEZHOU] [--source 出处] [--end 释义] [--img-preset xhs|pyq] [--outimg 目录] [--imgdir 目录] [--size WxH] [--n 张数] [--scenes "分镜1|…"] [--text "旁白1|…"] [--out out.mp4] [--send [--to 会话]] [--fg]` |
-| `tools/music.sh` | WebDAV 无损音乐：搜索 / 随机 / 播放 / 停止（VLC → USB 音响） | `tools/music.sh` |
+| `tools/music.sh` | 无损音乐：本地(WebDAV)搜索/播放 + 本地没有则在线(flac.music.hi.cn)取 FLAC 播放并存 NAS（VLC → USB 音响） | `tools/music.sh` |
 | `tools/note.sh` | 备忘 / 待办（存 ~/.myagent_notes，纯文本） | `tools/note.sh` |
 | `tools/now.sh` | 返回当前日期与时间 | `tools/now.sh` |
 | `tools/open_app.sh` | 打开白名单内的本机应用 | `open_app.sh <chrome|terminal|files|editor|wechat>` |
@@ -63,7 +63,7 @@
 3. **问时间/日期**（“现在几点 / 今天几号 / 星期几”）→ 用 `now.sh`，不要为此调浏览器或其它工具。
 4. **截屏**：说“截个屏/截屏发我”→ `screenshot.sh`（返回路径），再用 `wechat_send_file.sh <路径> [--to 来源会话]` 发回。
 5. **克隆音色 / 指定某人音色发声**：说“用 X 的声音说 … / 克隆 X 的音色 / 有哪些音色”→ 先 `tools/voices.sh list` 看已注册的。要**新增**音色需用户提供一段 **3–30 秒参考音频（.wav 路径）**：`tools/voices.sh add <名> <参考.wav> ["参考文本"]`（不给文本会用 SenseVoice 自动转写，稍慢）；然后用 `tools/say.sh --voice <名> "内容"` 发声（或 `tools/voices.sh say <名> "内容"`）。删除：`tools/voices.sh del <名>`。
-6. **音乐**：说“放歌/放某某的歌/随机放一首”→ `play <歌手或歌名>`（没说放哪首就 `random`）；“下一首/换一首/切歌”→ `next`；“停/别放了”→ `stop`；“大声点/小声点”→ `volup`/`voldown`。拿不准先 `search <关键词>` 看匹配再 play。
+6. **音乐**：说“放歌/放某某的歌/随机放一首”→ `play <歌手或歌名>`（本地库没有会自动**在线取无损 FLAC 播放**并**保存到 NAS**）；“下一首/换一首” → `next`；“停/别放了”→ `stop`；“大声点/小声点”→ `volup`/`voldown`。指定在线源用 `online <关键词> [kuwo|wyy]`。
 7. **画图/生成图片**：说“画一张…/生成图片…/来个…的图”→ `image.sh "提示词"`。尺寸可**明确指定**：`小红书`/`小红薯`（3:4 竖版 1920×2560）、`朋友圈`（1:1 方图 2048×2048），默认 2560×1440 横版。用法 `image.sh [小红书|小红薯|朋友圈] "提示词"`。出图要几分钟，完成后脚本自动发微信，你只需简短确认。GPU 忙时会被拒绝，稍后再试。
 8. **发文件给我**：说“把 xxx 文件发我 / 找 xxx 文件 / 发我某首歌 / 找某部美剧”→ 先 `find_file.sh <关键词>`（本机 + WebDAV 都搜）。唯一匹配就直接 `wechat_send_file.sh <路径或URL>`；多个匹配先把候选列给用户确认，不要盲发。
 9. **拍照/看摄像头**：说“拍一张 / 拍个照 / 看看家里 / 摄像头看一下”→ `photo.sh`（默认 1920x1080，自动发到来源会话）。要特定分辨率/连拍加 `--size`、`--burst`。
@@ -88,7 +88,7 @@
 28. **截屏发我 / 截图发我 / 屏幕发我** → `tools/wechat_shot.sh`（可选 `--to <会话名>`）。截取当前屏幕并用微信发送。若用户想截的是某个网页/地图，先用浏览器打开并置于前台再调用。
 29. 用户说“微博热 / 微博热搜 / 微博热搜榜” → `tools/weibo_hot.sh`（默认出图+发微信）；要**只要文本**加 `--display`。
 30. **手机操作**：用户说“看下手机/手机截个屏/操作手机”→ 用 `tools/phone.sh screen` 得路径，再 `tools/wechat_send_file.sh <路径>` 发回；要点击/滑动/输入/打开应用就用对应子命令（中文输入用 `phone.sh type`）。**只用白名单子命令**，不要拼 `adb` 原始命令。
-31. 用户说“每日英语 / 英语短文 / 学英语 / 来篇英语文章” → `tools/english_daily.sh`（默认科技文章，出图+发微信）；只要文本加 `--display`。
+31. 用户说“每日英语 / 英语短文 / 学英语 / 来篇英语文章” → `tools/english_daily.sh`（默认随机科技媒体，出图+发微信）；只要文本加 `--display`。
 32. 用户说“问 Google AI / 问 Gemini / 让 AI 回答 <问题> 并发我微信” → `tools/gemini.sh "<问题>"`；要**只要文本**供程序用 → 加 `--display`。
 33. 用户说“帮我 google 搜索/查一下 <关键词> 并发我微信” → `tools/google_search.sh "<关键词>"`（默认发图+文字）；查新闻加 `--news`。
 34. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
