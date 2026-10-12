@@ -99,14 +99,30 @@ local CONSENT_WORDS = { "允许", "同意", "接受", "继续", "启用", "开�
 function M.accept_consent(opts)
     opts = opts or {}
     local w = opts.window or win(); if not w then return false, "no window" end
+    w:activate(); sleep(0.25)                       -- 弹窗随 Chrome 窗口显示，先置顶
     local words = opts.texts or CONSENT_WORDS
-    -- 默认先扫“工具栏下方”的弹条区；找不到再扫上半屏
-    local regions = { opts.region or { 0, 80, w.w, 180 }, { 0, 80, w.w, math.min(w.h - 80, 700) } }
+    -- 默认先扫“工具栏下方”的弹条/对话框区；找不到再扫上半屏
+    local regions = { opts.region or { 0, 80, w.w, 500 }, { 0, 80, w.w, math.min(w.h - 80, 800) } }
     for _, rg in ipairs(regions) do
         local boxes = w:ocr_bands(rg, 160)
+        -- 0) 启发式：短按钮含“许/允”（OCR 常把「允许」认成「充许」）
+        for _, o in ipairs(boxes) do
+            if #o.text <= 4 and (o.text:find("许") or o.text:find("允")) then
+                w:click(math.floor(o.gx + o.w / 2), math.floor(o.gy + o.h / 2))
+                return true, o.text
+            end
+        end
         for _, word in ipairs(words) do
+            -- 1) 精确匹配按钮文本（如「允许」「取消」），避免命中标题里的同词
             for _, o in ipairs(boxes) do
-                if o.text:find(word, 1, true) then
+                if o.text == word then
+                    w:click(math.floor(o.gx + o.w / 2), math.floor(o.gy + o.h / 2))
+                    return true, o.text
+                end
+            end
+            -- 2) 退而求其次：短框包含（按钮通常很短）
+            for _, o in ipairs(boxes) do
+                if #o.text <= #word + 4 and o.text:find(word, 1, true) then
                     w:click(math.floor(o.gx + o.w / 2), math.floor(o.gy + o.h / 2))
                     return true, o.text
                 end

@@ -61,24 +61,31 @@ function Window:locate_text(text, region, opts)
 end
 
 -- 分带 OCR：大且稀疏的页面（浏览器）必须分段识别，否则小字丢失
--- 返回带“窗口相对坐标”(gx,gy) 的框
-function Window:ocr_bands(region, band, scale)
+-- 横纵都切块（每块 ≤ band 高、≤ maxw 宽），返回带“窗口相对坐标”(gx,gy) 的框
+function Window:ocr_bands(region, band, scale, maxw)
     region = region or { 0, 0, self.w, self.h }
     band = band or 240
     scale = scale or 1.5
+    maxw = maxw or 900
     local x, y, ww, hh = region[1], region[2], region[3], region[4]
-    local out, yy = {}, y
+    local out = {}
+    local yy = y
     while yy < y + hh do
         local bh = math.min(band, y + hh - yy)
-        local tmp = string.format("%s/band_%d_%d.png", tmpdir(), self.id % 1000000,
-                                  math.floor(math.random() * 1e6))
-        self:capture_region(x, yy, ww, bh, tmp)
-        local up = tmp .. ".up.png"
-        os.execute(("convert %s -resize %d%% %s"):format(tmp, math.floor(scale * 100), up))
-        for _, o in ipairs(ocr.run(up)) do
-            o.gx = x + o.x / scale
-            o.gy = yy + o.y / scale
-            out[#out + 1] = o
+        local xx = x
+        while xx < x + ww do
+            local tw = math.min(maxw, x + ww - xx)
+            local tmp = string.format("%s/band_%d_%d.png", tmpdir(), self.id % 1000000,
+                                      math.floor(math.random() * 1e6))
+            self:capture_region(xx, yy, tw, bh, tmp)
+            local up = tmp .. ".up.png"
+            os.execute(("convert %s -resize %d%% %s"):format(tmp, math.floor(scale * 100), up))
+            for _, o in ipairs(ocr.run(up)) do
+                o.gx = xx + o.x / scale
+                o.gy = yy + o.y / scale
+                out[#out + 1] = o
+            end
+            xx = xx + tw
         end
         yy = yy + bh
     end
