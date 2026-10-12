@@ -101,20 +101,31 @@ end
 
 -- 判断预览/正文是否是我们自己刚发过的回复（带标签/去标签都比）
 local function is_self(preview, cmd)
-    local full, body = {}, {}
+    local cands = {}
+    for _, c in ipairs({ preview or "", cmd or "" }) do
+        local n = normalize(c):gsub("[%.。…]+$", "")   -- 去预览省略号
+        if n ~= "" then cands[#cands + 1] = n end
+    end
+    if #cands == 0 then return false end
     local f = io.open(SENT_LOG, "r")
-    if f then
-        for line in f:lines() do
-            if line ~= "" then
-                full[normalize(line)] = true
-                body[normalize(to_command(line) or line)] = true
+    if not f then return false end
+    local self = false
+    for line in f:lines() do
+        if line ~= "" then
+            local nl = normalize(line)
+            local nb = normalize(to_command(line) or line)
+            for _, c in ipairs(cands) do
+                if (nl == c or nb == c)
+                    or (#c >= 4 and (nl:find(c, 1, true) or c:find(nl, 1, true)
+                        or nb:find(c, 1, true) or c:find(nb, 1, true))) then
+                    self = true; break
+                end
             end
         end
-        f:close()
+        if self then break end
     end
-    if preview and full[normalize(preview)] then return true end
-    if cmd and cmd ~= "" and body[normalize(cmd)] then return true end
-    return false
+    f:close()
+    return self
 end
 
 local function sent_lines()
@@ -255,7 +266,8 @@ while true do
             local row = res and watcher.find_row(res, user)
             if row then
                 local text = watcher.read_preview(shot, win, row)
-                local cmd = text and to_command(text) or nil
+                -- 标签可选：能识别就剥离，否则整条当指令（白名单会话专用；靠 is_self 防回环）
+                local cmd = text and (to_command(text) or text) or nil
                 if text and text ~= "" and text ~= last[user] and is_voice(text) then
                     -- 语音消息：转文字 → 转发
                     has_cmd = true

@@ -35,6 +35,22 @@ local function popen_line(cmd)
     return out
 end
 
+-- 用常驻 RapidOCR 服务（127.0.0.1:8799）识别图片，返回 {x,y,w,h,text}[]
+local function http_boxes(path)
+    local f = io.popen(string.format(
+        "curl -s --max-time 8 --data-binary @%q http://127.0.0.1:8799/ocr", path))
+    if not f then return nil end
+    local s = f:read("*a"); f:close()
+    if not s or s == "" then return nil end
+    local ok, d = pcall(cjson.decode, s)
+    if not ok or type(d) ~= "table" or type(d.boxes) ~= "table" then return nil end
+    local out = {}
+    for _, b in ipairs(d.boxes) do
+        out[#out + 1] = { x = b.x, y = b.y, w = b.w, h = b.h, text = b.text }
+    end
+    return out
+end
+
 -- ── 初始化 ──────────────────────────────────────────────────
 function M.init()
     if engine then return true end
@@ -89,15 +105,17 @@ end
 -- 对截图 OCR，返回 {win=..., boxes={x,y(窗口坐标),w,h,text}}
 -- 注意 ocr_capture_file 从 y=35 起裁，box.y 是相对裁剪的，这里补回 35。
 function M.ocr(shot, win)
+    local boxes = http_boxes(shot)
+    if boxes then return { win = win, boxes = boxes } end
     local s = lib.ocr_capture_file(engine, shot, win.x, win.y)
     if s == nil or s == ffi.NULL then return nil, "OCR 失败" end
     local d = cjson.decode(ffi.string(s))
     lib.ocr_free_string(s)
-    local boxes = {}
+    local ob = {}
     for _, b in ipairs(d.boxes or {}) do
-        boxes[#boxes + 1] = { x = b.x, y = b.y + 35, w = b.w, h = b.h, text = b.text }
+        ob[#ob + 1] = { x = b.x, y = b.y + 35, w = b.w, h = b.h, text = b.text }
     end
-    return { win = win, boxes = boxes }
+    return { win = win, boxes = ob }
 end
 
 -- ── 定位会话行 / 读预览 ─────────────────────────────────────
@@ -136,30 +154,34 @@ end
 -- 读该行下方预览文字（=最新一条消息），只读第二列、不点开会话
 function M.read_preview(shot, win, row)
     if not shot or not row then return nil, "缺行/截图" end
-    -- 左边界留足：预览可能以 # 标签开头，别把 # 切掉
     local x = math.max(0, row.x - 100)
-    local y = row.y + row.h          -- 名字下方那一行 = 预览
+    local y = row.y + row.h
     local w = math.min(win.w - x, 560)
     local h = 46
     local crop = string.format("/tmp/wx_prev_%d.png", PID)
-    sh(string.format("convert '%s' +repage -crop %dx%d+%d+%d +repage -resize 400%% -colorspace Gray -level 20%%,85%% -sharpen 0x1.5 '%s'",
+    sh(string.format("convert '%s' +repage -crop %dx%d+%d+%d +repage '%s'",
         shot, w, h, x, y, crop))
-    local s = lib.ocr_capture_file(engine, crop, 0, 0)
+    local boxes = http_boxes(crop)
     os.remove(crop)
-    if s == nil or s == ffi.NULL then return nil, "预览 OCR 失败" end
-    local d = cjson.decode(ffi.string(s))
-    lib.ocr_free_string(s)
-    local boxes = d.boxes or {}
+    if not boxes then
+        -- 兜底：旧 C++ 库
+        sh(string.format("convert '%s' +repage -crop %dx%d+%d+%d +repage -resize 400%% -colorspace Gray -level 20%%,85%% -sharpen 0x1.5 '%s'",
+            shot, w, h, x, y, crop))
+        local s = lib.ocr_capture_file(engine, crop, 0, 0)
+        os.remove(crop)
+        if s == nil or s == ffi.NULL then return nil, "预览 OCR 失败" end
+        local d = cjson.decode(ffi.string(s)); lib.ocr_free_string(s)
+        boxes = d.boxes or {}
+    end
     if #boxes == 0 then return nil, "预览为空" end
     table.sort(boxes, function(a, b) return a.x < b.x end)
-    local parts = {}
+    local parts, s2 = {}, nil
     for _, b in ipairs(boxes) do
         if not b.text:find("传输") then parts[#parts + 1] = b.text end
     end
-    local s2 = table.concat(parts, "")
-    s2 = s2:gsub("^%s+", ""):gsub("%s+$", "")
+    s2 = table.concat(parts, "")
     if s2 == "" then return nil, "只有标题无预览" end
-    return s2
+    return (s2:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
 return M
