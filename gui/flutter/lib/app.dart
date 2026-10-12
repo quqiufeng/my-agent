@@ -42,13 +42,18 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
   static const _cam = MethodChannel('agent/camera');
   int _texId = 0;
   String _clock = '';
   int _mic = 0;
   int _micHold = 0;
   String _last = '';
+  String _song = '';
+  bool _musicPlaying = false;
+  bool _musicPaused = false;
+  bool _wxAttention = false;
+  late final AnimationController _wxAnim;
   bool _awake = false;
   DateTime? _awakeUntil;
   int _awakeLeft = 0;
@@ -87,8 +92,14 @@ class _HomePageState extends State<HomePage> {
     _micLoop(env['VOICE_MIC_DEV'] ?? 'plughw:2,0',
         env['VOICE_MIC_CARD'] ?? '2', env['VOICE_MIC_GAIN'] ?? '7810', env);
     _tickClock();
+    _wxAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 450));
     _uiTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(_tickClock);
+      if (mounted) {
+        setState(_tickClock);
+        unawaited(_refreshWechat());
+        unawaited(_refreshMusic());
+      }
     });
     _snapTimer = Timer.periodic(const Duration(milliseconds: 700), (_) {
       try {
@@ -320,6 +331,14 @@ class _HomePageState extends State<HomePage> {
               continue;
             }
 
+            // 播放音乐期间静默：不识别，避免把歌声当成指令（回环）
+            if (_musicPlaying && !_musicPaused) {
+              if (acc.isNotEmpty) acc.clear();
+              speaking = false;
+              silent = 0;
+              continue;
+            }
+
             final thr = math.max(500, noise * 2);
             if (!speaking) {
               noise = (noise * 3 + peak) ~/ 4;
@@ -356,6 +375,29 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // 微信是否有未读：读微信窗口的「需要关注」提示（任务栏闪动同源）
+  Future<void> _refreshWechat() async {
+    var att = false;
+    try {
+      final r = await Process.run('bash', [
+        '-lc',
+        r'W=$(xdotool search --name 微信 2>/dev/null | head -1); '
+            r'[ -n "$W" ] && xprop -id "$W" _NET_WM_STATE 2>/dev/null'
+      ]);
+      att = ((r.stdout as String?) ?? '').contains('DEMANDS_ATTENTION');
+    } catch (_) {}
+    if (att != _wxAttention) {
+      _wxAttention = att;
+      if (att) {
+        _wxAnim.repeat(reverse: true);
+      } else {
+        _wxAnim.stop();
+        _wxAnim.value = 0;
+      }
+      if (mounted) setState(() {});
+    }
+  }
+
   void _tickClock() {
     final n = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
@@ -366,11 +408,83 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // 读取当前播放状态（music.lua 写 /tmp/myagent_music_now 与 .pid）
+  // pid 文件失效时回退按进程名找 vlc，避免控制不到正在播放的曲目
+  Future<void> _refreshMusic() async {
+    var playing = false, paused = false;
+    var song = '';
+    try {
+      final r = await Process.run('bash', [
+        '-lc',
+        r'P=$(cat /tmp/myagent_music.pid 2>/dev/null); '
+            r'if [ -n "$P" ] && [ -d "/proc/$P" ]; then echo "$P"; '
+            r'else pgrep -x vlc | head -1; fi'
+      ]);
+      final pid = ((r.stdout as String?) ?? '').trim();
+      if (pid.isNotEmpty) {
+        final pf = File('/tmp/myagent_music.pid');
+        if (!pf.existsSync() || pf.readAsStringSync().trim() != pid) {
+          try {
+            pf.writeAsStringSync(pid);
+          } catch (_) {}
+        }
+        playing = true;
+        try {
+          final st = File('/proc/$pid/status').readAsStringSync();
+          final m = RegExp(r'State:\s+(\S)').firstMatch(st);
+          paused = m != null && m.group(1) == 'T';
+        } catch (_) {}
+      }
+      final nf = File('/tmp/myagent_music_now');
+      if (nf.existsSync()) song = nf.readAsStringSync().trim();
+    } catch (_) {}
+    if (playing != _musicPlaying || paused != _musicPaused || song != _song) {
+      _musicPlaying = playing;
+      _musicPaused = paused;
+      _song = song;
+      // 播放中默认进入静默（回待唤态）
+      if (playing && !paused && _awake) {
+        _awake = false;
+        _awakeTimer?.cancel();
+      }
+      if (mounted) setState(() {});
+    }
+  }
+
+  // 暂停/继续：对播放器 pid 发 SIGSTOP / SIGCONT
+  Future<void> _toggleMusic() async {
+    try {
+      final r = await Process.run('bash', [
+        '-lc',
+        r'P=$(cat /tmp/myagent_music.pid 2>/dev/null); '
+            r'if [ -n "$P" ] && [ -d "/proc/$P" ]; then echo "$P"; '
+            r'else pgrep -x vlc | head -1; fi'
+      ]);
+      final pid = ((r.stdout as String?) ?? '').trim();
+      if (pid.isEmpty) return;
+      final sig = _musicPaused ? '-CONT' : '-STOP';
+      await Process.run('kill', [sig, pid]);
+      try {
+        final pf = File('/tmp/myagent_music.pid');
+        if (pf.existsSync()) pf.writeAsStringSync(pid);
+        if (_musicPaused) {
+          final f = File('/tmp/myagent_music_paused');
+          if (f.existsSync()) f.deleteSync();
+        } else {
+          File('/tmp/myagent_music_paused').writeAsStringSync('1');
+        }
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 200));
+      await _refreshMusic();
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _uiTimer?.cancel();
     _snapTimer?.cancel();
     _awakeTimer?.cancel();
+    _wxAnim.dispose();
     _micProc?.kill();
     super.dispose();
   }
@@ -444,10 +558,40 @@ class _HomePageState extends State<HomePage> {
                     fontSize: 16, fontWeight: FontWeight.w600, color: ChinaColors.ink)),
           ]),
           const SizedBox(height: 8),
-          Text(_last.isEmpty ? '（说「$_wakeLabel」唤醒我）' : _last,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 20, color: ChinaColors.daiLan)),
+          Row(children: [
+            Expanded(
+              child: Text(_last.isEmpty ? '（说「$_wakeLabel」唤醒我）' : _last,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 20, color: ChinaColors.daiLan)),
+            ),
+            if (_musicPlaying) ...[
+              const SizedBox(width: 12),
+              Icon(_musicPaused ? Icons.music_off : Icons.music_note,
+                  size: 16, color: ChinaColors.daiLan),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Text(_song.isEmpty ? '正在播放' : _song,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: _musicPaused ? ChinaColors.muted : ChinaColors.daiLan)),
+              ),
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: _toggleMusic,
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(_musicPaused ? Icons.play_arrow : Icons.pause,
+                      size: 22, color: ChinaColors.zhusha),
+                ),
+              ),
+              const SizedBox(width: 4),
+            ],
+          ]),
         ],
       ),
     );
