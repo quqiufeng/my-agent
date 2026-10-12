@@ -18,16 +18,16 @@ function M.search(q, opts)
     return true
 end
 
--- 结构化结果（首页全部）：[{title, url, url_real, cite, snippet}, ...]
+-- 结构化结果（首页左侧全部，排除右侧知识面板）：[{title,url,url_real,cite,snippet}]
 function M.results(limit)
     local js = [[(()=>{
-      const res=[...document.querySelectorAll('#search a h3, #rso a h3, #center_col a h3')];
+      const res=[...document.querySelectorAll('#rso a h3, #center_col a h3, #search a h3')]
+        .filter(h=>!h.closest('#rhs'));   // 排除右侧百科/知识面板
       const seen=new Set(), out=[];
       for(const h of res){
         const t=(h.innerText||'').trim(); if(!t) continue;
         const a=h.closest('a'); let url=a?a.href:'';
         const key=t+'|'+url; if(seen.has(key)) continue; seen.add(key);
-        // 解一层 Google 跳转壳 -> 真实地址（若可解）
         let real=''; const m=url.match(/[?&](?:url|q)=([^&]+)/); if(m){ try{ real=decodeURIComponent(m[1]); }catch(e){} }
         if(real && !/^https?:/.test(real)) real='';
         let c=h.closest('div.g')||h.closest('div[data-hveid]')||(a&&a.closest('div[data-hveid]'));
@@ -38,6 +38,22 @@ function M.results(limit)
       }
       return JSON.stringify(out);
     })()]]
+    local out = cdp.eval(js)
+    local ok, res = pcall(cjson.decode, out or "")
+    return (ok and type(res) == "table") and res or {}
+end
+
+-- 右侧知识面板（百科卡片等）整段文本
+function M.panel()
+    local js = [[(()=>{const el=document.querySelector('#rhs, .kp-wholepage, .knowledge-panel, [data-attrid="kc:/common/topic:social media presence"]');return el?el.innerText.trim():'';})()]]
+    return cdp.eval(js) or ""
+end
+
+-- 右侧面板的结构化键值（data-attrid）
+function M.facts()
+    local js = [[JSON.stringify([...document.querySelectorAll('#rhs [data-attrid], .kp-wholepage [data-attrid]')]
+      .map(e=>({attr:(e.getAttribute('data-attrid')||''),text:(e.innerText||'').trim()}))
+      .filter(x=>x.text && x.text.length<200).slice(0,60))]]
     local out = cdp.eval(js)
     local ok, res = pcall(cjson.decode, out or "")
     return (ok and type(res) == "table") and res or {}
