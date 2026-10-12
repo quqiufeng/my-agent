@@ -49,6 +49,18 @@ class _HomePageState extends State<HomePage> {
   int _mic = 0;
   int _micHold = 0;
   String _last = '';
+  bool _awake = false;
+  DateTime? _awakeUntil;
+  int _awakeLeft = 0;
+  List<String> _wake = const ['你好星期五', '你好礼拜五'];
+  String _wakeLabel = '你好 星期五';
+  int _awakeMs = 60000;
+  String _wakeReply = '在的，老板';
+  String _ackTpl = '';
+  String _agentUrl = 'http://localhost:4097';
+  String _prefix = '[语音输入]';
+  Map<String, String> _env = const {};
+  Timer? _awakeTimer;
   Process? _micProc;
   Timer? _uiTimer, _snapTimer;
 
@@ -56,6 +68,21 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     final env = Platform.environment;
+    _env = env;
+    final wake = env['VOICE_WAKE'];
+    if (wake != null && wake.trim().isNotEmpty) {
+      _wake = wake
+          .split(',')
+          .map((e) => _norm(e))
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    _wakeLabel = env['VOICE_WAKE_LABEL'] ?? '你好 星期五';
+    _awakeMs = int.tryParse(env['VOICE_AWAKE_MS'] ?? '60000') ?? 60000;
+    _wakeReply = env['VOICE_WAKE_REPLY'] ?? '在的，老板';
+    _ackTpl = env['VOICE_ACK'] ?? '';
+    _agentUrl = env['AGENT_URL'] ?? 'http://localhost:4097';
+    _prefix = env['VOICE_PREFIX'] ?? '[语音输入]';
     _getTexture();
     _micLoop(env['VOICE_MIC_DEV'] ?? 'plughw:2,0',
         env['VOICE_MIC_CARD'] ?? '2', env['VOICE_MIC_GAIN'] ?? '7810', env);
@@ -81,6 +108,130 @@ class _HomePageState extends State<HomePage> {
       } catch (_) {}
       await Future.delayed(const Duration(milliseconds: 200));
     }
+  }
+
+  // 归一化：去掉空白与标点，便于唤醒词模糊匹配
+  String _norm(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\s\u3000]'), '')
+      .replaceAll(RegExp(r'[，。、！？,.!?:;；：（）()\[\]【】\-—~…]'), '');
+
+  // 调试日志
+  void _vlog(String s) {
+    try {
+      File('/tmp/myagent_voice.log')
+          .writeAsStringSync('${DateTime.now().toIso8601String()} $s\n',
+              mode: FileMode.append);
+    } catch (_) {}
+  }
+
+  // 从原句中剥离唤醒词（容忍字间空格与标点），返回剩余指令
+  String? _commandFrom(String text) {
+    final norm = _norm(text);
+    for (final w in _wake) {
+      if (w.isEmpty || !norm.contains(w)) continue;
+      final pat = RegExp(w.split('').map(RegExp.escape).join(r'[\s\u3000，。、,.!！?？]*'));
+      final rest = text.replaceFirst(pat, '');
+      final cleaned = rest.replaceAll(RegExp(r'^[\s\u3000，。、,.!！?？]+'), '').trim();
+      return cleaned;
+    }
+    return null;
+  }
+
+  void _onCommand(String cmd) {
+    // 收到指令：保持唤醒并续期（1 分钟内无新指令才回静默）
+    if (mounted) {
+      setState(() {
+        _awake = true;
+        _last = cmd;
+      });
+    } else {
+      _awake = true;
+    }
+    _armAwake();
+    _vlog('forward cmd="$cmd"');
+    unawaited(_forwardBrain(cmd));
+    final ack = _ackTpl.replaceAll('{cmd}', cmd).trim();
+    if (ack.isNotEmpty) unawaited(_say(ack));
+  }
+
+  // 转发到大脑（opencode TUI @4097）：append-prompt → submit-prompt
+  Future<void> _forwardBrain(String cmd) async {
+    if (cmd.trim().isEmpty) return;
+    try {
+      final attached =
+          await Process.run('pgrep', ['-f', 'opencode[ ]attach']);
+      if (attached.exitCode != 0) {
+        await Process.run('/opt/my-agent/operator/ensure_tui.sh', []);
+      }
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+      Future<void> post(String path, String body) async {
+        final req = await client.postUrl(Uri.parse('$_agentUrl$path'));
+        req.headers.contentType = ContentType.json;
+        req.write(body);
+        final resp = await req.close();
+        await resp.drain<void>();
+      }
+
+      await post('/tui/append-prompt',
+          jsonEncode({'text': '$_prefix $cmd'}));
+      await post('/tui/submit-prompt', '{}');
+      client.close();
+      _vlog('forward OK "$cmd"');
+    } catch (e) {
+      _vlog('forward FAIL "$cmd" $e');
+    }
+  }
+
+  void _handleHeard(String text) {
+    final cmd = _commandFrom(text);
+    _vlog('heard="$text" awake=$_awake wake=${cmd != null}');
+    if (cmd != null) {
+      // 命中唤醒词：若同句里还带着指令，直接执行；否则进入聆听态并语音应答
+      if (cmd.isNotEmpty) {
+        _onCommand(cmd);
+      } else {
+        _wakeUp();
+      }
+      return;
+    }
+    // 已在聆听态：这句就是指令
+    if (_awake) _onCommand(text);
+  }
+
+  // 语音回复：调用 voice/say.sh（内部会置 /tmp/myagent_tts_active 防回环）
+  Future<void> _say(String text) async {
+    if (text.trim().isEmpty) return;
+    final bin = _env['SAY_SH'] ?? '/opt/my-agent/voice/say.sh';
+    try {
+      await Process.run(bin, [text]);
+    } catch (_) {}
+  }
+
+  // 唤醒窗口计时：到期未见指令 → 回静默，重新等待唤醒词
+  void _armAwake() {
+    _awakeTimer?.cancel();
+    _awakeUntil = DateTime.now().add(Duration(milliseconds: _awakeMs));
+    _awakeLeft = (_awakeMs / 1000).ceil();
+    _awakeTimer = Timer(Duration(milliseconds: _awakeMs), () {
+      if (mounted) {
+        setState(() {
+          _awake = false;
+          _awakeUntil = null;
+          _awakeLeft = 0;
+        });
+      }
+    });
+  }
+
+  void _wakeUp() {
+    _vlog('WAKE ack="$_wakeReply"');
+    if (mounted) setState(() => _awake = true);
+    _armAwake();
+    unawaited(_say(_wakeReply).then((_) {
+      // 应答播完后重新计时，保证播报结束后仍有完整聆听窗口
+      if (mounted && _awake) _armAwake();
+    }));
   }
 
   List<int> _wavHeader(int dataLen) {
@@ -158,6 +309,17 @@ class _HomePageState extends State<HomePage> {
             _micHold = lvl > _micHold ? lvl : (_micHold - 2).clamp(0, 100);
             if (mounted) setState(() => _mic = _micHold);
 
+            // TTS 播报期间静音输入，避免把自己的声音当成指令（回环）
+            // 兜底：标志超过 30s 视为陈旧（脚本异常退出未清理），不再静音
+            final ttsFlag = File('/tmp/myagent_tts_active');
+            if (ttsFlag.existsSync() &&
+                DateTime.now().difference(ttsFlag.statSync().modified).inSeconds < 30) {
+              if (acc.isNotEmpty) acc.clear();
+              speaking = false;
+              silent = 0;
+              continue;
+            }
+
             final thr = math.max(500, noise * 2);
             if (!speaking) {
               noise = (noise * 3 + peak) ~/ 4;
@@ -180,7 +342,7 @@ class _HomePageState extends State<HomePage> {
                 final speechFrames = acc.length ~/ 4096 - silent;
                 if (speechFrames >= minFrames) {
                   final text = await _transcribe(Uint8List.fromList(acc), env);
-                  if (mounted && text.isNotEmpty) setState(() => _last = text);
+                  if (mounted && text.isNotEmpty) _handleHeard(text);
                 }
                 acc.clear();
                 silent = 0;
@@ -198,12 +360,17 @@ class _HomePageState extends State<HomePage> {
     final n = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
     _clock = '${two(n.hour)}:${two(n.minute)}:${two(n.second)}';
+    if (_awake && _awakeUntil != null) {
+      final left = _awakeUntil!.difference(n).inSeconds;
+      _awakeLeft = left < 0 ? 0 : left;
+    }
   }
 
   @override
   void dispose() {
     _uiTimer?.cancel();
     _snapTimer?.cancel();
+    _awakeTimer?.cancel();
     _micProc?.kill();
     super.dispose();
   }
@@ -238,10 +405,18 @@ class _HomePageState extends State<HomePage> {
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                    color: _mic > 25 ? ChinaColors.orange : ChinaColors.qinglv,
+                    color: _awake
+                        ? ChinaColors.orange
+                        : (_mic > 25 ? ChinaColors.orange : ChinaColors.qinglv),
                     shape: BoxShape.circle)),
             const SizedBox(width: 12),
-            const Text('等待语音', style: TextStyle(fontSize: 17, color: ChinaColors.ink)),
+            Text(
+                _awake
+                    ? '正在聆听指令… ${_awakeLeft}s'
+                    : '等待唤醒词「$_wakeLabel」',
+                style: TextStyle(
+                    fontSize: 17,
+                    color: _awake ? ChinaColors.zhusha : ChinaColors.ink)),
             const SizedBox(width: 24),
             const Text('MIC', style: TextStyle(fontSize: 11, color: ChinaColors.muted)),
             const SizedBox(width: 8),
@@ -269,7 +444,7 @@ class _HomePageState extends State<HomePage> {
                     fontSize: 16, fontWeight: FontWeight.w600, color: ChinaColors.ink)),
           ]),
           const SizedBox(height: 8),
-          Text(_last.isEmpty ? '（等待识别…）' : _last,
+          Text(_last.isEmpty ? '（说「$_wakeLabel」唤醒我）' : _last,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 20, color: ChinaColors.daiLan)),
