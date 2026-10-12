@@ -4,7 +4,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 APP=agent
 LAUNCH="$HERE/launch.sh"
-ICON_SRC="$HERE/assets/icons/myagent.png"
+ICON_SRC="$HERE/assets/icons/agent.png"
 ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 APPS="$HOME/.local/share/applications"
 DESK="$HOME/Desktop"
@@ -19,9 +19,10 @@ Type=Application
 Name=agent
 Comment=agent · 语音助手 摄像头
 Exec=$LAUNCH
-Icon=$APP
+Icon=$ICON_DIR/$APP.png
 Terminal=false
 Categories=Utility;
+StartupWMClass=link.zspace.myagent
 StartupNotify=false
 DESK
 }
@@ -35,7 +36,7 @@ Type=Application
 Name=agent
 Comment=语音助手（开机自启）
 Exec=$LAUNCH
-Icon=$APP
+Icon=$ICON_DIR/$APP.png
 X-GNOME-Autostart-enabled=true
 Terminal=false
 AUTOENTRY

@@ -31,8 +31,10 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_decorated(window, FALSE);
 
   // 窗口/任务栏图标（按图标主题名查找，匹配 ~/.local/share/icons 下的 wordcard.png）
-  gtk_window_set_default_icon_name("agent");
-  gtk_window_set_icon_name(window, "agent");
+  // 窗口/任务栏图标：直接从文件加载（主题名解析不稳）
+  const char* icon_path = "/opt/my-agent/gui/flutter/assets/icons/agent.png";
+  gtk_window_set_default_icon_from_file(icon_path, nullptr);
+  gtk_window_set_icon_from_file(window, icon_path, nullptr);
 
   // Use a header bar when running in GNOME as this is the common style used
   // by applications and is the setup most users will be using (e.g. Ubuntu
