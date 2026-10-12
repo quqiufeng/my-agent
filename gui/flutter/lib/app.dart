@@ -328,56 +328,64 @@ class _HomePageState extends State<HomePage> {
   Widget _statusBar() {
     final lc = _mic > 60 ? Kami.error : (_mic > 25 ? ChinaColors.warn : ChinaColors.qinglv);
     return Container(
-      height: 64,
       decoration: const BoxDecoration(
         color: Kami.surface,
         border: Border(top: BorderSide(color: Kami.hairline)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(children: [
-        Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-                color: _mic > 25 ? ChinaColors.orange : ChinaColors.qinglv,
-                shape: BoxShape.circle)),
-        const SizedBox(width: 12),
-        const Text('等待语音',
-            style: TextStyle(fontFamily: 'MapleMonoNF', fontSize: 15, color: Kami.ink)),
-        const SizedBox(width: 24),
-        const Text('MIC',
-            style: TextStyle(fontFamily: 'MapleMonoNF', fontSize: 11, color: Kami.muted)),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 220,
-          height: 8,
-          child: Stack(children: [
-            Container(decoration: BoxDecoration(color: Kami.tint, borderRadius: BorderRadius.circular(4))),
-            FractionallySizedBox(
-              widthFactor: (_mic / 100).clamp(0.0, 1.0),
-              child: Container(decoration: BoxDecoration(color: lc, borderRadius: BorderRadius.circular(4))),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                    color: _mic > 25 ? ChinaColors.orange : ChinaColors.qinglv,
+                    shape: BoxShape.circle)),
+            const SizedBox(width: 12),
+            const Text('等待语音',
+                style: TextStyle(fontFamily: 'MapleMonoNF', fontSize: 15, color: Kami.ink)),
+            const SizedBox(width: 24),
+            const Text('MIC',
+                style: TextStyle(fontFamily: 'MapleMonoNF', fontSize: 11, color: Kami.muted)),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 220,
+              height: 8,
+              child: Stack(children: [
+                Container(
+                    decoration: BoxDecoration(
+                        color: Kami.tint, borderRadius: BorderRadius.circular(4))),
+                FractionallySizedBox(
+                  widthFactor: (_mic / 100).clamp(0.0, 1.0),
+                  child: Container(
+                      decoration: BoxDecoration(
+                          color: lc, borderRadius: BorderRadius.circular(4))),
+                ),
+              ]),
             ),
+            const SizedBox(width: 12),
+            Text('$_mic',
+                style: const TextStyle(fontFamily: 'MapleMonoNF', fontSize: 12, color: Kami.muted)),
+            const Spacer(),
+            Text(_clock,
+                style: const TextStyle(
+                    fontFamily: 'MapleMonoNF',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Kami.ink)),
           ]),
-        ),
-        const SizedBox(width: 12),
-        Text('$_mic',
-            style: const TextStyle(fontFamily: 'MapleMonoNF', fontSize: 12, color: Kami.muted)),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Text(_last.isEmpty ? '' : '识别: $_last',
-              textAlign: TextAlign.right,
+          const SizedBox(height: 8),
+          // 识别文字：单独一行
+          Text(_last.isEmpty ? '（等待识别…）' : _last,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                  fontFamily: 'TsangerJinKai', fontSize: 17, color: Kami.ink)),
-        ),
-        const SizedBox(width: 16),
-        Text(_clock,
-            style: const TextStyle(
-                fontFamily: 'MapleMonoNF',
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Kami.ink)),
-      ]),
+                  fontFamily: 'TsangerJinKai', fontSize: 19, color: Kami.ink)),
+        ],
+      ),
     );
   }
 }
