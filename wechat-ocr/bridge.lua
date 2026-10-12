@@ -275,7 +275,6 @@ end
 
 while true do
     local win = watcher.window()
-    if win and is_hidden(win) then wechat_open(win) end
     local shot, w = watcher.window_capture()
     if not shot then
         io.write("[bridge] 微信不可见（最小化），跳过（保持微信未最小化即可）\n")
@@ -305,7 +304,6 @@ while true do
                                 os.execute("sleep 1")
                             end
                             os.execute("sleep 4")
-                            os.execute("xdotool windowminimize " .. win.id .. " 2>/dev/null")
                         end
                     else
                         io.write("[bridge] 语音转文字为空\n")
@@ -330,14 +328,12 @@ while true do
                             os.execute("sleep 1")
                         end
                         os.execute("sleep 4")
-                        os.execute("xdotool windowminimize " .. win.id .. " 2>/dev/null")  -- 执行完回后台静默
                     end
                 end
             end
         end
         if not has_cmd then
             io.write("[bridge] 无新指令\n")
-            wechat_background(win)
         end
     end
     io.flush()
