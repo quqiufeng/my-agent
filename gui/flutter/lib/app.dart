@@ -22,7 +22,7 @@ class MyAgentApp extends StatelessWidget {
         darkTheme: AppTheme.apply(yaru.darkTheme),
         themeMode: ThemeMode.system,
         builder: (context, child) => Scaffold(
-          backgroundColor: Kami.parchment,
+          backgroundColor: ChinaColors.shuangdi,
           appBar: const YaruWindowTitleBar(
             onClose: YaruWindow.minimize,
             title: Text('agent · 语音助手'),
@@ -79,11 +79,11 @@ class _CamView extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-                color: Kami.parchment,
+                color: ChinaColors.shuangdi,
                 borderRadius: BorderRadius.circular(6)),
             child: Text(cam.label,
                 style: const TextStyle(
-                    fontFamily: 'MapleMonoNF', fontSize: 13, color: Kami.ink)),
+                    fontSize: 13, color: ChinaColors.ink)),
           ),
         ),
       ],
@@ -292,7 +292,7 @@ class _HomePageState extends State<HomePage> {
     if (_cams.isEmpty) {
       return const Center(
           child: Text('无摄像头（设 CAM_USB_INDEX / RTSP_URL）',
-              style: TextStyle(fontFamily: 'MapleMonoNF', color: Kami.muted)));
+              style: TextStyle(color: ChinaColors.muted)));
     }
     return Row(children: [
       for (final c in _cams) Expanded(child: _CamView(cam: c, tick: _tick)),
@@ -326,11 +326,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _statusBar() {
-    final lc = _mic > 60 ? Kami.error : (_mic > 25 ? ChinaColors.warn : ChinaColors.qinglv);
+    final lc = _mic > 60 ? ChinaColors.zhusha : (_mic > 25 ? ChinaColors.warn : ChinaColors.qinglv);
     return Container(
       decoration: const BoxDecoration(
-        color: Kami.surface,
-        border: Border(top: BorderSide(color: Kami.hairline)),
+        color: ChinaColors.nenjulv,
+        border: Border(top: BorderSide(color: ChinaColors.border)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
       child: Column(
@@ -346,10 +346,10 @@ class _HomePageState extends State<HomePage> {
                     shape: BoxShape.circle)),
             const SizedBox(width: 12),
             const Text('等待语音',
-                style: TextStyle(fontFamily: 'MapleMonoNF', fontSize: 15, color: Kami.ink)),
+                style: TextStyle(fontSize: 17, color: ChinaColors.ink)),
             const SizedBox(width: 24),
             const Text('MIC',
-                style: TextStyle(fontFamily: 'MapleMonoNF', fontSize: 11, color: Kami.muted)),
+                style: TextStyle(fontSize: 11, color: ChinaColors.muted)),
             const SizedBox(width: 8),
             SizedBox(
               width: 220,
@@ -357,7 +357,7 @@ class _HomePageState extends State<HomePage> {
               child: Stack(children: [
                 Container(
                     decoration: BoxDecoration(
-                        color: Kami.tint, borderRadius: BorderRadius.circular(4))),
+                        color: const Color(0xFFDCEBC2), borderRadius: BorderRadius.circular(4))),
                 FractionallySizedBox(
                   widthFactor: (_mic / 100).clamp(0.0, 1.0),
                   child: Container(
@@ -368,14 +368,13 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(width: 12),
             Text('$_mic',
-                style: const TextStyle(fontFamily: 'MapleMonoNF', fontSize: 12, color: Kami.muted)),
+                style: const TextStyle(fontSize: 12, color: ChinaColors.muted)),
             const Spacer(),
             Text(_clock,
                 style: const TextStyle(
-                    fontFamily: 'MapleMonoNF',
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Kami.ink)),
+                    color: ChinaColors.ink)),
           ]),
           const SizedBox(height: 8),
           // 识别文字：单独一行
@@ -383,7 +382,7 @@ class _HomePageState extends State<HomePage> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                  fontFamily: 'TsangerJinKai', fontSize: 19, color: Kami.ink)),
+                  fontSize: 20, color: ChinaColors.daiLan)),
         ],
       ),
     );

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'fonts.dart';
-
 /// Kami 设计规范配色（暖米纸感 · 油墨蓝单一强调色）。
 /// 参考 https://github.com/tw93/Kami
 abstract final class Kami {
@@ -35,13 +33,11 @@ abstract final class ChinaColors {
   static const warn = Color(0xFFC77A16); // 警示
 }
 
-/// 将 WordCard 的字体与语义色套用到 Yaru 提供的 `ThemeData` 上。
+/// 套用 Yaru 主题，全局字体用 **仓耳今楷（TsangerJinKai）**。
 abstract final class AppTheme {
-  static ThemeData apply(ThemeData base) {
-    return base.copyWith(
-      textTheme: base.textTheme.apply(fontFamily: AppFonts.mapleMono),
-      primaryTextTheme:
-          base.primaryTextTheme.apply(fontFamily: AppFonts.mapleMono),
-    );
-  }
+  static const _font = 'TsangerJinKai';
+  static ThemeData apply(ThemeData base) => base.copyWith(
+        textTheme: base.textTheme.apply(fontFamily: _font),
+        primaryTextTheme: base.primaryTextTheme.apply(fontFamily: _font),
+      );
 }
