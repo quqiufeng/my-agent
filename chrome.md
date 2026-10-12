@@ -122,3 +122,19 @@ opencode 大脑（tmux 常驻 TUI，4097）
 
 *相关：`operator/AGENTS.md`（运行时契约）、`operator/tools/browser.sh`、`wechat-ocr/lua/wechat_ocr/chrome.lua`*
 *文档版本: 2.1 · 更新日期: 2026-10-04*
+
+---
+
+## 与 MCP 结合：授权自动化（视觉 → MCP）
+
+MCP 是主力（结构化、**禁止 OCR 网页**）；**视觉只负责“放行”这一步授权**，之后全程走 MCP：
+
+1. **配置允许**（`chrome://inspect/#remote-debugging`）：勾选
+   `Allow remote debugging for this browser instance` → 出现 `Server running at 127.0.0.1:9222`。
+   自动化：`tools/chrome_auth.sh enable`（**视觉点复选框**；状态用**端口 9222** 判断，已开则不动）。
+2. **连接同意**：MCP 连接时若弹出“同意/允许”按钮 → `tools/chrome_auth.sh consent`
+   （或后台 `tools/chrome_auth.sh watch 60`）用视觉自动点掉。
+3. **之后**：网页交互全走 MCP（`take_snapshot` 拿元素 → `click`/`fill` → `evaluate_script`），不再用 OCR。
+
+> 分工一句话：**视觉 = 授权 + 无 CDP 场景的兜底；MCP = 网页主力。**
+> 关联实现：`agentkit/adapters/chrome.lua` 的 `port_open / enable_remote_debugging / accept_consent / watch_consent`。

@@ -60,4 +60,71 @@ function M.title()
     return (name:gsub("%s*%-%s*Google Chrome%s*$", ""))
 end
 
+-- ── 与 chrome-devtools MCP 结合：授权用视觉点开 ──────────────────
+-- 「配置允许」= chrome://inspect/#remote-debugging 里的
+--   ☑ Allow remote debugging for this browser instance
+-- 开启后 Chrome 会 `Server running at 127.0.0.1:9222`，MCP(--autoConnect) 才能连。
+-- 用端口 9222 判断状态（比 OCR 稳），未开则用视觉点复选框。
+
+local function port_open(p)
+    p = p or 9222
+    local out = require("agentkit.x11").sh(("ss -ltn 2>/dev/null | grep ':%d '"):format(p))
+    return out ~= ""
+end
+M.port_open = port_open
+
+-- 确保「允许远程调试」已开启；已开则不动。返回 ok, 说明
+function M.enable_remote_debugging()
+    local w = win(); if not w then return false, "no window" end
+    if port_open(9222) then return true, "already on" end
+    w:activate(); sleep(0.3)
+    M.goto("chrome://inspect/#remote-debugging"); sleep(1.6)
+    -- 复选框在标签左侧；OCR 找标签再点其左边
+    for _, o in ipairs(w:ocr_bands({ 180, 180, 1700, 320 }, 150)) do
+        if o.text:find("Allow remote debugging") or o.text:find("remote debugging")
+            or o.text:find("允许") or o.text:find("远程调试") then
+            w:click(math.floor(o.gx - 16), math.floor(o.gy + 6)); sleep(1.2)
+            break
+        end
+    end
+    if port_open(9222) then return true, "enabled" end
+    return false, "clicked but 9222 not open"
+end
+
+-- 每次连接的“同意”：扫描并点击授权按钮（信息栏/气泡在工具栏下方）
+local CONSENT_WORDS = { "允许", "同意", "接受", "继续", "启用", "开启",
+                        "Allow", "Accept", "Connect", "Continue", "OK", "确定" }
+
+-- opts = { window=, texts=, region={x,y,w,h} }，返回 ok, 命中文案
+function M.accept_consent(opts)
+    opts = opts or {}
+    local w = opts.window or win(); if not w then return false, "no window" end
+    local words = opts.texts or CONSENT_WORDS
+    -- 默认先扫“工具栏下方”的弹条区；找不到再扫上半屏
+    local regions = { opts.region or { 0, 80, w.w, 180 }, { 0, 80, w.w, math.min(w.h - 80, 700) } }
+    for _, rg in ipairs(regions) do
+        local boxes = w:ocr_bands(rg, 160)
+        for _, word in ipairs(words) do
+            for _, o in ipairs(boxes) do
+                if o.text:find(word, 1, true) then
+                    w:click(math.floor(o.gx + o.w / 2), math.floor(o.gy + o.h / 2))
+                    return true, o.text
+                end
+            end
+        end
+    end
+    return false, "no consent button"
+end
+
+-- 后台守望：在 seconds 秒内轮询，出现同意按钮即点掉（供 MCP 连接期间使用）
+function M.watch_consent(seconds, opts)
+    seconds = seconds or 30
+    local t = 0
+    while t < seconds do
+        if M.accept_consent(opts) then return true end
+        os.execute("sleep 1"); t = t + 1
+    end
+    return false
+end
+
 return M
