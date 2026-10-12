@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -40,6 +41,20 @@ class _Cam {
   final List<String> args;
   final String jpg;
   Process? proc;
+  Uint8List? bytes;
+  int mtime = 0;
+
+  // 仅当文件更新（mtime 变）才读字节，避免无谓解码
+  void refresh() {
+    try {
+      final f = File(jpg);
+      if (!f.existsSync()) return;
+      final m = f.lastModifiedSync().millisecondsSinceEpoch;
+      if (m == mtime) return;
+      final b = f.readAsBytesSync();
+      if (b.isNotEmpty) { bytes = b; mtime = m; }
+    } catch (_) {}
+  }
 }
 
 class _CamView extends StatelessWidget {
@@ -49,18 +64,14 @@ class _CamView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Uint8List? bytes;
-    try {
-      final f = File(cam.jpg);
-      if (f.existsSync() && f.lengthSync() > 0) bytes = f.readAsBytesSync();
-    } catch (_) {}
+    final bytes = cam.bytes;
     return Stack(
       fit: StackFit.expand,
       children: [
         const ColoredBox(color: Color(0xFF11110F)),
         if (bytes != null && bytes.isNotEmpty)
           Image.memory(bytes,
-              gaplessPlayback: true, fit: BoxFit.contain, filterQuality: FilterQuality.low),
+              gaplessPlayback: true, fit: BoxFit.contain, filterQuality: FilterQuality.medium),
         Positioned(
           left: 12,
           top: 12,
@@ -92,6 +103,7 @@ class _HomePageState extends State<HomePage> {
   String _clock = '';
   Timer? _timer;
   int _mic = 0; // 0..100
+  int _micHold = 0;
   Process? _micProc;
 
   @override
@@ -104,7 +116,8 @@ class _HomePageState extends State<HomePage> {
       _cams.add(_Cam(
         'USB',
         ['-loglevel', 'error', '-f', 'v4l2', '-i', '/dev/video$usb',
-         '-r', '6', '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_usb.jpg'],
+         '-vf', 'scale=1280:-2', '-r', '15', '-q:v', '2',
+         '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_usb.jpg'],
         '/tmp/myagent_cam_usb.jpg',
       ));
     }
@@ -112,17 +125,22 @@ class _HomePageState extends State<HomePage> {
       _cams.add(_Cam(
         'RTSP',
         ['-loglevel', 'error', '-rtsp_transport', 'tcp', '-i', rtsp,
-         '-r', '6', '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_rtsp.jpg'],
+         '-vf', 'scale=1280:-2', '-r', '15', '-q:v', '2',
+         '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_rtsp.jpg'],
         '/tmp/myagent_cam_rtsp.jpg',
       ));
     }
     for (final c in _cams) {
       _spawn(c);
     }
-    _startMic(env['VOICE_MIC_DEV'] ?? 'plughw:2,0');
+    _startMic(env['VOICE_MIC_DEV'] ?? 'plughw:2,0',
+        env['VOICE_MIC_CARD'] ?? '2', env['VOICE_MIC_GAIN'] ?? '7810');
     _tickClock();
-    _timer = Timer.periodic(const Duration(milliseconds: 160), (_) {
+    _timer = Timer.periodic(const Duration(milliseconds: 55), (_) {
       _tickClock();
+      for (final c in _cams) {
+        c.refresh();
+      }
       if (mounted) setState(() => _tick++);
     });
   }
@@ -136,26 +154,36 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // 麦克风电平：arecord 1s 一段，按峰值更新 MIC 条（能“听见”声音/音乐）
-  Future<void> _startMic(String dev) async {
+  // 麦克风电平：流式 arecord，按 ~128ms 帧算 RMS → dB 映射 + 峰值保持衰减
+  Future<void> _startMic(String dev, String card, String gain) async {
+    try {
+      await Process.run('amixer', ['-c', card, 'sset', 'Mic', gain]);
+    } catch (_) {}
     while (mounted) {
       try {
-        _micProc = await Process.start('arecord',
-            ['-D', dev, '-f', 'S16_LE', '-r', '16000', '-c', '1', '-d', '1', '-q', '-t', 'raw', '-']);
-        final bytes = <int>[];
-        await for (final b in _micProc!.stdout) {
-          bytes.addAll(b);
-          if (bytes.length > 64000) break;
+        final p = await Process.start('arecord',
+            ['-D', dev, '-f', 'S16_LE', '-r', '16000', '-c', '1', '-q', '-t', 'raw', '-']);
+        _micProc = p;
+        final buf = <int>[];
+        await for (final chunk in p.stdout) {
+          buf.addAll(chunk);
+          while (buf.length >= 4096) {
+            final frame = buf.sublist(0, 4096);
+            buf.removeRange(0, 4096);
+            double sum = 0;
+            final n = frame.length ~/ 2;
+            for (var i = 0; i + 1 < frame.length; i += 2) {
+              var v = frame[i] | (frame[i + 1] << 8);
+              if (v >= 0x8000) v -= 0x10000;
+              sum += v * v.toDouble();
+            }
+            final rms = math.sqrt(sum / n);
+            final db = rms > 0 ? 20 * (math.log(rms / 32768) / math.ln10) : -90;
+            final lvl = (((db + 60) / 50) * 100).clamp(0, 100).round();
+            _micHold = lvl > _micHold ? lvl : (_micHold - 2).clamp(0, 100);
+            if (mounted) setState(() => _mic = _micHold);
+          }
         }
-        var peak = 0;
-        for (var i = 0; i + 1 < bytes.length; i += 2) {
-          var v = bytes[i] | (bytes[i + 1] << 8);
-          if (v >= 0x8000) v -= 0x10000;
-          v = v.abs();
-          if (v > peak) peak = v;
-        }
-        final lvl = ((peak / 32767.0) * 100).round().clamp(0, 100);
-        if (mounted) setState(() => _mic = lvl);
       } catch (_) {
         await Future.delayed(const Duration(seconds: 1));
       }
