@@ -254,8 +254,28 @@ local function convert_voice(win, row)
     return text
 end
 
+-- ── 需要时先取消最小化再读，读完空闲则最小化 ──────────────
+local function is_hidden(win)
+    if not win then return false end
+    local f = io.popen("xprop -id " .. win.id .. " WM_STATE 2>/dev/null")
+    if not f then return false end
+    local s = f:read("*a"); f:close()
+    return s ~= nil and s:find("Iconic") ~= nil
+end
+local function wechat_open(win)
+    if not win then return end
+    os.execute("xdotool windowmap " .. win.id .. " 2>/dev/null")
+    os.execute("wmctrl -i -a " .. win.id .. " 2>/dev/null")
+    os.execute("sleep 0.7")
+end
+local function wechat_background(win)
+    if not win then return end
+    os.execute("xdotool windowminimize " .. win.id .. " 2>/dev/null")
+end
+
 while true do
     local win = watcher.window()
+    if win and is_hidden(win) then wechat_open(win) end
     local shot, w = watcher.window_capture()
     if not shot then
         io.write("[bridge] 微信不可见（最小化），跳过（保持微信未最小化即可）\n")
@@ -317,6 +337,7 @@ while true do
         end
         if not has_cmd then
             io.write("[bridge] 无新指令\n")
+            wechat_background(win)
         end
     end
     io.flush()
