@@ -87,6 +87,5 @@ cat "$OUT.txt"
 "$REPORT/render.sh" "$OUT.html" "$OUT.png" 820 >/dev/null 2>&1
 echo "图片: $OUT.png"
 if [ "$SEND" = 1 ]; then
-  [ -s "$OUT.png" ] && { "$DIR/wechat_send_file.sh" "$OUT.png" --to "$TO" >/dev/null 2>&1 && echo "已发图 → $TO"; sleep 3; }
-  "$DIR/wechat_send.sh" --to "$TO" "$(cat "$OUT.txt")" >/dev/null 2>&1 && echo "已发文字 → $TO"
+  [ -s "$OUT.png" ] && { "$DIR/wechat_send_file.sh" "$OUT.png" --to "$TO" >/dev/null 2>&1 && echo "已发图片 → $TO"; }
 fi

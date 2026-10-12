@@ -30,8 +30,13 @@ if win then
     os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", cx, cy))
     os.execute("sleep 0.3")
     os.execute("xdotool key --clearmodifiers Return 2>/dev/null")
-    os.execute("sleep 0.3")
+    os.execute("sleep 0.4")
     os.execute("xdotool key --clearmodifiers Return 2>/dev/null")
+    os.execute("sleep 0.4")
+    -- 最后兜底：点右下角「发送(S)」按钮（输入为空时按钮禁用，点了无副作用）
+    local bx = win.x + math.floor(win.w * 0.965)
+    local by = win.y + math.floor(win.h * 0.978)
+    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", bx, by))
 end
 robot.destroy()
 print("已发送 -> " .. to)
