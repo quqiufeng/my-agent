@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "demo_ext",
+  "version": "0.1",
+  "description": "my-agent extension: demo_ext",
+  "permissions": ["storage", "scripting", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_idle" }
+  ],
+  "action": { "default_title": "demo_ext" }
+}
