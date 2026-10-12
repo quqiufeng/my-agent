@@ -565,6 +565,19 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             ),
             const SizedBox(width: 12),
             Text('$_mic', style: const TextStyle(fontSize: 12, color: ChinaColors.muted)),
+            const SizedBox(width: 16),
+            AnimatedBuilder(
+              animation: _wxAnim,
+              builder: (_, child) => Transform.translate(
+                offset: Offset(0, -3 * _wxAnim.value),
+                child: child,
+              ),
+              child: Icon(Icons.chat,
+                  size: 20,
+                  color: _wxAttention
+                      ? const Color(0xFF07C160)
+                      : ChinaColors.muted),
+            ),
             const Spacer(),
             Text(_clock,
                 style: const TextStyle(
