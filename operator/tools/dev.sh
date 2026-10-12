@@ -124,7 +124,7 @@ case "${1:-info}" in
     case "${2:-}" in
       new)  ext_new "${3:-}" ;;
       load) ext_load "${3:-}" "${4:-9222}" ;;
-      list) ls -1 "$EXT"/*/ 2>/dev/null | xargs -n1 basename 2>/dev/null || echo "(无)" ;;
+      list) ls -1d "$EXT"/*/ 2>/dev/null | xargs -n1 basename 2>/dev/null || echo "(无)" ;;
       dir)  echo "$EXT/${3:?用法: dev.sh ext dir <name>}" ;;
       *) echo "用法: dev.sh ext new|load|list|dir <name>" >&2; exit 2 ;;
     esac ;;
