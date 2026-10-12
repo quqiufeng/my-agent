@@ -16,8 +16,9 @@
 | `tools/fetch.sh` | 用 curl 抓取网页/接口，可带 ~/.env 里的 cookie（登录态） | `tools/fetch.sh <url> [--cookie ENVKEY] [--post DATA] [--json] [--save FILE] [--referer URL] [--header 'K: V'] [--ua UA]` |
 | `tools/find_file.sh` | 按文件名关键词搜索本机文件 + WebDAV，返回匹配（本地路径 或 可下载 URL） | `find_file.sh <关键词> [数量=15]` |
 | `tools/gemini_out.sh` | 把（Gemini 等）获取到的结果按目标转发 | `tools/gemini_out.sh` |
+| `tools/gemini.sh` | 用 Chrome(CDP) 问 Google AI(Gemini)；默认排版图+文字发微信，--display 仅打印回答 | `tools/gemini.sh <问题> [--display] [--to 会话] [--no-image] [--no-send]` |
 | `tools/git_trending.sh` | GitHub 今日热门：抓取 Trending → 生成排版图 → 发微信（默认文件传输助手） | `tools/git_trending.sh [--since daily|weekly|monthly] [--lang <lang>] [--limit N] [--to 联系人] [--text] [--show] [--no-send]` |
-| `tools/google_search.sh` | 用 Chrome(CDP/DOM) 谷歌搜索关键词，整理结果发到微信（默认文件传输助手） | `tools/google_search.sh <关键词> [--news] [--to 会话] [--limit N] [--image] [--no-send]` |
+| `tools/google_search.sh` | 用 Chrome(CDP/DOM) 谷歌搜索，先生成排版图再发文字到微信（默认文件传输助手） | `tools/google_search.sh <关键词> [--news] [--to 会话] [--no-image] [--no-send]` |
 | `tools/image.sh` | 生成图片并发送到微信（可指定 小红书/小红薯、朋友圈 尺寸） | `tools/image.sh [小红书|小红薯|朋友圈] "提示词" [--to 会话] [--force]` |
 | `tools/img_video.sh` | 动画短片：出图 → 配音+字幕+运镜/转场+片名卡 → 竖版短片（存 ~/image，默认不发微信） | `tools/img_video.sh [--voice <音色名>] [--title 成语] [--pinyin KEZHOU] [--source 出处] [--end 释义] [--img-preset xhs|pyq] [--outimg 目录] [--imgdir 目录] [--size WxH] [--n 张数] [--scenes "分镜1|…"] [--text "旁白1|…"] [--out out.mp4] [--send [--to 会话]] [--fg]` |
 | `tools/music.sh` | WebDAV 无损音乐：搜索 / 随机 / 播放 / 停止（VLC → USB 音响） | `tools/music.sh` |
@@ -82,9 +83,10 @@
 26. **下载图片URL**：当你已拿到图片 URL（来自网页/接口）→ `tools/send_images.sh --save <目录> <url...>`（自动把 /orj360//thumb150//mw690/ 等**小图换成 /large/ 大图**后下载并保存，报告张数）。加 `--to 会话` 才发微信。看某明星微博图请用 `weibo_imgs.sh`。
 27. **截屏发我 / 截图发我 / 屏幕发我** → `tools/wechat_shot.sh`（可选 `--to <会话名>`）。截取当前屏幕并用微信发送。若用户想截的是某个网页/地图，先用浏览器打开并置于前台再调用。
 28. **手机操作**：用户说“看下手机/手机截个屏/操作手机”→ 用 `tools/phone.sh screen` 得路径，再 `tools/wechat_send_file.sh <路径>` 发回；要点击/滑动/输入/打开应用就用对应子命令（中文输入用 `phone.sh type`）。**只用白名单子命令**，不要拼 `adb` 原始命令。
-29. 用户说“帮我 google 搜索/查一下 <关键词> 并发我微信” → `tools/google_search.sh "<关键词>"`；查新闻加 `--news`。
-30. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
-31. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
-32. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
+29. 用户说“问 Google AI / 问 Gemini / 让 AI 回答 <问题> 并发我微信” → `tools/gemini.sh "<问题>"`；要**只要文本**供程序用 → 加 `--display`。
+30. 用户说“帮我 google 搜索/查一下 <关键词> 并发我微信” → `tools/google_search.sh "<关键词>"`（默认发图+文字）；查新闻加 `--news`。
+31. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
+32. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
+33. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_
