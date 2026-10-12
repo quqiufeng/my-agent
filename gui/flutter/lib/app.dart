@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -15,7 +16,7 @@ class MyAgentApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return YaruTheme(
       builder: (context, yaru, child) => MaterialApp(
-        title: 'My Agent',
+        title: 'agent',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.apply(yaru.theme),
         darkTheme: AppTheme.apply(yaru.darkTheme),
@@ -24,7 +25,7 @@ class MyAgentApp extends StatelessWidget {
           backgroundColor: Kami.parchment,
           appBar: const YaruWindowTitleBar(
             onClose: YaruWindow.minimize,
-            title: Text('My Agent · 语音助手'),
+            title: Text('agent · 语音助手'),
           ),
           body: child ?? const SizedBox.shrink(),
         ),
@@ -105,6 +106,7 @@ class _HomePageState extends State<HomePage> {
   int _mic = 0; // 0..100
   int _micHold = 0;
   Process? _micProc;
+  String _last = '';
 
   @override
   void initState() {
@@ -133,8 +135,8 @@ class _HomePageState extends State<HomePage> {
     for (final c in _cams) {
       _spawn(c);
     }
-    _startMic(env['VOICE_MIC_DEV'] ?? 'plughw:2,0',
-        env['VOICE_MIC_CARD'] ?? '2', env['VOICE_MIC_GAIN'] ?? '7810');
+    _micLoop(env['VOICE_MIC_DEV'] ?? 'plughw:2,0',
+        env['VOICE_MIC_CARD'] ?? '2', env['VOICE_MIC_GAIN'] ?? '7810', env);
     _tickClock();
     _timer = Timer.periodic(const Duration(milliseconds: 55), (_) {
       _tickClock();
@@ -154,34 +156,110 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // 麦克风电平：流式 arecord，按 ~128ms 帧算 RMS → dB 映射 + 峰值保持衰减
-  Future<void> _startMic(String dev, String card, String gain) async {
+  List<int> _wavHeader(int dataLen) {
+    final h = BytesBuilder();
+    void s(String v) => h.add(ascii.encode(v));
+    void u32(int v) => h.add([v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff]);
+    void u16(int v) => h.add([v & 0xff, (v >> 8) & 0xff]);
+    s('RIFF'); u32(36 + dataLen); s('WAVE'); s('fmt '); u32(16);
+    u16(1); u16(1); u32(16000); u32(16000 * 2); u16(2); u16(16);
+    s('data'); u32(dataLen);
+    return h.toBytes();
+  }
+
+  Future<String> _transcribe(Uint8List pcm, Map<String, String> env) async {
+    final bin = env['SENSEVOICE_BIN'] ?? '/opt/SenseVoice.cpp/bin/sense-voice-main';
+    final model = env['SENSEVOICE_MODEL'] ?? '/data/models/sense-voice-small-q4_k.gguf';
+    final lang = env['SENSEVOICE_LANG'] ?? 'zh';
+    final wav = '/tmp/myagent_ui_$pid.wav';
+    try {
+      File(wav).writeAsBytesSync(_wavHeader(pcm.length) + pcm);
+      final r = await Process.run(bin, ['-m', model, '-l', lang, '-t', '4', '-f', wav],
+          stdoutEncoding: utf8);
+      final out = (r.stdout as String?) ?? '';
+      final re = RegExp(r'\[[0-9.]+-[0-9.]+\]\s*(.*)');
+      final parts = <String>[];
+      for (final line in out.split('\n')) {
+        final m = re.firstMatch(line);
+        if (m != null) {
+          final t = m.group(1)!.replaceAll(RegExp(r'<\|[^|]*\|>'), '').trim();
+          if (t.isNotEmpty) parts.add(t);
+        }
+      }
+      return parts.join(' ').trim();
+    } catch (_) {
+      return '';
+    } finally {
+      try {
+        File(wav).deleteSync();
+      } catch (_) {}
+    }
+  }
+
+  // 录音+VAD 断句+SenseVoice 识别；同时算电平。命中一句 → 底部显示识别文本。
+  Future<void> _micLoop(String dev, String card, String gain, Map<String, String> env) async {
     try {
       await Process.run('amixer', ['-c', card, 'sset', 'Mic', gain]);
     } catch (_) {}
+    final silenceFrames = ((int.tryParse(env['VOICE_SILENCE_MS'] ?? '1200') ?? 1200) ~/ 128).clamp(1, 99);
+    final minFrames = ((int.tryParse(env['VOICE_MIN_SPEECH_MS'] ?? '300') ?? 300) ~/ 128).clamp(1, 99);
     while (mounted) {
       try {
         final p = await Process.start('arecord',
             ['-D', dev, '-f', 'S16_LE', '-r', '16000', '-c', '1', '-q', '-t', 'raw', '-']);
         _micProc = p;
         final buf = <int>[];
+        var noise = 200, silent = 0;
+        var speaking = false;
+        final acc = <int>[];
         await for (final chunk in p.stdout) {
           buf.addAll(chunk);
           while (buf.length >= 4096) {
             final frame = buf.sublist(0, 4096);
             buf.removeRange(0, 4096);
             double sum = 0;
-            final n = frame.length ~/ 2;
+            var peak = 0;
             for (var i = 0; i + 1 < frame.length; i += 2) {
               var v = frame[i] | (frame[i + 1] << 8);
               if (v >= 0x8000) v -= 0x10000;
+              final a = v.abs();
+              if (a > peak) peak = a;
               sum += v * v.toDouble();
             }
-            final rms = math.sqrt(sum / n);
+            final rms = math.sqrt(sum / (frame.length ~/ 2));
             final db = rms > 0 ? 20 * (math.log(rms / 32768) / math.ln10) : -90;
             final lvl = (((db + 60) / 50) * 100).clamp(0, 100).round();
             _micHold = lvl > _micHold ? lvl : (_micHold - 2).clamp(0, 100);
             if (mounted) setState(() => _mic = _micHold);
+
+            final thr = math.max(500, noise * 2);
+            if (!speaking) {
+              noise = (noise * 3 + peak) ~/ 4;
+              if (peak >= thr) {
+                speaking = true;
+                silent = 0;
+                acc
+                  ..clear()
+                  ..addAll(frame);
+              }
+            } else {
+              acc.addAll(frame);
+              if (peak >= thr) {
+                silent = 0;
+              } else {
+                silent++;
+              }
+              if (silent >= silenceFrames) {
+                speaking = false;
+                final speechFrames = acc.length ~/ 4096 - silent;
+                if (speechFrames >= minFrames) {
+                  final text = await _transcribe(Uint8List.fromList(acc), env);
+                  if (mounted && text.isNotEmpty) setState(() => _last = text);
+                }
+                acc.clear();
+                silent = 0;
+              }
+            }
           }
         }
       } catch (_) {
@@ -284,7 +362,15 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(width: 12),
         Text('$_mic',
             style: const TextStyle(fontFamily: 'MapleMonoNF', fontSize: 12, color: Kami.muted)),
-        const Spacer(),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(_last.isEmpty ? '' : '识别: $_last',
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontFamily: 'TsangerJinKai', fontSize: 17, color: Kami.ink)),
+        ),
+        const SizedBox(width: 16),
         Text(_clock,
             style: const TextStyle(
                 fontFamily: 'MapleMonoNF',

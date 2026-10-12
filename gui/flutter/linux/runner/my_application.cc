@@ -30,8 +30,8 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_decorated(window, FALSE);
 
   // 窗口/任务栏图标（按图标主题名查找，匹配 ~/.local/share/icons 下的 wordcard.png）
-  gtk_window_set_default_icon_name("myagent");
-  gtk_window_set_icon_name(window, "myagent");
+  gtk_window_set_default_icon_name("agent");
+  gtk_window_set_icon_name(window, "agent");
 
   // Use a header bar when running in GNOME as this is the common style used
   // by applications and is the setup most users will be using (e.g. Ubuntu
@@ -53,11 +53,11 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "My Agent");
+    gtk_header_bar_set_title(header_bar, "agent");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "My Agent");
+    gtk_window_set_title(window, "agent");
   }
 
   gtk_window_set_default_size(window, 1280, 720);
