@@ -25,6 +25,7 @@ cat <<'EOF'
 ## 是什么
 入口(语音/微信/定时，只产文本) → opencode 大脑 → 白名单工具 operator/tools/*.sh → 本机操作。
 铁律：入口只产文本 · 单脑 · 能力=白名单脚本。
+（已有能力清单见 operator/CAPABILITIES.md → `tools/dev.sh caps`；本文件教你怎么**扩展**它。）
 
 ## 自我扩展：只做 Chrome 扩展
 现有能力不够时，**新增能力=一个 Chrome 扩展（MV3）**，跑在专用 Chrome 里：
@@ -115,6 +116,7 @@ ext_load() {
 
 case "${1:-info}" in
   info) info ;;
+  caps) cat "$OP/CAPABILITIES.md" ;;   # 已有能力清单（同大脑上下文）
   list) ls -1 "$TOOLS"/*.sh | sed 's#.*/##' | sort ;;
   index) "$OP/plugin.sh" index; gcommit "chore(tools): regenerate TOOLS.md" ;;
   commit) gcommit "${2:-chore(dev): update}" ;;
