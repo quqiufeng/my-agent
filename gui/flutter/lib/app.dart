@@ -437,6 +437,16 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       }
       final nf = File('/tmp/myagent_music_now');
       if (nf.existsSync()) song = nf.readAsStringSync().trim();
+      // 兜底：现在文件为空时，从 vlc 的 URL 解析曲名
+      if (playing && song.isEmpty) {
+        final rr = await Process.run('bash', [
+          '-lc',
+          'tr "\\0" "\\n" < /proc/$pid/cmdline | grep -m1 "^http" | sed "s#.*/##" | '
+              'python3 -c "import sys,urllib.parse;sys.stdout.write(urllib.parse.unquote(sys.stdin.read().strip()))"'
+        ]);
+        song = ((rr.stdout as String?) ?? '').trim();
+        song = song.replaceAll(RegExp(r'\.[A-Za-z0-9]{2,5}$'), '');
+      }
     } catch (_) {}
     if (playing != _musicPlaying || paused != _musicPaused || song != _song) {
       _musicPlaying = playing;
@@ -560,7 +570,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           const SizedBox(height: 8),
           Row(children: [
             Expanded(
-              child: Text(_last.isEmpty ? '（说「$_wakeLabel」唤醒我）' : _last,
+              child: Text(_last,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 20, color: ChinaColors.daiLan)),
