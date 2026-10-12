@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=My Agent
+Comment=语音助手 · 摄像头
+Exec=/opt/my-agent/gui/flutter/launch.sh
+Icon=myagent
+Terminal=false
+Categories=Utility;

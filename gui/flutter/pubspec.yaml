@@ -1,0 +1,48 @@
+name: myagent_ui
+description: "my-agent — 语音 + 摄像头 常驻界面 (Flutter / Yaru / Kami)"
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  yaru: ^10.2.0
+  ffi: ^2.1.1
+  media_kit: ^1.1.11
+  media_kit_video: ^1.2.5
+  media_kit_libs_video: ^1.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+# platform 3.2.0 移除了 platform_linux 0.1.2+1 仍在调用的 legacy API，
+# 导致 yaru 11 运行期崩溃；锁回最后一个兼容版本。
+dependency_overrides:
+  platform: 3.1.6
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/
+  fonts:
+    - family: MapleMonoNF
+      fonts:
+        - asset: assets/fonts/MapleMono-NF-CN-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/MapleMono-NF-CN-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/MapleMono-NF-CN-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/MapleMono-NF-CN-Bold.ttf
+          weight: 700
+    - family: TsangerJinKai
+      fonts:
+        - asset: assets/fonts/TsangerJinKai02-W04.ttf
+          weight: 400
+        - asset: assets/fonts/TsangerJinKai02-W05.ttf
+          weight: 500
