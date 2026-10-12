@@ -451,8 +451,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               'python3 -c "import sys,urllib.parse;sys.stdout.write(urllib.parse.unquote(sys.stdin.read().strip()))"'
         ]);
         song = ((rr.stdout as String?) ?? '').trim();
-        song = song.replaceAll(RegExp(r'\.[A-Za-z0-9]{2,5}$'), '');
       }
+      // 去掉媒体扩展名
+      song = song.replaceAll(
+          RegExp(r'\.(mkv|mp4|avi|mov|flv|wmv|ts|rmvb|m4v|ape|flac|mp3|m4a|wav|aac|ogg)$',
+              caseSensitive: false),
+          '');
     } catch (_) {}
     if (playing != _musicPlaying || paused != _musicPaused || song != _song) {
       final wasPlaying = _musicPlaying;
