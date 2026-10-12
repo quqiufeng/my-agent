@@ -13,6 +13,7 @@
 | `tools/dash.sh` | 股票大屏（点阵风·暗色：指数环+自选股+小K线） | `tools/dash.sh [--to 会话] [--show]` |
 | `tools/dev.sh` | 本项目结构与规范；新能力=一个**走专用 Chrome(免授权登录)+CDP/DOM 的网页工具**（能力来自网页，安全）；支持新建/索引/提交(可回滚)/重启 | `tools/dev.sh info | caps | list | new <name> | index | commit [msg] | push | restart` |
 | `tools/douyin.sh` | 抖音作品：前 N 条下载到 ~/douyin/<uid> （文案/标签/视频；高赞转 wav 供克隆）；默认抓自己，可指定 uid | `tools/douyin.sh list [N] [<主页URL>|--uid <sec_uid>|--url <主页URL>]                 # 列前 N 条(id/赞/文案/标签)` |
+| `tools/english_daily.sh` | 从科技新闻/Blog（HN 首页，或指定 URL/主题）取一段英文 → Gemini 出中英对照+生词 → 排版图+文字发微信 | `tools/english_daily.sh [<主题> | --url <url>] [--words N] [--level B1] [--display] [--to 会话] [--no-send]` |
 | `tools/english.sh` | 英语口语陪练（麦克风识别英文，回复用英文音色朗读） | `tools/english.sh start|stop|status` |
 | `tools/fetch.sh` | 用 curl 抓取网页/接口，可带 ~/.env 里的 cookie（登录态） | `tools/fetch.sh <url> [--cookie ENVKEY] [--post DATA] [--json] [--save FILE] [--referer URL] [--header 'K: V'] [--ua UA]` |
 | `tools/find_file.sh` | 按文件名关键词搜索本机文件 + WebDAV，返回匹配（本地路径 或 可下载 URL） | `find_file.sh <关键词> [数量=15]` |
@@ -87,10 +88,11 @@
 28. **截屏发我 / 截图发我 / 屏幕发我** → `tools/wechat_shot.sh`（可选 `--to <会话名>`）。截取当前屏幕并用微信发送。若用户想截的是某个网页/地图，先用浏览器打开并置于前台再调用。
 29. 用户说“微博热 / 微博热搜 / 微博热搜榜” → `tools/weibo_hot.sh`（默认出图+发微信）；要**只要文本**加 `--display`。
 30. **手机操作**：用户说“看下手机/手机截个屏/操作手机”→ 用 `tools/phone.sh screen` 得路径，再 `tools/wechat_send_file.sh <路径>` 发回；要点击/滑动/输入/打开应用就用对应子命令（中文输入用 `phone.sh type`）。**只用白名单子命令**，不要拼 `adb` 原始命令。
-31. 用户说“问 Google AI / 问 Gemini / 让 AI 回答 <问题> 并发我微信” → `tools/gemini.sh "<问题>"`；要**只要文本**供程序用 → 加 `--display`。
-32. 用户说“帮我 google 搜索/查一下 <关键词> 并发我微信” → `tools/google_search.sh "<关键词>"`（默认发图+文字）；查新闻加 `--news`。
-33. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
-34. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
-35. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
+31. 用户说“每日英语 / 英语短文 / 学英语 / 来篇英语文章” → `tools/english_daily.sh`（默认科技文章，出图+发微信）；只要文本加 `--display`。
+32. 用户说“问 Google AI / 问 Gemini / 让 AI 回答 <问题> 并发我微信” → `tools/gemini.sh "<问题>"`；要**只要文本**供程序用 → 加 `--display`。
+33. 用户说“帮我 google 搜索/查一下 <关键词> 并发我微信” → `tools/google_search.sh "<关键词>"`（默认发图+文字）；查新闻加 `--news`。
+34. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
+35. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
+36. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_
