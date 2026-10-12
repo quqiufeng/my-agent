@@ -400,21 +400,24 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
-  // 读取当前播放状态（music.lua 写 /tmp/myagent_music_now 与 .pid）
-  // pid 文件失效时回退按进程名找 vlc，避免控制不到正在播放的曲目
+  // 读取当前播放状态（music.lua→/tmp/myagent_music_{now,pid}，tv.sh→/tmp/myagent_tv_{now,pid}）
+  // 优先 tv，其次 music，其次按进程名找 vlc；名称取对应 now 文件
   Future<void> _refreshMusic() async {
     var playing = false, paused = false;
     var song = '';
     try {
       final r = await Process.run('bash', [
         '-lc',
-        r'P=$(cat /tmp/myagent_music.pid 2>/dev/null); '
-            r'if [ -n "$P" ] && [ -d "/proc/$P" ]; then echo "$P"; '
-            r'else pgrep -x vlc | head -1; fi'
+        r'TVP=/tmp/myagent_tv.pid; MUSP=/tmp/myagent_music.pid; '
+            r'if [ -f "$TVP" ] && [ -d "/proc/$(cat "$TVP" 2>/dev/null)" ]; then echo "$(cat "$TVP")|tv"; '
+            r'elif [ -f "$MUSP" ] && [ -d "/proc/$(cat "$MUSP" 2>/dev/null)" ]; then echo "$(cat "$MUSP")|music"; '
+            r'else p=$(pgrep -x vlc | head -1); [ -n "$p" ] && echo "$p|?"; fi'
       ]);
-      final pid = ((r.stdout as String?) ?? '').trim();
+      final out = ((r.stdout as String?) ?? '').trim();
+      final pid = out.split('|').first.trim();
+      final src = out.contains('|') ? out.split('|').last.trim() : '?';
       if (pid.isNotEmpty) {
-        final pf = File('/tmp/myagent_music.pid');
+        final pf = File(src == 'tv' ? '/tmp/myagent_tv.pid' : '/tmp/myagent_music.pid');
         if (!pf.existsSync() || pf.readAsStringSync().trim() != pid) {
           try {
             pf.writeAsStringSync(pid);
@@ -427,9 +430,20 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           paused = m != null && m.group(1) == 'T';
         } catch (_) {}
       }
-      final nf = File('/tmp/myagent_music_now');
-      if (nf.existsSync()) song = nf.readAsStringSync().trim();
-      // 兜底：现在文件为空时，从 vlc 的 URL 解析曲名
+      for (final f in <String>[
+        if (src == 'tv') '/tmp/myagent_tv_now' else '/tmp/myagent_music_now',
+        if (src == 'tv') '/tmp/myagent_music_now' else '/tmp/myagent_tv_now',
+      ]) {
+        final nf = File(f);
+        if (nf.existsSync()) {
+          final s = nf.readAsStringSync().trim();
+          if (s.isNotEmpty) {
+            song = s;
+            break;
+          }
+        }
+      }
+      // 兜底：now 文件为空时从 vlc 的 URL 解析名称
       if (playing && song.isEmpty) {
         final rr = await Process.run('bash', [
           '-lc',
@@ -454,29 +468,21 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
-  // 暂停/继续：对播放器 pid 发 SIGSTOP / SIGCONT
+  // 暂停/继续：对播放器（音乐/美剧）pid 发 SIGSTOP / SIGCONT
   Future<void> _toggleMusic() async {
     try {
       final r = await Process.run('bash', [
         '-lc',
-        r'P=$(cat /tmp/myagent_music.pid 2>/dev/null); '
-            r'if [ -n "$P" ] && [ -d "/proc/$P" ]; then echo "$P"; '
-            r'else pgrep -x vlc | head -1; fi'
+        r'TVP=/tmp/myagent_tv.pid; MUSP=/tmp/myagent_music.pid; '
+            r'if [ -f "$TVP" ] && [ -d "/proc/$(cat "$TVP" 2>/dev/null)" ]; then echo "$(cat "$TVP")|tv"; '
+            r'elif [ -f "$MUSP" ] && [ -d "/proc/$(cat "$MUSP" 2>/dev/null)" ]; then echo "$(cat "$MUSP")|music"; '
+            r'else p=$(pgrep -x vlc | head -1); [ -n "$p" ] && echo "$p|?"; fi'
       ]);
-      final pid = ((r.stdout as String?) ?? '').trim();
+      final out = ((r.stdout as String?) ?? '').trim();
+      final pid = out.split('|').first.trim();
       if (pid.isEmpty) return;
       final sig = _musicPaused ? '-CONT' : '-STOP';
       await Process.run('kill', [sig, pid]);
-      try {
-        final pf = File('/tmp/myagent_music.pid');
-        if (pf.existsSync()) pf.writeAsStringSync(pid);
-        if (_musicPaused) {
-          final f = File('/tmp/myagent_music_paused');
-          if (f.existsSync()) f.deleteSync();
-        } else {
-          File('/tmp/myagent_music_paused').writeAsStringSync('1');
-        }
-      } catch (_) {}
       await Future.delayed(const Duration(milliseconds: 200));
       await _refreshMusic();
     } catch (_) {}
