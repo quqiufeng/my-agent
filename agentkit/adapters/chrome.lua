@@ -143,4 +143,26 @@ function M.watch_consent(seconds, opts)
     return false
 end
 
+-- ── 控制条识别：「自动测试软件正在控制 Chrome」（授权成功的标志）──
+-- 返回 命中文本 或 nil
+function M.controlled_bar()
+    local w = win(); if not w then return nil end
+    w:activate(); sleep(0.2)
+    for _, o in ipairs(w:ocr_bands({ 0, 110, w.w, 130 }, 130)) do
+        if o.text:find("正在控制") or o.text:find("自动测试") then return o.text end
+    end
+    return nil
+end
+
+function M.is_controlled()
+    return M.controlled_bar() ~= nil
+end
+
+-- 点控制条上的「在"设置"中关闭」（停止受控）
+function M.stop_controlled()
+    local w = win(); if not w then return false end
+    w:activate(); sleep(0.2)
+    return w:click_text("关闭", { 0, 110, w.w, 150 }, { retries = 2 }) and true or false
+end
+
 return M

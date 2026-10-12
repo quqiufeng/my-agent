@@ -7,10 +7,12 @@
 | 工具 | 用途 | 用法 |
 |------|------|------|
 | `tools/browser.sh` | 操作本机 Chrome（不新开浏览器） | `browser.sh new_tab` |
-| `tools/chrome_auth.sh` | 确保 Chrome「允许远程调试」已开：视觉打开 chrome://inspect 复选框，使 9222 端口就绪，MCP 才能连 | `tools/chrome_auth.sh [enable|consent|watch <秒>]` |
+| `tools/chrome_auth.sh` | 开启 Chrome「允许远程调试」并点掉授权弹窗（视觉）；`status` 查看是否受控 | `tools/chrome_auth.sh [enable|consent|watch <秒>|status]` |
+| `tools/cookie.sh` | 把某站点 cookie 从已登录 Chrome(CDP) 取出并存入 ~/.env，或直接读写 | `tools/cookie.sh save <域名> <ENVKEY> | set <ENVKEY> <值> | get <ENVKEY> | list` |
 | `tools/dash.sh` | 股票大屏（点阵风·暗色：指数环+自选股+小K线） | `tools/dash.sh [--to 会话] [--show]` |
 | `tools/douyin.sh` | 抖音作品：前 N 条下载到 ~/douyin/<uid> （文案/标签/视频；高赞转 wav 供克隆）；默认抓自己，可指定 uid | `tools/douyin.sh list [N] [<主页URL>|--uid <sec_uid>|--url <主页URL>]                 # 列前 N 条(id/赞/文案/标签)` |
 | `tools/english.sh` | 英语口语陪练（麦克风识别英文，回复用英文音色朗读） | `tools/english.sh start|stop|status` |
+| `tools/fetch.sh` | 用 curl 抓取网页/接口，可带 ~/.env 里的 cookie（登录态） | `tools/fetch.sh <url> [--cookie ENVKEY] [--post DATA] [--json] [--save FILE] [--referer URL] [--header 'K: V'] [--ua UA]` |
 | `tools/find_file.sh` | 按文件名关键词搜索本机文件 + WebDAV，返回匹配（本地路径 或 可下载 URL） | `find_file.sh <关键词> [数量=15]` |
 | `tools/gemini_out.sh` | 把（Gemini 等）获取到的结果按目标转发 | `tools/gemini_out.sh` |
 | `tools/git_trending.sh` | GitHub 今日热门：抓取 Trending → 生成排版图 → 发微信（默认文件传输助手） | `tools/git_trending.sh [--since daily|weekly|monthly] [--lang <lang>] [--limit N] [--to 联系人] [--text] [--show] [--no-send]` |
@@ -70,7 +72,7 @@
 18. **做动画短片 / 故事短片**：说“做个动画短片 / 用<成语/故事>生成动画短片 / 把 <故事> 做成动画”→ `tools/img_video.sh`。默认主题=**中国传统童话**。你可自己拟故事与分镜：`--scenes "分镜提示词1|分镜2|…"`、`--text "旁白1|旁白2|…"`（两者段数需一致；只复用已有图时只需 `--text`）。成语类可加 `--title <成语>`（片名长图，霜地国风）、`--pinyin <拼音>`、`--source <出处>`、`--end <释义>`（结尾卡）。出图默认 `--img-preset xhs`(1920×2560)/`pyq`(2048×2048)，`--outimg ~/image` 存图。克隆音色加 `--voice <名>`。**默认不发微信**——生成后用 `tools/wechat_send_file.sh <路径>` 再发（或加 `--send [--to 会话]`）；默认后台跑、立即返回。
 19. **自绘数据大屏**：说“自绘大屏 / 汇总我的自选股 / 把指数和自选股汇总成一张图”→ `tools/dash.sh`。若只是“看行情/看盘”→ 用 `quote_web.sh` 开浏览器截图。
 20. **看行情/看盘/大盘**：说“看下<股票>行情 / 大盘怎么样 / 看盘 / 行情截图”→ `tools/quote_web.sh [名称或代码]`（不传=上证指数）。它会用浏览器打开搜狐行情页并全屏截图发来源会话。
-21. 浏览器 MCP(chrome-devtools) 连不上 / 提示需要授权时 → 先 `tools/chrome_auth.sh enable`；若仍弹“同意”框，用 `consent`（或后台 `watch 60`）。
+21. 浏览器 MCP(chrome-devtools) 连不上/提示授权 → 先 `tools/chrome_auth.sh enable`；仍弹“同意”框用 `consent`（或后台 `watch 60`）；查状态用 `status`。
 22. **打开微博搜索页(截图)**：说“打开微博 / 微博搜 <关键词>，要网页截图”→ `tools/weibo.sh <关键词>`（打开搜索页并全屏截图）。**要找/发某明星的图片** → 用 `weibo_imgs.sh`。
 23. **下载微博图**：说“下载微博图 <明星> / 抓 <明星> 的微博图 / 找 <明星> 的图”→ `tools/weibo_imgs.sh <明星>`。**默认抓 1..20 页**（也可 `N`、`A-B` 或 `all`）。用**微博 cookie（存在 ~/.env，长期免授权）** curl 抓 `s.weibo.com` 搜索页，解析帖子图片并自动把小图换成大图，**保存到 ~ 下的目录**并报告下载张数（默认不发微信）。只有用户明确说“发我微信/发过来”才加 `--to` 发送；cookie 过期（抓不到）时才用 `--refresh-cookie` 从已登录 Chrome 重取一次。
 24. **下载某人的微博相册（全量大图）**：说“下载 <某人> 的微博相册 / 抓 <某人> 相册的图 / <某人> 相册”→ `tools/weibo_album.sh <昵称>`。先按昵称搜出 uid（也可直接给数字 uid），再用相册接口翻页取**大图**（比搜索页快很多），存到 ~ 下的目录并报张数（默认不发微信；说“发我”才加 `--to`）。
@@ -78,5 +80,7 @@
 26. **截屏发我 / 截图发我 / 屏幕发我** → `tools/wechat_shot.sh`（可选 `--to <会话名>`）。截取当前屏幕并用微信发送。若用户想截的是某个网页/地图，先用浏览器打开并置于前台再调用。
 27. **手机操作**：用户说“看下手机/手机截个屏/操作手机”→ 用 `tools/phone.sh screen` 得路径，再 `tools/wechat_send_file.sh <路径>` 发回；要点击/滑动/输入/打开应用就用对应子命令（中文输入用 `phone.sh type`）。**只用白名单子命令**，不要拼 `adb` 原始命令。
 28. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
+29. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
+30. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_

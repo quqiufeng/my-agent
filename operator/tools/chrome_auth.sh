@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# tools/chrome_auth.sh — 开启 Chrome 远程调试授权（视觉点复选框），供 chrome-devtools MCP 使用
-# @desc 确保 Chrome「允许远程调试」已开：视觉打开 chrome://inspect 复选框，使 9222 端口就绪，MCP 才能连
-# @usage tools/chrome_auth.sh [enable|consent|watch <秒>]
-# @rule 浏览器 MCP(chrome-devtools) 连不上 / 提示需要授权时 → 先 `tools/chrome_auth.sh enable`；若仍弹“同意”框，用 `consent`（或后台 `watch 60`）。
+# tools/chrome_auth.sh — Chrome 远程调试授权 + 受控状态（视觉 + MCP 结合）
+# @desc 开启 Chrome「允许远程调试」并点掉授权弹窗（视觉）；`status` 查看是否受控
+# @usage tools/chrome_auth.sh [enable|consent|watch <秒>|status]
+# @rule 浏览器 MCP(chrome-devtools) 连不上/提示授权 → 先 `tools/chrome_auth.sh enable`；仍弹“同意”框用 `consent`（或后台 `watch 60`）；查状态用 `status`。
 # @order 18
 set -uo pipefail
 unset DISPLAY                      # 让 agentkit 自动从图形会话派生 DISPLAY/XAUTHORITY
@@ -17,7 +17,11 @@ elseif a=="consent" then
   local ok,m=ch.accept_consent(); print(ok and ("已点同意: "..tostring(m)) or "无同意框")
 elseif a=="watch" then
   local ok=ch.watch_consent(tonumber(arg[2] or "30")); print(ok and "已点同意" or "超时未见")
+elseif a=="status" then
+  local bar=ch.controlled_bar()
+  print("端口9222: "..tostring(ch.port_open(9222)))
+  print("受控状态: "..(bar and ("是（"..tostring(bar).."）") or "否"))
 else
-  io.stderr:write("用法: chrome_auth.sh [enable|consent|watch <秒>]\n"); os.exit(2)
+  io.stderr:write("用法: chrome_auth.sh [enable|consent|watch <秒>|status]\n"); os.exit(2)
 end
 ' "$@"

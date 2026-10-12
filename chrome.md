@@ -138,3 +138,6 @@ MCP 是主力（结构化、**禁止 OCR 网页**）；**视觉只负责“放�
 
 > 分工一句话：**视觉 = 授权 + 无 CDP 场景的兜底；MCP = 网页主力。**
 > 关联实现：`agentkit/adapters/chrome.lua` 的 `port_open / enable_remote_debugging / accept_consent / watch_consent`。
+
+> 授权成功后，地址栏下方会出现控制条 **「自动测试软件正在控制 Chrome」**（含「在“设置”中关闭」）。
+> 这是“已受控/MCP 可用”的标志：`chrome.is_controlled()` / `tools/chrome_auth.sh status` 可识别；`stop_controlled()` 可关闭。
