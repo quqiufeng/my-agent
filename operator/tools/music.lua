@@ -49,7 +49,7 @@ local function stop()
         local n = pid:match("%d+")
         if n then os.execute("kill " .. n .. " 2>/dev/null") end
     end
-    os.execute("pkill -x vlc 2>/dev/null")   -- VLC 运行进程名是 vlc（cvlc 只是启动方式）
+    os.execute("pkill -CONT -x vlc 2>/dev/null; pkill -KILL -x vlc 2>/dev/null")
     os.remove(PIDF)
 end
 
