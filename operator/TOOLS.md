@@ -44,7 +44,7 @@
 | `tools/wechat_send.sh` | 发送微信文本 | `wechat_send.sh "内容"                  # 默认发到当前会话（文件传输助手）` |
 | `tools/wechat_shot.sh` | 截屏发微信（微信 Alt+A 截当前屏幕 → 剪贴板 → 粘贴发送到指定会话/文件传输助手） | `tools/wechat_shot.sh            # 截图发到文件传输助手` |
 | `tools/weibo_album.sh` | 微博相册大图下载（搜昵称定 uid → 相册接口翻页取大图 → 存 ~ 报张数） | `tools/weibo_album.sh <昵称|uid> [页数 | all，默认 20] [--save 目录] [--to 会话] [--limit N]` |
-| `tools/weibo_hot.sh` | 抓微博实时热搜榜，生成排版图并（可选）发文字到微信（默认文件传输助手） | `tools/weibo_hot.sh [--to 会话] [--limit N] [--display] [--no-send]` |
+| `tools/weibo_hot.sh` | 抓微博实时热搜榜，生成排版图并（可选）发文字到微信（默认文件传输助手） | `tools/weibo_hot.sh [--to 会话] [--limit N（默认15）] [--display] [--no-send]` |
 | `tools/weibo_imgs.sh` | 下载微博图（打开微博搜索，抓九宫格图并小图换大图，存到 ~ 报张数） | `tools/weibo_imgs.sh <明星/关键词> [页数 | A-B | all，默认 20] [--save 目录] [--each] [--limit N] [--to 会话] [--refresh-cookie]` |
 | `tools/weibo.sh` | 微博搜索（浏览器打开微博搜索页并全屏截图发微信） | `tools/weibo.sh <关键词> [--to 会话]` |
 

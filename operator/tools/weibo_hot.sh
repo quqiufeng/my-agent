@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # tools/weibo_hot.sh — 微博热搜 → Kami 排版图 + 文字，发微信（AI 助手用）
 # @desc 抓微博实时热搜榜，生成排版图并（可选）发文字到微信（默认文件传输助手）
-# @usage tools/weibo_hot.sh [--to 会话] [--limit N] [--display] [--no-send]
+# @usage tools/weibo_hot.sh [--to 会话] [--limit N（默认15）] [--display] [--no-send]
 # @rule 用户说“微博热 / 微博热搜 / 微博热搜榜” → `tools/weibo_hot.sh`（默认出图+发微信）；要**只要文本**加 `--display`。
 # @order 22
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 REPORT="/opt/my-agent/operator/report"
-TO="文件传输助手"; LIMIT=30; DISP=0; SEND=1
+TO="文件传输助手"; LIMIT=15; DISP=0; SEND=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --to) TO="${2:-文件传输助手}"; shift 2 ;;
