@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:yaru/yaru.dart';
@@ -48,17 +49,18 @@ class _CamView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final f = File(cam.jpg);
-    final ready = f.existsSync() && f.lengthSync() > 0;
+    Uint8List? bytes;
+    try {
+      final f = File(cam.jpg);
+      if (f.existsSync() && f.lengthSync() > 0) bytes = f.readAsBytesSync();
+    } catch (_) {}
     return Stack(
       fit: StackFit.expand,
       children: [
         const ColoredBox(color: Color(0xFF11110F)),
-        if (ready)
-          Image.file(f,
-              key: ValueKey(tick),
-              gaplessPlayback: true,
-              fit: BoxFit.contain),
+        if (bytes != null && bytes.isNotEmpty)
+          Image.memory(bytes,
+              gaplessPlayback: true, fit: BoxFit.contain, filterQuality: FilterQuality.low),
         Positioned(
           left: 12,
           top: 12,
