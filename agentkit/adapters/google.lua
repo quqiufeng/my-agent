@@ -18,21 +18,37 @@ function M.search(q, opts)
     return true
 end
 
--- 结构化结果：[{title=, url=}, ...]（取结果标题的 a h3）
+-- 结构化结果（首页全部）：[{title, url, url_real, cite, snippet}, ...]
 function M.results(limit)
-    limit = limit or 10
-    local js = "JSON.stringify([...document.querySelectorAll('a h3')].map(function(h){" ..
-        "var a=h.closest('a');return {title:h.innerText,url:a?a.href:''}}).slice(0," .. limit .. "))"
+    local js = [[(()=>{
+      const res=[...document.querySelectorAll('#search a h3, #rso a h3, #center_col a h3')];
+      const seen=new Set(), out=[];
+      for(const h of res){
+        const t=(h.innerText||'').trim(); if(!t) continue;
+        const a=h.closest('a'); let url=a?a.href:'';
+        const key=t+'|'+url; if(seen.has(key)) continue; seen.add(key);
+        // 解一层 Google 跳转壳 -> 真实地址（若可解）
+        let real=''; const m=url.match(/[?&](?:url|q)=([^&]+)/); if(m){ try{ real=decodeURIComponent(m[1]); }catch(e){} }
+        if(real && !/^https?:/.test(real)) real='';
+        let c=h.closest('div.g')||h.closest('div[data-hveid]')||(a&&a.closest('div[data-hveid]'));
+        let cite='', snip='';
+        if(c){ const ce=c.querySelector('cite'); if(ce) cite=ce.innerText.trim();
+               const se=c.querySelector('.VwiC3b, div[data-sncf], .IsZvec, span.aCOpRe, .lEBKkf'); if(se) snip=se.innerText.trim(); }
+        out.push({title:t, url:url, url_real:(real||''), cite:cite, snippet:snip});
+      }
+      return JSON.stringify(out);
+    })()]]
     local out = cdp.eval(js)
     local ok, res = pcall(cjson.decode, out or "")
     return (ok and type(res) == "table") and res or {}
 end
 
--- 供批量/大脑：一行行文本
+-- 供批量/大脑：一行行文本（标题 | 来源 | 摘要）
 function M.read_results(limit)
     local lines = {}
     for _, r in ipairs(M.results(limit)) do
-        lines[#lines + 1] = string.format("%s — %s", r.title, r.url)
+        local src = (r.cite ~= "" and r.cite) or (r.url_real ~= "" and r.url_real) or r.url
+        lines[#lines + 1] = string.format("%s\n    %s\n    %s", r.title, src, r.snippet)
     end
     return lines
 end
