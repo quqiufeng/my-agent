@@ -2,6 +2,7 @@
 -- 用法: luajit english_article.lua <out.html> <out.txt> <jsonfile>
 -- json: {"title_en","title_zh","paras":[{"en","zh"}],"vocab":[{"word","zh"}]}
 local out_html, out_txt, jsf = arg[1], arg[2], arg[3]
+local src = arg[4] or ""
 local cjson = require("cjson")
 local CSS = "/opt/my-agent/operator/report/kami.css"
 
@@ -47,7 +48,8 @@ local html = ([[<!doctype html><html lang="en"><head><meta charset="utf-8"><titl
   <hr class="hairline">
   %s
   %s
-  <div class="footer"><span>my-agent · 每日英语</span><span>%s</span></div>
+  <div class="footer"><span>%s</span><span>%s</span></div>
 </div></body></html>]]):format(
-    esc(te), css, esc(te), esc(tz), table.concat(body), vhtml, os.date("%Y-%m-%d"))
+    esc(te), css, esc(te), esc(tz), table.concat(body), vhtml,
+    esc(src ~= "" and ("来源：" .. src) or "my-agent · 每日英语"), os.date("%Y-%m-%d"))
 local wh = assert(io.open(out_html, "w")); wh:write(html); wh:close()
