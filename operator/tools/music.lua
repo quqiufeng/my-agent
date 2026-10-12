@@ -108,12 +108,20 @@ end
 local function play_online(kw, plat)
     local list = online_search(kw, plat)
     if #list == 0 then print("在线没有找到: " .. kw); return false end
-    local pick = list[1]
-    for _, s in ipairs(list) do
-        local hasflac = false
-        for _, q in ipairs(s.minfo or {}) do if q.format == "flac" then hasflac = true end end
-        if hasflac then pick = s; break end
+    -- 选“正常标题”：精确 > 含关键词；排除 变速/cover/翻唱/remix/DJ/伴奏/纯音乐/现场 等；有 flac 加分
+    local function score(sn)
+        local n = sn.name or ""; local l = n:lower(); local sc = 0
+        if n == kw then sc = sc + 100
+        elseif l:find(kw:lower(), 1, true) then sc = sc + 50
+        else sc = sc - 30 end
+        for _, bad in ipairs({ "变速", "cover", "翻唱", "remix", "伴奏", "纯音乐", "现场", "live", "dj", "加速", "慢速", "盘点", "合集", "完整版", "女声", "男声", "钢琴", "吉他" }) do
+            if l:find(bad, 1, true) then sc = sc - 80 end
+        end
+        for _, q in ipairs(sn.minfo or {}) do if q.format == "flac" then sc = sc + 10 end end
+        return sc
     end
+    local pick, best = list[1], -1e9
+    for _, sn in ipairs(list) do local sc = score(sn); if sc > best then best, pick = sc, sn end end
     _G._onplat = plat or "kuwo"
     local url = online_url(pick, "flac", "2000") or online_url(pick, "mp3", "320")
     if not url then print("取直链失败"); return false end
