@@ -5,19 +5,26 @@ const net = require('net');
 const fs = require('fs');
 
 function wsUrl() {
-  const pf = process.env.HOME + '/.config/google-chrome/DevToolsActivePort';
+  if (process.env.AGENTKIT_CDP_WS) return process.env.AGENTKIT_CDP_WS;
+  const pf = (process.env.AGENTKIT_CHROME_DIR || process.env.HOME + '/.config/google-chrome') + '/DevToolsActivePort';
   if (fs.existsSync(pf)) {
     const [port, bpath] = fs.readFileSync(pf, 'utf8').trim().split('\n');
     return 'ws://127.0.0.1:' + port + bpath;
   }
-  return process.env.AGENTKIT_CDP_WS;
+  return undefined;
+}
+async function resolveWs() {
+  if (process.env.AGENTKIT_CDP_WS) return process.env.AGENTKIT_CDP_WS;
+  try { const r = await fetch('http://127.0.0.1:9222/json/version'); const j = await r.json(); if (j.webSocketDebuggerUrl) return j.webSocketDebuggerUrl; } catch (e) {}
+  return wsUrl();
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let sendFn = null, sessionId = null;
 
 async function connectChrome() {
-  const ws = new WebSocket(wsUrl());
+  const url = await resolveWs();
+  const ws = new WebSocket(url);
   let id = 0; const pend = {};
   const send = (method, params, s) => new Promise((res, rej) => {
     const i = ++id; pend[i] = { res, rej };
@@ -27,7 +34,6 @@ async function connectChrome() {
   ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pend[m.id]) { m.error ? pend[m.id].rej(m.error) : pend[m.id].res(m.result); delete pend[m.id]; } };
   ws.onclose = () => { sendFn = null; process.stderr.write('chrome ws closed (no auto-reconnect)\n'); };
   await new Promise(r => ws.onopen = r);
-  await send('Page.enable');
   const { targetInfos } = await send('Target.getTargets');
   const page = (targetInfos || []).find(t => t.type === 'page');
   const r = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true });
@@ -59,13 +65,14 @@ async function handle(cmd, a) {
     case 'type':  await sendFn('Input.insertText', { text: a.text || '' }, sessionId); return true;
     case 'press': { const t = a.type === 'keyUp' ? 'keyUp' : 'keyDown';
                     await sendFn('Input.dispatchKeyEvent', key(t), sessionId); return true; }
-    case 'goto':  { await sendFn('Page.navigate', { url: a.url }, sessionId); return true; }
+    case 'goto':  { await sendFn('Page.enable', {}, sessionId); await sendFn('Page.navigate', { url: a.url }, sessionId); return true; }
     case 'wait':  { const t0 = Date.now();
                     while (Date.now() - t0 < (a.timeout || 20000)) { if (await ev(a.js)) return true; await sleep(500); }
                     return false; }
     case 'cookies': { const b = await sendFn('Storage.getCookies', {}, sessionId);
                       return (b.cookies || []).filter(c => !a.domain || (c.domain || '').includes(a.domain)).map(c => c.name + '=' + c.value).join('; '); }
     case 'gemini': {
+      await sendFn('Page.enable', {}, sessionId);
       await sendFn('Page.navigate', { url: 'https://gemini.google.com/app' }, sessionId);
       const t0 = Date.now();
       while (Date.now() - t0 < 25000) { if (await ev(`!!document.querySelector(${JSON.stringify(EDITOR)})`)) break; await sleep(500); }

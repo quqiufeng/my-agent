@@ -13,7 +13,7 @@
 const fs = require('fs');
 
 function wsUrl() {
-  if (process.env.AGENTKIT_CDP_WS) return process.env.AGENTKIT_CDP_WS;   // 显式优先
+  if (process.env.AGENTKIT_CDP_WS) return process.env.AGENTKIT_CDP_WS;
   const pf = (process.env.AGENTKIT_CHROME_DIR || process.env.HOME + '/.config/google-chrome') + '/DevToolsActivePort';
   if (fs.existsSync(pf)) {
     const [port, bpath] = fs.readFileSync(pf, 'utf8').trim().split('\n');
@@ -21,12 +21,17 @@ function wsUrl() {
   }
   return undefined;
 }
+async function resolveWs() {
+  if (process.env.AGENTKIT_CDP_WS) return process.env.AGENTKIT_CDP_WS;
+  try { const r = await fetch('http://127.0.0.1:9222/json/version'); const j = await r.json(); if (j.webSocketDebuggerUrl) return j.webSocketDebuggerUrl; } catch (e) {}
+  return wsUrl();
+}
 
 const cmd = process.argv[2] || 'title';
 const arg = process.argv[3] || '';
 
 (async () => {
-  const url = wsUrl();
+  const url = await resolveWs();
   if (!url) { process.stderr.write('no DevToolsActivePort / AGENTKIT_CDP_WS\n'); process.exit(2); }
   const ws = new WebSocket(url);
   let id = 0; const pend = {};

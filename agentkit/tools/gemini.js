@@ -10,7 +10,12 @@ function wsUrl() {
     const [port, bpath] = fs.readFileSync(pf, 'utf8').trim().split('\n');
     return 'ws://127.0.0.1:' + port + bpath;
   }
-  return process.env.AGENTKIT_CDP_WS;
+  return undefined;
+}
+async function resolveWs() {
+  if (process.env.AGENTKIT_CDP_WS) return process.env.AGENTKIT_CDP_WS;
+  try { const r = await fetch('http://127.0.0.1:9222/json/version'); const j = await r.json(); if (j.webSocketDebuggerUrl) return j.webSocketDebuggerUrl; } catch (e) {}
+  return wsUrl();
 }
 
 const prompt = process.argv[2] || '';
@@ -20,7 +25,7 @@ const EDITOR = '.ql-editor[contenteditable="true"], rich-textarea [contenteditab
 const RESP = '.model-response-text, message-content, .response-container-content, .markdown-main-panel';
 
 (async () => {
-  const ws = new WebSocket(wsUrl());
+  const ws = new WebSocket(await resolveWs());
   let id = 0; const pend = {};
   const send = (method, params, s) => new Promise((res, rej) => {
     const i = ++id; pend[i] = { res, rej };
