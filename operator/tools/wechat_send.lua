@@ -21,5 +21,17 @@ local f = io.open(os.getenv("WECHAT_SENT_LOG") or "/tmp/myagent_wechat_sent.log"
 if f then f:write(out .. "\n"); f:close() end
 
 robot.send(out)
+-- 兜底：确保提交（点输入框聚焦 + 回车两次；空回车无副作用）
+os.execute("sleep 0.6")
+local win = robot.get_window_rect()
+if win then
+    local cx = win.x + math.floor(win.w * 0.47)
+    local cy = win.y + math.floor(win.h * 0.874)
+    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", cx, cy))
+    os.execute("sleep 0.3")
+    os.execute("xdotool key --clearmodifiers Return 2>/dev/null")
+    os.execute("sleep 0.3")
+    os.execute("xdotool key --clearmodifiers Return 2>/dev/null")
+end
 robot.destroy()
 print("已发送 -> " .. to)
