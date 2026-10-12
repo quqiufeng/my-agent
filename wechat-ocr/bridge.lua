@@ -317,6 +317,7 @@ while true do
                                 os.execute("sleep 1")
                             end
                             os.execute("sleep 4")
+                            wechat_background(win)   -- 执行完最小化回后台
                         end
                     else
                         io.write("[bridge] 语音转文字为空\n")
@@ -341,6 +342,7 @@ while true do
                             os.execute("sleep 1")
                         end
                         os.execute("sleep 4")
+                        wechat_background(win)   -- 执行完最小化回后台
                     end
                 end
             end
