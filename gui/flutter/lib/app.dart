@@ -35,7 +35,7 @@ class MyAgentApp extends StatelessWidget {
   }
 }
 
-/// 一路摄像头：由 ffmpeg 持续把画面写成 jpg（-update 1），UI 定时刷新。
+/// 一路摄像头：ffmpeg 持续把画面写成 jpg（-update 1），UI 仅在文件更新时读字节。
 class _Cam {
   _Cam(this.label, this.args, this.jpg);
   final String label;
@@ -45,7 +45,6 @@ class _Cam {
   Uint8List? bytes;
   int mtime = 0;
 
-  // 仅当文件更新（mtime 变）才读字节，避免无谓解码
   void refresh() {
     try {
       final f = File(jpg);
@@ -53,16 +52,17 @@ class _Cam {
       final m = f.lastModifiedSync().millisecondsSinceEpoch;
       if (m == mtime) return;
       final b = f.readAsBytesSync();
-      if (b.isNotEmpty) { bytes = b; mtime = m; }
+      if (b.isNotEmpty) {
+        bytes = b;
+        mtime = m;
+      }
     } catch (_) {}
   }
 }
 
 class _CamView extends StatelessWidget {
-  const _CamView({required this.cam, required this.tick});
+  const _CamView({required this.cam});
   final _Cam cam;
-  final int tick;
-
   @override
   Widget build(BuildContext context) {
     final bytes = cam.bytes;
@@ -72,18 +72,17 @@ class _CamView extends StatelessWidget {
         const ColoredBox(color: Color(0xFF11110F)),
         if (bytes != null && bytes.isNotEmpty)
           Image.memory(bytes,
-              gaplessPlayback: true, fit: BoxFit.contain, filterQuality: FilterQuality.medium),
+              gaplessPlayback: true, fit: BoxFit.contain, filterQuality: FilterQuality.low),
         Positioned(
           left: 12,
           top: 12,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-                color: ChinaColors.shuangdi,
+                color: ChinaColors.nenjulv,
                 borderRadius: BorderRadius.circular(6)),
             child: Text(cam.label,
-                style: const TextStyle(
-                    fontSize: 13, color: ChinaColors.ink)),
+                style: const TextStyle(fontSize: 13, color: ChinaColors.ink)),
           ),
         ),
       ],
@@ -100,13 +99,13 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final List<_Cam> _cams = [];
   int _full = 0;
-  int _tick = 0;
   String _clock = '';
-  Timer? _timer;
-  int _mic = 0; // 0..100
+  int _mic = 0;
   int _micHold = 0;
-  Process? _micProc;
   String _last = '';
+  Process? _micProc;
+  Timer? _camTimer, _uiTimer;
+  final ValueNotifier<int> _camTick = ValueNotifier(0);
 
   @override
   void initState() {
@@ -115,22 +114,18 @@ class _HomePageState extends State<HomePage> {
     final usb = env['CAM_USB_INDEX'] ?? '0';
     final rtsp = env['RTSP_URL'] ?? '';
     if (env['CAM_USB_ONLY'] != '1') {
-      _cams.add(_Cam(
-        'USB',
-        ['-loglevel', 'error', '-f', 'v4l2', '-i', '/dev/video$usb',
-         '-vf', 'scale=1280:-2', '-r', '15', '-q:v', '2',
-         '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_usb.jpg'],
-        '/tmp/myagent_cam_usb.jpg',
-      ));
+      _cams.add(_Cam('USB', [
+        '-loglevel', 'error', '-f', 'v4l2', '-i', '/dev/video$usb',
+        '-vf', 'scale=960:-2', '-r', '20', '-q:v', '5',
+        '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_usb.jpg'
+      ], '/tmp/myagent_cam_usb.jpg'));
     }
     if (rtsp.isNotEmpty) {
-      _cams.add(_Cam(
-        'RTSP',
-        ['-loglevel', 'error', '-rtsp_transport', 'tcp', '-i', rtsp,
-         '-vf', 'scale=1280:-2', '-r', '15', '-q:v', '2',
-         '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_rtsp.jpg'],
-        '/tmp/myagent_cam_rtsp.jpg',
-      ));
+      _cams.add(_Cam('RTSP', [
+        '-loglevel', 'error', '-rtsp_transport', 'tcp', '-i', rtsp,
+        '-vf', 'scale=960:-2', '-r', '20', '-q:v', '5',
+        '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_rtsp.jpg'
+      ], '/tmp/myagent_cam_rtsp.jpg'));
     }
     for (final c in _cams) {
       _spawn(c);
@@ -138,12 +133,14 @@ class _HomePageState extends State<HomePage> {
     _micLoop(env['VOICE_MIC_DEV'] ?? 'plughw:2,0',
         env['VOICE_MIC_CARD'] ?? '2', env['VOICE_MIC_GAIN'] ?? '7810', env);
     _tickClock();
-    _timer = Timer.periodic(const Duration(milliseconds: 55), (_) {
-      _tickClock();
+    _camTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
       for (final c in _cams) {
         c.refresh();
       }
-      if (mounted) setState(() => _tick++);
+      _camTick.value++;
+    });
+    _uiTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(_tickClock);
     });
   }
 
@@ -196,7 +193,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // 录音+VAD 断句+SenseVoice 识别；同时算电平。命中一句 → 底部显示识别文本。
   Future<void> _micLoop(String dev, String card, String gain, Map<String, String> env) async {
     try {
       await Process.run('amixer', ['-c', card, 'sset', 'Mic', gain]);
@@ -276,7 +272,9 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _camTimer?.cancel();
+    _uiTimer?.cancel();
+    _camTick.dispose();
     for (final c in _cams) {
       c.proc?.kill();
     }
@@ -286,16 +284,16 @@ class _HomePageState extends State<HomePage> {
 
   Widget _tree() {
     if (_full != 0 && _full <= _cams.length) {
-      return _CamView(cam: _cams[_full - 1], tick: _tick);
+      return _CamView(cam: _cams[_full - 1]);
     }
-    if (_cams.length == 1) return _CamView(cam: _cams[0], tick: _tick);
+    if (_cams.length == 1) return _CamView(cam: _cams[0]);
     if (_cams.isEmpty) {
       return const Center(
           child: Text('无摄像头（设 CAM_USB_INDEX / RTSP_URL）',
               style: TextStyle(color: ChinaColors.muted)));
     }
     return Row(children: [
-      for (final c in _cams) Expanded(child: _CamView(cam: c, tick: _tick)),
+      for (final c in _cams) Expanded(child: _CamView(cam: c)),
     ]);
   }
 
@@ -318,7 +316,10 @@ class _HomePageState extends State<HomePage> {
               }
             });
           },
-          child: _tree(),
+          child: ValueListenableBuilder<int>(
+            valueListenable: _camTick,
+            builder: (_, __, ___) => _tree(),
+          ),
         ),
       ),
       _statusBar(),
@@ -345,11 +346,9 @@ class _HomePageState extends State<HomePage> {
                     color: _mic > 25 ? ChinaColors.orange : ChinaColors.qinglv,
                     shape: BoxShape.circle)),
             const SizedBox(width: 12),
-            const Text('等待语音',
-                style: TextStyle(fontSize: 17, color: ChinaColors.ink)),
+            const Text('等待语音', style: TextStyle(fontSize: 17, color: ChinaColors.ink)),
             const SizedBox(width: 24),
-            const Text('MIC',
-                style: TextStyle(fontSize: 11, color: ChinaColors.muted)),
+            const Text('MIC', style: TextStyle(fontSize: 11, color: ChinaColors.muted)),
             const SizedBox(width: 8),
             SizedBox(
               width: 220,
@@ -357,7 +356,8 @@ class _HomePageState extends State<HomePage> {
               child: Stack(children: [
                 Container(
                     decoration: BoxDecoration(
-                        color: const Color(0xFFDCEBC2), borderRadius: BorderRadius.circular(4))),
+                        color: const Color(0xFFDCEBC2),
+                        borderRadius: BorderRadius.circular(4))),
                 FractionallySizedBox(
                   widthFactor: (_mic / 100).clamp(0.0, 1.0),
                   child: Container(
@@ -367,22 +367,17 @@ class _HomePageState extends State<HomePage> {
               ]),
             ),
             const SizedBox(width: 12),
-            Text('$_mic',
-                style: const TextStyle(fontSize: 12, color: ChinaColors.muted)),
+            Text('$_mic', style: const TextStyle(fontSize: 12, color: ChinaColors.muted)),
             const Spacer(),
             Text(_clock,
                 style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: ChinaColors.ink)),
+                    fontSize: 16, fontWeight: FontWeight.w600, color: ChinaColors.ink)),
           ]),
           const SizedBox(height: 8),
-          // 识别文字：单独一行
           Text(_last.isEmpty ? '（等待识别…）' : _last,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize: 20, color: ChinaColors.daiLan)),
+              style: const TextStyle(fontSize: 20, color: ChinaColors.daiLan)),
         ],
       ),
     );
