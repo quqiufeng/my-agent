@@ -156,20 +156,7 @@ io.flush()
 
 -- 全程后台读第二列预览：不聚焦、不激活、不点开会话（quiet）。
 -- 白名单会话的预览以标签开头且与上次不同 → 作为指令转发。
--- 微信被最小化/隐藏时抓不到（不抢焦点，跳过）；遮挡不影响。
--- ── 每轮开关微信：点开读取；无新指令则再点回后台（静默）──────────────
-local TOGGLE = os.getenv("WECHAT_TOGGLE") ~= "0"
-local function sh(cmd) os.execute(cmd .. " >/dev/null 2>&1") end
-local function wechat_open(win)
-    if not win then return end
-    sh("xdotool windowmap " .. win.id)          -- 取消最小化
-    sh("wmctrl -i -a " .. win.id)               -- 激活
-    os.execute("sleep 0.8")
-end
-local function wechat_background(win)
-    if not win then return end
-    sh("xdotool windowminimize " .. win.id)     -- 最小化 → 后台静默
-end
+-- 微信被最小化/隐藏时抓不到（保持微信未最小化即可）；遮挡不影响。
 
 -- ── 语音消息 → 右键「语音转文字」→ OCR 识别 ──────────────────────
 local OCR_TEXT = DIR .. "/ocr_text.sh"
@@ -258,7 +245,6 @@ end
 
 while true do
     local win = watcher.window()
-    if TOGGLE then wechat_open(win) end
     local shot, w = watcher.window_capture()
     if not shot then
         io.write("[bridge] 微信不可见（最小化），跳过（保持微信未最小化即可）\n")
@@ -317,7 +303,6 @@ while true do
         end
         if not has_cmd then
             io.write("[bridge] 无新指令\n")
-            if TOGGLE then wechat_background(w) end     -- 无消息 → 点回后台静默
         end
     end
     io.flush()
