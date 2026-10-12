@@ -7,6 +7,7 @@
 | 工具 | 用途 | 用法 |
 |------|------|------|
 | `tools/browser.sh` | 操作本机 Chrome（不新开浏览器） | `browser.sh new_tab` |
+| `tools/camera.sh` | 从摄像头(USB/RTSP)抓一帧保存为图片，供 Agent/语音读图；也可持续录像 | `tools/camera.sh [--usb N | --rtsp URL] [--out 路径] [--live 秒]` |
 | `tools/chrome_auth.sh` | 开启 Chrome「允许远程调试」并点掉授权弹窗（视觉）；`status` 查看是否受控 | `tools/chrome_auth.sh [enable|consent|watch <秒>|daemon|status]` |
 | `tools/chrome_debug.sh` | 每次启动前同步 profile，再用固定调试端口起专用 Chrome，供 chrome-devtools MCP(--browser-url) 连接（免反复授权） | `tools/chrome_debug.sh [端口]        # 默认 9222` |
 | `tools/cookie.sh` | 把某站点 cookie 从已登录 Chrome(CDP) 取出并存入 ~/.env，或直接读写 | `tools/cookie.sh save <域名> <ENVKEY> | set <ENVKEY> <值> | get <ENVKEY> | list` |
@@ -92,7 +93,8 @@
 32. 用户说“问 Google AI / 问 Gemini / 让 AI 回答 <问题> 并发我微信” → `tools/gemini.sh "<问题>"`；要**只要文本**供程序用 → 加 `--display`。
 33. 用户说“帮我 google 搜索/查一下 <关键词> 并发我微信” → `tools/google_search.sh "<关键词>"`（默认发图+文字）；查新闻加 `--news`。
 34. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
-35. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
-36. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
+35. 要看摄像头画面 → `tools/camera.sh`（抓当前一帧，路径可直接读图）；要一段视频 → 加 `--live <秒>`。
+36. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
+37. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_
