@@ -110,4 +110,7 @@ end
 -- 批量执行 + 批量记录（生成结果集）
 M.batch = require("agentkit.batch")
 
+-- CDP/DOM 精准操作（常驻守护，Chrome 只授权一次）
+M.cdp = require("agentkit.cdp")
+
 return M

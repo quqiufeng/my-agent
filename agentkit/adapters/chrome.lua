@@ -152,13 +152,44 @@ function M.watch_consent(seconds, opts)
     return not infinite
 end
 
--- 常驻守望 daemon：持续点掉授权弹窗（供 MCP/CDP 随时连接）
+-- 快速探测：当前是否弹出「要允许远程调试吗?」授权框（只扫中央小条）
+function M.consent_present()
+    local w = win(); if not w then return false end
+    local ocr = require("agentkit.ocr")
+    local x, ww = math.floor(w.w * 0.30), math.floor(w.w * 0.44)
+    local tmp = "/tmp/agentkit/consent_chk.png"
+    os.execute("mkdir -p /tmp/agentkit")
+    w:capture_region(x, 90, ww, 140, tmp)
+    os.execute(("convert %s -resize 150%% %s"):format(tmp, tmp .. ".u.png"))
+    for _, o in ipairs(ocr.run(tmp .. ".u.png")) do
+        if o.text:find("远程调试") or o.text:find("要允许") or o.text:find("Allow remote") then
+            return true
+        end
+    end
+    return false
+end
+
+-- 常驻守望 daemon：持续点掉授权弹窗（只扫中央小条，快）
 function M.consent_daemon(interval)
-    interval = interval or 2
+    interval = interval or 0.4
     local w = win(); if not w then return end
-    local rg = { math.floor(w.w * 0.25), 60, math.floor(w.w * 0.55), 560 }
+    local ocr = require("agentkit.ocr")
+    local x = math.floor(w.w * 0.34)
+    local ww = math.floor(w.w * 0.36)
     while true do
-        M.accept_consent({ region = rg })
+        local tmp = string.format("%s/consent_%d.png", os.getenv("AGENTKIT_TMP") or "/tmp/agentkit",
+                                  math.floor(math.random() * 1e6))
+        os.execute("mkdir -p " .. (os.getenv("AGENTKIT_TMP") or "/tmp/agentkit"))
+        w:capture_region(x, 110, ww, 110, tmp)
+        os.execute(("convert %s -resize 150%% %s"):format(tmp, tmp .. ".u.png"))
+        local hit
+        for _, o in ipairs(ocr.run(tmp .. ".u.png")) do
+            local t = o.text
+            if t:find("远程调试") or t:find("要允许") or t:find("Allow remote") then hit = t; break end
+        end
+        if hit then
+            w:key("Right"); os.execute("sleep 0.12"); w:key("Return")
+        end
         os.execute("sleep " .. interval)
     end
 end

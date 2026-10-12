@@ -1,0 +1,70 @@
+// agentkit/tools/gemini.js — 用 CDP/DOM 跑 Gemini（单连接，避免多次授权弹窗）
+// 用法: node gemini.js "<提问>"       # 打印 Gemini 的回答文本
+// 流程: 连 DevToolsActivePort → 导航 gemini.google.com/app → 输入 → 回车 → 等回复 → 打印
+const fs = require('fs');
+
+function wsUrl() {
+  const pf = process.env.HOME + '/.config/google-chrome/DevToolsActivePort';
+  if (fs.existsSync(pf)) {
+    const [port, bpath] = fs.readFileSync(pf, 'utf8').trim().split('\n');
+    return 'ws://127.0.0.1:' + port + bpath;
+  }
+  return process.env.AGENTKIT_CDP_WS;
+}
+
+const prompt = process.argv[2] || '';
+if (!prompt) { process.stderr.write('用法: gemini.js "<提问>"\n'); process.exit(2); }
+
+const EDITOR = '.ql-editor[contenteditable="true"], rich-textarea [contenteditable="true"], div[contenteditable="true"]';
+const RESP = '.model-response-text, message-content, .response-container-content, .markdown-main-panel';
+
+(async () => {
+  const ws = new WebSocket(wsUrl());
+  let id = 0; const pend = {};
+  const send = (method, params, s) => new Promise((res, rej) => {
+    const i = ++id; pend[i] = { res, rej };
+    ws.send(JSON.stringify({ id: i, method, params: params || {}, sessionId: s }));
+    setTimeout(() => { if (pend[i]) { delete pend[i]; rej(new Error('timeout: ' + method)); } }, 30000);
+  });
+  ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pend[m.id]) { m.error ? pend[m.id].rej(m.error) : pend[m.id].res(m.result); delete pend[m.id]; } };
+  await new Promise(r => ws.onopen = r);
+
+  const { targetInfos } = await send('Target.getTargets');
+  const page = (targetInfos || []).find(t => t.type === 'page');
+  const { sessionId: sid } = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true });
+
+  const ev = async expr => {
+    const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }, sid);
+    if (r.exceptionDetails) throw new Error(r.exceptionDetails.text || 'eval error');
+    return r.result && r.result.value;
+  };
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function waitFor(expr, timeoutMs) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeoutMs) { if (await ev(expr)) return true; await sleep(500); }
+    return false;
+  }
+
+  await send('Page.enable', {}, sid);
+  await send('Page.navigate', { url: 'https://gemini.google.com/app' }, sid);
+  if (!await waitFor(`!!document.querySelector(${JSON.stringify(EDITOR)})`, 25000)) {
+    process.stderr.write('未找到 Gemini 输入框\n'); process.exit(1);
+  }
+  await ev(`document.querySelector(${JSON.stringify(EDITOR)}).focus()`);
+  await send('Input.insertText', { text: prompt }, sid);
+  await sleep(400);
+  // 回车发送
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }, sid);
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }, sid);
+
+  // 等回复稳定（3s 无变化）
+  const GET = `[...document.querySelectorAll(${JSON.stringify(RESP)})].map(e=>e.innerText).join('\\n').trim()`;
+  let last = '', stable = 0;
+  for (let i = 0; i < 60; i++) {
+    await sleep(1000);
+    const cur = await ev(GET);
+    if (cur && cur === last) { stable++; if (stable >= 3) break; } else { stable = 0; last = cur; }
+  }
+  process.stdout.write(last || '');
+  ws.close(); process.exit(0);
+})().catch(e => { process.stderr.write(String(e) + '\n'); process.exit(1); });

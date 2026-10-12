@@ -13,12 +13,13 @@
 const fs = require('fs');
 
 function wsUrl() {
-  const pf = process.env.HOME + '/.config/google-chrome/DevToolsActivePort';
+  if (process.env.AGENTKIT_CDP_WS) return process.env.AGENTKIT_CDP_WS;   // 显式优先
+  const pf = (process.env.AGENTKIT_CHROME_DIR || process.env.HOME + '/.config/google-chrome') + '/DevToolsActivePort';
   if (fs.existsSync(pf)) {
     const [port, bpath] = fs.readFileSync(pf, 'utf8').trim().split('\n');
     return 'ws://127.0.0.1:' + port + bpath;
   }
-  return process.env.AGENTKIT_CDP_WS;      // 兜底：直接给 ws 地址
+  return undefined;
 }
 
 const cmd = process.argv[2] || 'title';
@@ -32,6 +33,7 @@ const arg = process.argv[3] || '';
   const send = (method, params, s) => new Promise((res, rej) => {
     const i = ++id; pend[i] = { res, rej };
     ws.send(JSON.stringify({ id: i, method, params: params || {}, sessionId: s }));
+    setTimeout(() => { if (pend[i]) { delete pend[i]; rej(new Error('timeout: ' + method)); } }, 8000);
   });
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
