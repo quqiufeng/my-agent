@@ -331,14 +331,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               continue;
             }
 
-            // 播放音乐期间静默：不识别，避免把歌声当成指令（回环）
-            if (_musicPlaying && !_musicPaused) {
-              if (acc.isNotEmpty) acc.clear();
-              speaking = false;
-              silent = 0;
-              continue;
-            }
-
             final thr = math.max(500, noise * 2);
             if (!speaking) {
               noise = (noise * 3 + peak) ~/ 4;
@@ -449,11 +441,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       }
     } catch (_) {}
     if (playing != _musicPlaying || paused != _musicPaused || song != _song) {
+      final wasPlaying = _musicPlaying;
       _musicPlaying = playing;
       _musicPaused = paused;
       _song = song;
-      // 播放中默认进入静默（回待唤态）
-      if (playing && !paused && _awake) {
+      // 刚开始播放时回待唤态（静默）；不静音麦克风，保证仍可被唤醒
+      if (playing && !wasPlaying && _awake) {
         _awake = false;
         _awakeTimer?.cancel();
       }
