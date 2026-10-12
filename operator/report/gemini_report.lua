@@ -17,7 +17,7 @@ do local w = assert(io.open(out_txt, "w"))
 local html = ([[<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <title>Google AI</title><style>%s</style>
 <style>.qa{white-space:pre-wrap;font-size:15.5px;line-height:1.7;letter-spacing:.3pt}
-.q{font-size:17px;font-weight:500;line-height:1.5;margin:.2em 0 .2em}</style>
+.q{font-size:17px;font-weight:500;line-height:1.5;margin:.2em 0 3.2em}</style>
 </head><body><div class="page">
  <div class="head"><div><div class="eyebrow">GOOGLE AI · GEMINI</div><h1>Google AI 回答</h1></div>
    <div class="meta">%s</div></div>
