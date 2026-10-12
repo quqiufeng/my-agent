@@ -141,3 +141,6 @@ MCP 是主力（结构化、**禁止 OCR 网页**）；**视觉只负责“放�
 
 > 授权成功后，地址栏下方会出现控制条 **「自动测试软件正在控制 Chrome」**（含「在“设置”中关闭」）。
 > 这是“已受控/MCP 可用”的标志：`chrome.is_controlled()` / `tools/chrome_auth.sh status` 可识别；`stop_controlled()` 可关闭。
+
+> **授权弹窗最简处理**：识别到「要允许远程调试吗?」后，直接 **方向键→右，再回车**（焦点移到「允许」并确认）。
+> 已封装：`chrome.accept_consent()`（先试 `Right`+`Return`，失败再按坐标点「允/充许」）。

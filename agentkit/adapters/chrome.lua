@@ -100,6 +100,14 @@ function M.accept_consent(opts)
     opts = opts or {}
     local w = opts.window or win(); if not w then return false, "no window" end
     w:activate(); sleep(0.25)                       -- 弹窗随 Chrome 窗口显示，先置顶
+    -- 0) 授权框：键盘最简 —— 右方向键 + 回车（焦点移到「允许」再确认）
+    local rg = opts.region or { math.floor(w.w * 0.25), 60, math.floor(w.w * 0.55), 560 }
+    for _, o in ipairs(w:ocr_bands(rg, 200)) do
+        if o.text:find("远程调试") or o.text:find("要允许") or o.text:find("Allow remote debugging") then
+            w:key("Right"); os.execute("sleep 0.15"); w:key("Return")
+            return true, "key:Right+Enter"
+        end
+    end
     local words = opts.texts or CONSENT_WORDS
     -- 默认先扫“工具栏下方”的弹条/对话框区；找不到再扫上半屏
     local regions = { opts.region or { 0, 80, w.w, 500 }, { 0, 80, w.w, math.min(w.h - 80, 800) } }
@@ -132,15 +140,27 @@ function M.accept_consent(opts)
     return false, "no consent button"
 end
 
--- 后台守望：在 seconds 秒内轮询，出现同意按钮即点掉（供 MCP 连接期间使用）
+-- 后台守望：在 seconds 秒内轮询，出现同意按钮即点掉（seconds<=0 表示常驻）
 function M.watch_consent(seconds, opts)
     seconds = seconds or 30
+    local infinite = seconds <= 0
     local t = 0
-    while t < seconds do
-        if M.accept_consent(opts) then return true end
+    while infinite or t < seconds do
+        if M.accept_consent(opts) and not infinite then return true end
         os.execute("sleep 1"); t = t + 1
     end
-    return false
+    return not infinite
+end
+
+-- 常驻守望 daemon：持续点掉授权弹窗（供 MCP/CDP 随时连接）
+function M.consent_daemon(interval)
+    interval = interval or 2
+    local w = win(); if not w then return end
+    local rg = { math.floor(w.w * 0.25), 60, math.floor(w.w * 0.55), 560 }
+    while true do
+        M.accept_consent({ region = rg })
+        os.execute("sleep " .. interval)
+    end
 end
 
 -- ── 控制条识别：「自动测试软件正在控制 Chrome」（授权成功的标志）──
