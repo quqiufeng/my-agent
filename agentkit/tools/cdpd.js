@@ -74,7 +74,9 @@ async function handle(cmd, a) {
       await sleep(400);
       await sendFn('Input.dispatchKeyEvent', key('keyDown'), sessionId);
       await sendFn('Input.dispatchKeyEvent', key('keyUp'), sessionId);
-      const GET = `[...document.querySelectorAll(${JSON.stringify(RESP)})].map(e=>e.innerText).join('\\n').trim()`;
+      const GET = `(()=>{const els=[...document.querySelectorAll(${JSON.stringify(RESP)})];` +
+        `const inner=els.filter(e=>!els.some(o=>o!==e&&e.contains(o)));` +
+        `return inner.map(e=>e.innerText.trim()).filter(Boolean).join('\\n\\n')})()`;
       let last = '', stable = 0;
       for (let i = 0; i < 90; i++) { await sleep(1000); const cur = await ev(GET);
         if (cur && cur === last) { if (++stable >= 3) break; } else { stable = 0; last = cur; } }
@@ -89,7 +91,9 @@ async function handle(cmd, a) {
       await sleep(300);
       await sendFn('Input.dispatchKeyEvent', key('keyDown'), sessionId);
       await sendFn('Input.dispatchKeyEvent', key('keyUp'), sessionId);
-      const LAST = `(()=>{const els=[...document.querySelectorAll(${JSON.stringify(RESP)})];return els.length?els[els.length-1].innerText.trim():''})()`;
+      const LAST = `(()=>{const els=[...document.querySelectorAll(${JSON.stringify(RESP)})];` +
+        `const inner=els.filter(e=>!els.some(o=>o!==e&&e.contains(o)));` +
+        `return inner.length?inner[inner.length-1].innerText.trim():''})()`;
       let last = '', stable = 0;
       for (let i = 0; i < 90; i++) { await sleep(1000); const cur = await ev(LAST);
         if (cur && cur === last) { if (++stable >= 3) break; } else { stable = 0; last = cur; } }

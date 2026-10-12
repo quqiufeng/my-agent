@@ -4,7 +4,8 @@
 const fs = require('fs');
 
 function wsUrl() {
-  const pf = process.env.HOME + '/.config/google-chrome/DevToolsActivePort';
+  if (process.env.AGENTKIT_CDP_WS) return process.env.AGENTKIT_CDP_WS;
+  const pf = (process.env.AGENTKIT_CHROME_DIR || process.env.HOME + '/.config/google-chrome') + '/DevToolsActivePort';
   if (fs.existsSync(pf)) {
     const [port, bpath] = fs.readFileSync(pf, 'utf8').trim().split('\n');
     return 'ws://127.0.0.1:' + port + bpath;
@@ -57,8 +58,10 @@ const RESP = '.model-response-text, message-content, .response-container-content
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }, sid);
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }, sid);
 
-  // 等回复稳定（3s 无变化）
-  const GET = `[...document.querySelectorAll(${JSON.stringify(RESP)})].map(e=>e.innerText).join('\\n').trim()`;
+  // 等回复稳定（3s 无变化）；只取最内层匹配元素，避免嵌套容器重复
+  const GET = `(()=>{const els=[...document.querySelectorAll(${JSON.stringify(RESP)})];` +
+    `const inner=els.filter(e=>!els.some(o=>o!==e&&e.contains(o)));` +
+    `return inner.map(e=>e.innerText.trim()).filter(Boolean).join(String.fromCharCode(10)+String.fromCharCode(10))})()`;
   let last = '', stable = 0;
   for (let i = 0; i < 60; i++) {
     await sleep(1000);
