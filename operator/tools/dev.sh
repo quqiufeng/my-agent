@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
-# tools/dev.sh — 自我开发：项目结构/规范 + 新建/加载 Chrome 扩展（自我扩展能力，自动提交可回滚）
-# @desc 本项目结构与插件规范；自我开发的新能力**只做 Chrome 扩展**（沙箱、按 manifest 授权）；支持新建/加载扩展、自动 git 提交（可回滚）、重建索引、重启
-# @usage tools/dev.sh info | list | ext new <name> | ext list | ext load <name> | ext dir <name> | index | commit [msg] | push | restart
-# @rule **需求现有工具满足不了时**：`tools/dev.sh info` 读规范 → **新建 Chrome 扩展**（`ext new <name>` → 填 content/background → `ext load <name>` 生效）。**只允许用浏览器扩展扩展能力**。改动会自动 `git commit`（可回滚）；要同步远端再 `push`。
+# tools/dev.sh — 自我开发：项目结构/规范 + 新建「网页能力」工具（基于专用 Chrome 免授权 + CDP/DOM）
+# @desc 本项目结构与规范；新能力=一个**走专用 Chrome(免授权登录)+CDP/DOM 的网页工具**（能力来自网页，安全）；支持新建/索引/提交(可回滚)/重启
+# @usage tools/dev.sh info | caps | list | new <name> | index | commit [msg] | push | restart
+# @rule **需求现有工具满足不了时**：`tools/dev.sh info` 读规范 → `tools/dev.sh new <name>` 生成网页工具模板（里层用专用 Chrome + `ak.cdp` 做 DOM 操作）→ 填逻辑 → `commit`（可回滚）→ `restart` 生效。**能力只来自网页（免授权 Chrome + CDP/DOM）**，不写碰本机任意资源的脚本，也不做浏览器扩展。
 # @order 1
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 OP="/opt/my-agent/operator"
 REPO="/opt/my-agent"
 TOOLS="$DIR"
-EXT="${AGENTKIT_EXT_DIR:-$OP/extensions}"     # 扩展放仓库内（可 git 回滚）
-CORE="$REPO/agentkit"
 
-gcommit() {  # 自动提交（可回滚）
+gcommit() {
   git -C "$REPO" add -A >/dev/null 2>&1
   if git -C "$REPO" -c user.name=myagent -c user.email=myagent@local \
        commit -m "$1" >/dev/null 2>&1; then echo "已提交: $1"; else echo "(无改动可提交)"; fi
@@ -24,111 +22,88 @@ cat <<'EOF'
 
 ## 是什么
 入口(语音/微信/定时，只产文本) → opencode 大脑 → 白名单工具 operator/tools/*.sh → 本机操作。
-铁律：入口只产文本 · 单脑 · 能力=白名单脚本。
-（已有能力清单见 operator/CAPABILITIES.md → `tools/dev.sh caps`；本文件教你怎么**扩展**它。）
+已有能力清单见 operator/CAPABILITIES.md（`tools/dev.sh caps`）。本文件教你怎么**扩展**它。
 
-## 自我扩展：只做 Chrome 扩展
-现有能力不够时，**新增能力=一个 Chrome 扩展（MV3）**，跑在专用 Chrome 里：
-- 沙箱在浏览器内、只按 manifest 声明权限；
-- 用于网页自动化/抓取/注入/调 NAS 网页端等 **web 域**任务；
-- 不给机器任意 shell/文件/进程权限（安全边界）。
-- 扩展放在 `operator/extensions/<name>/`（**在仓库内 → 自动 git 提交，可回滚**）。
+## 自我扩展：只做「网页能力」
+现有能力不够时，**新能力 = 一个走网页的工具**：
+- 底座 = 我们的**专用 Chrome：固定端口 9222、免授权、已登录**（`tools/chrome_debug.sh`）；
+- 手段 = **CDP/DOM**（`ak.cdp`：goto/eval/click/fill/text/query/cookies/gemini…）；
+- **能力来源 = 网页**（读页面内容、登录态下的接口/交互），**不碰**本机任意文件/进程/网络权限 → 安全；
+- **不做浏览器扩展**，也不写会执行任意系统命令的脚本。
 
 ## 目录
-operator/tools/*.sh     白名单工具
-operator/extensions/*/  自我开发的 Chrome 扩展
-operator/plugin.sh      扫描 tools/*.sh → 生成 TOOLS.md
+operator/tools/*.sh     白名单工具（新能力写这里）
+operator/CAPABILITIES.md 已有能力清单（进大脑上下文）
+operator/TOOLS.md       工具表（由 plugin.sh 从 tools/*.sh 元数据生成）
+operator/plugin.sh      `plugin.sh index` 重建 TOOLS.md
 operator/opencode.json  权限（bash 仅 tools/*；MCP chrome-devtools）
-agentkit/               统一库（LuaJIT+FFI）
-operator/report/        Kami 排版 HTML→PNG/PDF
-agentkit/tools/*.js     CDP 桥
+agentkit/               统一库：窗口/OCR/输入/映射/CDP/语音
+agentkit/tools/*.js     CDP 桥（cdp.js/cdpd.js/gemini.js）
+operator/report/        Kami 排版 HTML→PNG/PDF（render.sh）
 
-## 开发一个扩展（闭环）
-1. tools/dev.sh ext new <name>      生成 operator/extensions/<name>/（自动 git commit）
-2. 填 manifest 权限 + content.js/background.js
-3. tools/dev.sh commit "feat(ext): <name> ..."   提交改动（可回滚：git revert/checkout）
-4. tools/dev.sh ext load <name>     用专用 Chrome(9222) 带 --load-extension 重启 → 生效
-5. tools/dev.sh push                同步到 GitHub
+## 开发一个新「网页能力」
+1. `tools/dev.sh new <name>`            生成 operator/tools/<name>.sh（含元数据 + 专用Chrome + ak.cdp 骨架）
+2. 填逻辑：`ss -ltn|grep :9222 || chrome_debug.sh` → `ak.cdp.goto(url)` → `ak.cdp.eval/click/...` → 处理结果
+3. `tools/dev.sh commit "feat(tool): <name> ..."`（自动/可回滚）
+4. `tools/dev.sh index`（重建 TOOLS.md）→ `tools/dev.sh restart`（大脑生效）
+5. 要共享：`tools/dev.sh push`
 
-### manifest.json（MV3 最小）
-{ "manifest_version":3,"name":"<name>","version":"0.1",
-  "permissions":["storage","scripting","activeTab"],
-  "host_permissions":["<all_urls>"],
-  "background":{"service_worker":"background.js"},
-  "content_scripts":[{"matches":["<all_urls>"],"js":["content.js"]}] }
+### 工具脚本骨架
+#!/usr/bin/env bash
+# tools/<name>.sh — 一句话
+# @desc 用途（网页能力）
+# @usage tools/<name>.sh <参数>
+# @rule 说“<触发词>” → 用 tools/<name>.sh
+# @order 50
+set -uo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ss -ltn 2>/dev/null | grep -q ':9222 ' || "$DIR/chrome_debug.sh" >/dev/null 2>&1
+luajit -e 'package.path="/opt/my-agent/?.lua;/opt/my-agent/?/init.lua;"..package.path
+local ak=require("agentkit"); ak.cdp.goto("https://…"); os.execute("sleep 2")
+print(ak.cdp.eval("document.body.innerText"))'
 
 ## 常用积木
-- 网页：固定端口 Chrome（tools/chrome_debug.sh）+ CDP DOM（ak.cdp / MCP）；或 cookie+curl（cookie.sh/fetch.sh）
-- 出图：operator/report/render.sh in.html out.png（Kami）
+- 网页：固定端口 Chrome（chrome_debug.sh）+ `ak.cdp`（或大脑 MCP）；cookie+curl：cookie.sh/fetch.sh
+- 出图：operator/report/render.sh in.html out.png（Kami，参考 report/*.lua）
 - 发微信：tools/wechat_send.sh / wechat_send_file.sh
-- 语音：agentkit.voice（tts/asr）
+- 语音：ak.voice（tts/asr）
 EOF
 }
 
-ext_new() {
-  local n="${1:?用法: dev.sh ext new <name>}"
-  local d="$EXT/$n"
-  mkdir -p "$EXT"
-  [ -e "$d" ] && { echo "已存在: $d" >&2; exit 1; }
-  mkdir -p "$d"
-  cat > "$d/manifest.json" <<EOF
-{
-  "manifest_version": 3,
-  "name": "$n",
-  "version": "0.1",
-  "description": "my-agent extension: $n",
-  "permissions": ["storage", "scripting", "activeTab"],
-  "host_permissions": ["<all_urls>"],
-  "background": { "service_worker": "background.js" },
-  "content_scripts": [
-    { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_idle" }
-  ],
-  "action": { "default_title": "$n" }
-}
+new_tool() {
+  local n="${1:?用法: dev.sh new <name>}"
+  local f="$TOOLS/$n.sh"
+  [ -e "$f" ] && { echo "已存在: $f" >&2; exit 1; }
+  cat > "$f" <<EOF
+#!/usr/bin/env bash
+# tools/$n.sh — 一句话说明（网页能力）
+# @desc <用途：通过专用 Chrome(免授权登录)+CDP/DOM 从网页获取/操作>
+# @usage tools/$n.sh <参数>
+# @rule 说“<触发词>” → 用 \`tools/$n.sh\`
+# @order 50
+set -uo pipefail
+DIR="\$(cd "\$(dirname "\$0")" && pwd)"
+# 确保专用 Chrome（固定端口 9222、免授权、已登录）
+ss -ltn 2>/dev/null | grep -q ':9222 ' || "\$DIR/chrome_debug.sh" >/dev/null 2>&1
+# 通过 CDP/DOM 操作网页（能力来源=网页）
+luajit -e 'package.path="/opt/my-agent/?.lua;/opt/my-agent/?/init.lua;"..package.path
+local ak=require("agentkit")
+ak.cdp.goto("<URL>"); os.execute("sleep 2")
+print(ak.cdp.eval("document.body.innerText.slice(0,500)"))'
 EOF
-  printf '// background.js — %s 后台逻辑（chrome.runtime.onMessage 等）\n' "$n" > "$d/background.js"
-  printf '// content.js — %s 页面注入（DOM 操作/采集）\n' "$n" > "$d/content.js"
-  echo "已创建扩展: $d"
-  gcommit "feat(ext): scaffold $n"
-  echo "编辑 content.js/background.js 后: tools/dev.sh ext load $n"
-}
-
-ext_load() {
-  local n="${1:?用法: dev.sh ext load <name>}"
-  local d="$EXT/$n"
-  [ -d "$d" ] || { echo "无此扩展: $d" >&2; exit 1; }
-  local port="${2:-9222}"
-  local profile="$HOME/.chrome-debug-profile"
-  local loads=(); for x in "$EXT"/*/; do [ -f "$x/manifest.json" ] && loads+=("${x%/}"); done
-  local extarg; extarg="$(IFS=,; echo "${loads[*]}")"
-  for pid in $(ps -eo pid,comm | awk '$2=="chrome"{print $1}'); do kill -9 "$pid" 2>/dev/null; done
-  sleep 2
-  local P XA; P=$(pgrep -x pcmanfm-qt | head -1)
-  XA=$(tr '\0' '\n' < "/proc/$P/environ" 2>/dev/null | sed -n 's/^XAUTHORITY=//p')
-  setsid env DISPLAY=:0 XAUTHORITY="$XA" google-chrome \
-    --remote-debugging-port="$port" --user-data-dir="$profile" \
-    --load-extension="$extarg" --disable-extensions-except="$extarg" \
-    --no-first-run --no-default-browser-check >/tmp/opencode/chrome_ext.log 2>&1 </dev/null &
-  sleep 5
-  ss -ltn 2>/dev/null | grep -q ":$port " && echo "Chrome 已带扩展启动（端口 $port；加载 ${#loads[@]} 个）" \
-    || { echo "启动失败，见 /tmp/opencode/chrome_ext.log" >&2; exit 1; }
+  chmod 755 "$f"
+  echo "已创建: $f"
+  gcommit "feat(tool): scaffold $n"
 }
 
 case "${1:-info}" in
   info) info ;;
-  caps) cat "$OP/CAPABILITIES.md" ;;   # 已有能力清单（同大脑上下文）
+  caps) cat "$OP/CAPABILITIES.md" ;;
   list) ls -1 "$TOOLS"/*.sh | sed 's#.*/##' | sort ;;
+  new)  new_tool "${2:-}" ;;
   index) "$OP/plugin.sh" index; gcommit "chore(tools): regenerate TOOLS.md" ;;
   commit) gcommit "${2:-chore(dev): update}" ;;
   push) git -C "$REPO" push origin HEAD ;;
   restart) "$OP/start.sh" ;;
-  ext)
-    case "${2:-}" in
-      new)  ext_new "${3:-}" ;;
-      load) ext_load "${3:-}" "${4:-9222}" ;;
-      list) ls -1d "$EXT"/*/ 2>/dev/null | xargs -n1 basename 2>/dev/null || echo "(无)" ;;
-      dir)  echo "$EXT/${3:?用法: dev.sh ext dir <name>}" ;;
-      *) echo "用法: dev.sh ext new|load|list|dir <name>" >&2; exit 2 ;;
-    esac ;;
-  *) echo "用法: dev.sh info | list | ext new|load|list|dir <name> | index | commit [msg] | push | restart" >&2; exit 2 ;;
+  *) echo "用法: dev.sh info | caps | list | new <name> | index | commit [msg] | push | restart" >&2; exit 2 ;;
 esac

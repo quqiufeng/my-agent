@@ -11,7 +11,7 @@
 | `tools/chrome_debug.sh` | 每次启动前同步 profile，再用固定调试端口起专用 Chrome，供 chrome-devtools MCP(--browser-url) 连接（免反复授权） | `tools/chrome_debug.sh [端口]        # 默认 9222` |
 | `tools/cookie.sh` | 把某站点 cookie 从已登录 Chrome(CDP) 取出并存入 ~/.env，或直接读写 | `tools/cookie.sh save <域名> <ENVKEY> | set <ENVKEY> <值> | get <ENVKEY> | list` |
 | `tools/dash.sh` | 股票大屏（点阵风·暗色：指数环+自选股+小K线） | `tools/dash.sh [--to 会话] [--show]` |
-| `tools/dev.sh` | 本项目结构与插件规范；自我开发的新能力**只做 Chrome 扩展**（沙箱、按 manifest 授权）；支持新建/加载扩展、自动 git 提交（可回滚）、重建索引、重启 | `tools/dev.sh info | list | ext new <name> | ext list | ext load <name> | ext dir <name> | index | commit [msg] | push | restart` |
+| `tools/dev.sh` | 本项目结构与规范；新能力=一个**走专用 Chrome(免授权登录)+CDP/DOM 的网页工具**（能力来自网页，安全）；支持新建/索引/提交(可回滚)/重启 | `tools/dev.sh info | caps | list | new <name> | index | commit [msg] | push | restart` |
 | `tools/douyin.sh` | 抖音作品：前 N 条下载到 ~/douyin/<uid> （文案/标签/视频；高赞转 wav 供克隆）；默认抓自己，可指定 uid | `tools/douyin.sh list [N] [<主页URL>|--uid <sec_uid>|--url <主页URL>]                 # 列前 N 条(id/赞/文案/标签)` |
 | `tools/english.sh` | 英语口语陪练（麦克风识别英文，回复用英文音色朗读） | `tools/english.sh start|stop|status` |
 | `tools/fetch.sh` | 用 curl 抓取网页/接口，可带 ~/.env 里的 cookie（登录态） | `tools/fetch.sh <url> [--cookie ENVKEY] [--post DATA] [--json] [--save FILE] [--referer URL] [--header 'K: V'] [--ua UA]` |
@@ -56,7 +56,7 @@
 
 ## 各工具使用规则
 
-1. **需求现有工具满足不了时**：`tools/dev.sh info` 读规范 → **新建 Chrome 扩展**（`ext new <name>` → 填 content/background → `ext load <name>` 生效）。**只允许用浏览器扩展扩展能力**。改动会自动 `git commit`（可回滚）；要同步远端再 `push`。
+1. **需求现有工具满足不了时**：`tools/dev.sh info` 读规范 → `tools/dev.sh new <name>` 生成网页工具模板（里层用专用 Chrome + `ak.cdp` 做 DOM 操作）→ 填逻辑 → `commit`（可回滚）→ `restart` 生效。**能力只来自网页（免授权 Chrome + CDP/DOM）**，不写碰本机任意资源的脚本，也不做浏览器扩展。
 2. **出声/朗读/语音回**：用 `tools/say.sh "文本"`；想用**克隆音色**发声则 `tools/say.sh --voice <音色名> "文本"`（音色用 `tools/voices.sh` 管理：list/add）。
 3. **问时间/日期**（“现在几点 / 今天几号 / 星期几”）→ 用 `now.sh`，不要为此调浏览器或其它工具。
 4. **截屏**：说“截个屏/截屏发我”→ `screenshot.sh`（返回路径），再用 `wechat_send_file.sh <路径> [--to 来源会话]` 发回。
