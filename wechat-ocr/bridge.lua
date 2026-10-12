@@ -262,6 +262,13 @@ local function is_hidden(win)
     local s = f:read("*a"); f:close()
     return s ~= nil and s:find("Iconic") ~= nil
 end
+local function wechat_attn(win)
+    if not win then return false end
+    local f = io.popen("xprop -id " .. win.id .. " _NET_WM_STATE 2>/dev/null")
+    if not f then return false end
+    local s = f:read("*a"); f:close()
+    return s ~= nil and s:find("DEMANDS_ATTENTION") ~= nil
+end
 local function wechat_open(win)
     if not win then return end
     os.execute("xdotool windowmap " .. win.id .. " 2>/dev/null")
@@ -275,9 +282,15 @@ end
 
 while true do
     local win = watcher.window()
+    local hidden = win and is_hidden(win)
+    local attn = win and wechat_attn(win)
+    if hidden and not attn then
+        io.write("[bridge] 空闲（无新消息），不打扰\n")
+    else
+    if hidden then wechat_open(win) end
     local shot, w = watcher.window_capture()
     if not shot then
-        io.write("[bridge] 微信不可见（最小化），跳过（保持微信未最小化即可）\n")
+        io.write("[bridge] 微信不可见，跳过\n")
     else
         local res = watcher.ocr(shot, win)
         local has_cmd = false
@@ -334,7 +347,9 @@ while true do
         end
         if not has_cmd then
             io.write("[bridge] 无新指令\n")
+            wechat_background(win)
         end
+    end
     end
     io.flush()
     if ONCE then break end
