@@ -45,7 +45,7 @@
 | `tools/voices.sh` | 克隆音色：列出/注册/删除音色，或用指定音色发声 | `tools/voices.sh list | add <名> <参考.wav> ["参考文本"] | del <名> | say <名> "文本" [语速]` |
 | `tools/wechat_send_file.sh` | 发送文件/图片到微信 | `wechat_send_file.sh <本地路径|http(s)://URL> [--to 联系人]` |
 | `tools/wechat_send.sh` | 发送微信文本 | `wechat_send.sh "内容"                  # 默认发到当前会话（文件传输助手）` |
-| `tools/wechat_shot.sh` | 截屏发微信（微信 Alt+A 截当前屏幕 → 剪贴板 → 粘贴发送到指定会话/文件传输助手） | `tools/wechat_shot.sh            # 截图发到文件传输助手` |
+| `tools/wechat_shot.sh` | 截屏发微信：说「截图/截屏 <应用名>」则截该应用；不给应用则截桌面。发送到指定会话/文件传输助手 | `tools/wechat_shot.sh [--to 会话] [--app 应用名]` |
 | `tools/weibo_album.sh` | 微博相册大图下载（搜昵称定 uid → 相册接口翻页取大图 → 存 ~ 报张数） | `tools/weibo_album.sh <昵称|uid> [页数 | all，默认 20] [--save 目录] [--to 会话] [--limit N]` |
 | `tools/weibo_hot.sh` | 抓微博实时热搜榜，生成排版图并（可选）发文字到微信（默认文件传输助手） | `tools/weibo_hot.sh [--to 会话] [--limit N（默认15）] [--display] [--no-send]` |
 | `tools/weibo_imgs.sh` | 下载微博图（打开微博搜索，抓九宫格图并小图换大图，存到 ~ 报张数） | `tools/weibo_imgs.sh <明星/关键词> [页数 | A-B | all，默认 20] [--save 目录] [--each] [--limit N] [--to 会话] [--refresh-cookie]` |
@@ -87,7 +87,7 @@
 25. **下载微博图**：说“下载微博图 <明星> / 抓 <明星> 的微博图 / 找 <明星> 的图”→ `tools/weibo_imgs.sh <明星>`。**默认抓 1..20 页**（也可 `N`、`A-B` 或 `all`）。用**微博 cookie（存在 ~/.env，长期免授权）** curl 抓 `s.weibo.com` 搜索页，解析帖子图片并自动把小图换成大图，**保存到 ~ 下的目录**并报告下载张数（默认不发微信）。只有用户明确说“发我微信/发过来”才加 `--to` 发送；cookie 过期（抓不到）时才用 `--refresh-cookie` 从已登录 Chrome 重取一次。
 26. **下载某人的微博相册（全量大图）**：说“下载 <某人> 的微博相册 / 抓 <某人> 相册的图 / <某人> 相册”→ `tools/weibo_album.sh <昵称>`。先按昵称搜出 uid（也可直接给数字 uid），再用相册接口翻页取**大图**（比搜索页快很多），存到 ~ 下的目录并报张数（默认不发微信；说“发我”才加 `--to`）。
 27. **下载图片URL**：当你已拿到图片 URL（来自网页/接口）→ `tools/send_images.sh --save <目录> <url...>`（自动把 /orj360//thumb150//mw690/ 等**小图换成 /large/ 大图**后下载并保存，报告张数）。加 `--to 会话` 才发微信。看某明星微博图请用 `weibo_imgs.sh`。
-28. **截屏发我 / 截图发我 / 屏幕发我** → `tools/wechat_shot.sh`（可选 `--to <会话名>`）。截取当前屏幕并用微信发送。若用户想截的是某个网页/地图，先用浏览器打开并置于前台再调用。
+28. **截屏发我 / 截图发我** → `tools/wechat_shot.sh`（不加 --app 截的是桌面）。**要截某个应用**（如“截图 agent / 助手 / 微信 / 浏览器”）→ **必须** `tools/wechat_shot.sh --app <应用名>`。
 29. 用户说“微博热 / 微博热搜 / 微博热搜榜” → `tools/weibo_hot.sh`（默认出图+发微信）；要**只要文本**加 `--display`。
 30. **手机操作**：用户说“看下手机/手机截个屏/操作手机”→ 用 `tools/phone.sh screen` 得路径，再 `tools/wechat_send_file.sh <路径>` 发回；要点击/滑动/输入/打开应用就用对应子命令（中文输入用 `phone.sh type`）。**只用白名单子命令**，不要拼 `adb` 原始命令。
 31. 用户说“每日英语 / 英语短文 / 学英语 / 来篇英语文章” → `tools/english_daily.sh`（默认随机科技媒体，出图+发微信）；只要文本加 `--display`。
