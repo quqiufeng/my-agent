@@ -285,6 +285,7 @@ while true do
                                 os.execute("sleep 1")
                             end
                             os.execute("sleep 4")
+                            os.execute("xdotool windowminimize " .. win.id .. " 2>/dev/null")
                         end
                     else
                         io.write("[bridge] 语音转文字为空\n")
@@ -309,6 +310,7 @@ while true do
                             os.execute("sleep 1")
                         end
                         os.execute("sleep 4")
+                        os.execute("xdotool windowminimize " .. win.id .. " 2>/dev/null")  -- 执行完回后台静默
                     end
                 end
             end
