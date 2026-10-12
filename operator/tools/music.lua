@@ -24,7 +24,7 @@ local function shq(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
 local function list_tracks()
     if URL == "" or MUSIC == "" then return {} end
     local cmd = string.format(
-        "curl -sS -m 25 -u \"$WEBDAV_USER:$WEBDAV_PASS\" -X PROPFIND -H 'Depth: 1' '%s%s/' 2>/dev/null",
+        "curl -sS -m 25 --netrc-file \"$HOME/.webdav_netrc\" -X PROPFIND -H 'Depth: 1' '%s%s/' 2>/dev/null",
         URL, urlencode(MUSIC))
     local p = io.popen(cmd)
     if not p then return {} end
@@ -98,7 +98,7 @@ local function save_to_nas(url, title)
     fn = fn:sub(1, 120) .. ".flac"
     local tmp = "/tmp/myagent_dl_" .. os.time() .. ".flac"
     local cmd = string.format(
-        "setsid sh -c 'curl -sL -m 300 -A \"Mozilla/5.0\" -o %s %s && curl -s -m 120 -u \"$WEBDAV_USER:$WEBDAV_PASS\" -T %s \"%s%s/%s\" && rm -f %s' </dev/null >/dev/null 2>&1 &",
+        "setsid sh -c 'curl -sL -m 300 -A \"Mozilla/5.0\" -o %s %s && curl -s -m 120 --netrc-file \"$HOME/.webdav_netrc\" -T %s \"%s%s/%s\" && rm -f %s' </dev/null >/dev/null 2>&1 &",
         shq(tmp), shq(url), shq(tmp), URL, urlencode(MUSIC), urlencode(fn), shq(tmp))
     os.execute(cmd)
     print("已在后台保存到 NAS: " .. fn)

@@ -19,7 +19,7 @@ PIDF=/tmp/myagent_tv.pid; NOW=/tmp/myagent_tv_now; STATE=/tmp/myagent_tv_state
 LOGF=/tmp/myagent_tv.log
 [ -n "$url" ] || { echo "未配置 WEBDAV_URL" >&2; exit 1; }
 
-pf()   { curl -sS -m 25 -u "$U:$P" -X PROPFIND -H 'Depth: 1' "$url$1" 2>/dev/null | grep -oP '(?<=<[Dd]:href>)[^<]+'; }
+pf()   { curl -sS -m 25 --netrc-file "$HOME/.webdav_netrc" -X PROPFIND -H 'Depth: 1' "$url$1" 2>/dev/null | grep -oP '(?<=<[Dd]:href>)[^<]+'; }
 dec()  { printf '%b' "${1//%/\\x}"; }
 name() { local b="${1%/}"; dec "${b##*/}"; }
 urlenc(){ local s="$1" o="" c h i; for ((i=0;i<${#s};i++)); do c="${s:i:1}"; case "$c" in [a-zA-Z0-9.~_-]) o+="$c";; *) printf -v h '%%%02X' "'$c"; o+="$h";; esac; done; printf '%s' "$o"; }

@@ -38,7 +38,7 @@ if [ -n "${WEBDAV_URL:-}" ]; then
     IFS=':' read -r -a DROOTS <<< "${WEBDAV_SEARCH:-${WEBDAV_MUSIC:-}}"
     for root in "${DROOTS[@]}"; do
         [ -z "$root" ] && continue
-        XML="$(curl -sS -m 25 -u "${WEBDAV_USER:-}:${WEBDAV_PASS:-}" \
+        XML="$(curl -sS -m 25 --netrc-file "$HOME/.webdav_netrc" \
             -X PROPFIND -H 'Depth: 1' "${WEBDAV_URL}${root}/" 2>/dev/null || true)"
         while IFS= read -r href; do
             [ -z "$href" ] && continue

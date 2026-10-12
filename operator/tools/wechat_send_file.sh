@@ -19,7 +19,7 @@ if [[ "$FILE" =~ ^https?:// ]]; then
     raw="$(basename "${FILE%%\?*}")"
     dec="$(printf '%b' "${raw//%/\\x}")"
     out="/tmp/myagent_dl_$(date +%s)_${dec}"
-    if ! curl -fsSL -m 300 -u "${WEBDAV_USER:-}:${WEBDAV_PASS:-}" -o "$out" "$FILE"; then
+    if ! curl -fsSL -m 300 --netrc-file "$HOME/.webdav_netrc" -o "$out" "$FILE"; then
         echo "下载失败: $FILE" >&2; exit 1
     fi
     FILE="$out"
