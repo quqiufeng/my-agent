@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:yaru/yaru.dart';
 
 import 'theme/app_theme.dart';
@@ -35,61 +36,6 @@ class MyAgentApp extends StatelessWidget {
   }
 }
 
-/// 一路摄像头：ffmpeg 持续把画面写成 jpg（-update 1），UI 仅在文件更新时读字节。
-class _Cam {
-  _Cam(this.label, this.args, this.jpg);
-  final String label;
-  final List<String> args;
-  final String jpg;
-  Process? proc;
-  Uint8List? bytes;
-  int mtime = 0;
-
-  void refresh() {
-    try {
-      final f = File(jpg);
-      if (!f.existsSync()) return;
-      final m = f.lastModifiedSync().millisecondsSinceEpoch;
-      if (m == mtime) return;
-      final b = f.readAsBytesSync();
-      if (b.isNotEmpty) {
-        bytes = b;
-        mtime = m;
-      }
-    } catch (_) {}
-  }
-}
-
-class _CamView extends StatelessWidget {
-  const _CamView({required this.cam});
-  final _Cam cam;
-  @override
-  Widget build(BuildContext context) {
-    final bytes = cam.bytes;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const ColoredBox(color: Color(0xFF11110F)),
-        if (bytes != null && bytes.isNotEmpty)
-          Image.memory(bytes,
-              gaplessPlayback: true, fit: BoxFit.contain, filterQuality: FilterQuality.low),
-        Positioned(
-          left: 12,
-          top: 12,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-                color: ChinaColors.nenjulv,
-                borderRadius: BorderRadius.circular(6)),
-            child: Text(cam.label,
-                style: const TextStyle(fontSize: 13, color: ChinaColors.ink)),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
   @override
@@ -97,59 +43,43 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final List<_Cam> _cams = [];
-  int _full = 0;
+  static const _cam = MethodChannel('agent/camera');
+  int _texId = 0;
   String _clock = '';
   int _mic = 0;
   int _micHold = 0;
   String _last = '';
   Process? _micProc;
-  Timer? _camTimer, _uiTimer;
-  final ValueNotifier<int> _camTick = ValueNotifier(0);
+  Timer? _uiTimer, _snapTimer;
 
   @override
   void initState() {
     super.initState();
     final env = Platform.environment;
-    final usb = env['CAM_USB_INDEX'] ?? '0';
-    final rtsp = env['RTSP_URL'] ?? '';
-    if (env['CAM_USB_ONLY'] != '1') {
-      _cams.add(_Cam('USB', [
-        '-loglevel', 'error', '-f', 'v4l2', '-i', '/dev/video$usb',
-        '-vf', 'scale=640:-2', '-r', '25', '-q:v', '6',
-        '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_usb.jpg'
-      ], '/tmp/myagent_cam_usb.jpg'));
-    }
-    if (rtsp.isNotEmpty) {
-      _cams.add(_Cam('RTSP', [
-        '-loglevel', 'error', '-rtsp_transport', 'tcp', '-i', rtsp,
-        '-vf', 'scale=640:-2', '-r', '25', '-q:v', '6',
-        '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_rtsp.jpg'
-      ], '/tmp/myagent_cam_rtsp.jpg'));
-    }
-    for (final c in _cams) {
-      _spawn(c);
-    }
+    _getTexture();
     _micLoop(env['VOICE_MIC_DEV'] ?? 'plughw:2,0',
         env['VOICE_MIC_CARD'] ?? '2', env['VOICE_MIC_GAIN'] ?? '7810', env);
     _tickClock();
-    _camTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
-      for (final c in _cams) {
-        c.refresh();
-      }
-      _camTick.value++;
-    });
     _uiTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(_tickClock);
     });
+    _snapTimer = Timer.periodic(const Duration(milliseconds: 700), (_) {
+      try {
+        _cam.invokeMethod('snapshot');
+      } catch (_) {}
+    });
   }
 
-  Future<void> _spawn(_Cam c) async {
-    try {
-      c.proc = await Process.start('ffmpeg', c.args);
-      c.proc!.stderr.listen((_) {});
-    } catch (e) {
-      debugPrint('[cam ${c.label}] $e');
+  Future<void> _getTexture() async {
+    for (var i = 0; i < 50; i++) {
+      try {
+        final id = await _cam.invokeMethod<int>('textureId');
+        if (id != null && id != 0) {
+          if (mounted) setState(() => _texId = id);
+          return;
+        }
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 200));
     }
   }
 
@@ -272,55 +202,20 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    _camTimer?.cancel();
     _uiTimer?.cancel();
-    _camTick.dispose();
-    for (final c in _cams) {
-      c.proc?.kill();
-    }
+    _snapTimer?.cancel();
     _micProc?.kill();
     super.dispose();
-  }
-
-  Widget _tree() {
-    if (_full != 0 && _full <= _cams.length) {
-      return _CamView(cam: _cams[_full - 1]);
-    }
-    if (_cams.length == 1) return _CamView(cam: _cams[0]);
-    if (_cams.isEmpty) {
-      return const Center(
-          child: Text('无摄像头（设 CAM_USB_INDEX / RTSP_URL）',
-              style: TextStyle(color: ChinaColors.muted)));
-    }
-    return Row(children: [
-      for (final c in _cams) Expanded(child: _CamView(cam: c)),
-    ]);
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(children: [
       Expanded(
-        child: GestureDetector(
-          onDoubleTapDown: (d) {
-            final w = context.findRenderObject() is RenderBox
-                ? (context.findRenderObject() as RenderBox).size.width
-                : 1.0;
-            setState(() {
-              if (_full != 0) {
-                _full = 0;
-              } else if (_cams.length > 1) {
-                _full = d.localPosition.dx < w / 2 ? 1 : 2;
-              } else if (_cams.isNotEmpty) {
-                _full = 1;
-              }
-            });
-          },
-          child: ValueListenableBuilder<int>(
-            valueListenable: _camTick,
-            builder: (_, __, ___) => _tree(),
-          ),
-        ),
+        child: _texId == 0
+            ? const Center(
+                child: Text('正在启动摄像头…', style: TextStyle(color: ChinaColors.muted)))
+            : Texture(textureId: _texId),
       ),
       _statusBar(),
     ]);

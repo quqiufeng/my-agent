@@ -6,6 +6,7 @@
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
+#include "camera_texture.h"
 
 struct _MyApplication {
   GtkApplication parent_instance;
@@ -63,6 +64,11 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_default_size(window, 1280, 720);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
+  // 使用 Skia 渲染后端：Impeller 对经典 FlTextureGL 外部纹理支持不完善，
+  // 会在 raster 线程崩溃，故显式关闭。
+  if (g_getenv("AGENT_IMPELLER") == nullptr) {
+    fl_dart_project_set_enable_impeller(project, FALSE);
+  }
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
 
@@ -82,6 +88,11 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+  // 摄像头 GL 纹理（OpenCV 采集，流畅上屏）
+  if (g_getenv("AGENT_NO_TEX") == nullptr) {
+    camera_texture_register(FL_PLUGIN_REGISTRY(view));
+  }
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
