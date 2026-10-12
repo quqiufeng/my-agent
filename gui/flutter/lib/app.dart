@@ -53,6 +53,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   bool _musicPlaying = false;
   bool _musicPaused = false;
   bool _wxAttention = false;
+  int _wxMiss = 0;
   late final AnimationController _wxAnim;
   bool _awake = false;
   DateTime? _awakeUntil;
@@ -367,9 +368,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
-  // 微信是否有未读：读微信窗口的「需要关注」提示（任务栏闪动同源）
+  // 微信是否有未读：双信号取 OR，提高成功率
+  //   ① 微信窗口 _NET_WM_STATE=DEMANDS_ATTENTION（任务栏底线同源）
+  //   ② 托盘微信绿图标是否在闪（隔 0.22s 两次采样该区域，不同=在闪）
   Future<void> _refreshWechat() async {
-    var att = false;
+    var att = false, blink = false;
     try {
       final r = await Process.run('bash', [
         '-lc',
@@ -377,10 +380,26 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             r'[ -n "$W" ] && xprop -id "$W" _NET_WM_STATE 2>/dev/null'
       ]);
       att = ((r.stdout as String?) ?? '').contains('DEMANDS_ATTENTION');
+      final r2 = await Process.run('bash', [
+        '-lc',
+        r'A=/tmp/myagent_wx_a.png; B=/tmp/myagent_wx_b.png; '
+            r'import -window root -crop 64x28+2348+1410 +repage "$A" 2>/dev/null; sleep 0.22; '
+            r'import -window root -crop 64x28+2348+1410 +repage "$B" 2>/dev/null; '
+            r'cmp -s "$A" "$B" && echo same || echo diff'
+      ]);
+      blink = ((r2.stdout as String?) ?? '').trim() == 'diff';
     } catch (_) {}
-    if (att != _wxAttention) {
-      _wxAttention = att;
-      if (att) {
+    final on = att || blink;
+    // 抖动可能导致信号断续：连续 3 次未命中才熄灭
+    if (on) {
+      _wxMiss = 0;
+    } else {
+      _wxMiss++;
+    }
+    final show = on || _wxMiss < 3;
+    if (show != _wxAttention) {
+      _wxAttention = show;
+      if (show) {
         _wxAnim.repeat(reverse: true);
       } else {
         _wxAnim.stop();
