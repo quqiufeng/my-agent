@@ -116,14 +116,14 @@ class _HomePageState extends State<HomePage> {
     if (env['CAM_USB_ONLY'] != '1') {
       _cams.add(_Cam('USB', [
         '-loglevel', 'error', '-f', 'v4l2', '-i', '/dev/video$usb',
-        '-vf', 'scale=960:-2', '-r', '20', '-q:v', '5',
+        '-vf', 'scale=640:-2', '-r', '25', '-q:v', '6',
         '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_usb.jpg'
       ], '/tmp/myagent_cam_usb.jpg'));
     }
     if (rtsp.isNotEmpty) {
       _cams.add(_Cam('RTSP', [
         '-loglevel', 'error', '-rtsp_transport', 'tcp', '-i', rtsp,
-        '-vf', 'scale=960:-2', '-r', '20', '-q:v', '5',
+        '-vf', 'scale=640:-2', '-r', '25', '-q:v', '6',
         '-f', 'image2', '-update', '1', '-y', '/tmp/myagent_cam_rtsp.jpg'
       ], '/tmp/myagent_cam_rtsp.jpg'));
     }
