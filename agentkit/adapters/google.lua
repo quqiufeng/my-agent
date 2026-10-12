@@ -75,4 +75,41 @@ function M.title() return cdp.title() end
 function M.text() return cdp.eval("document.body.innerText") end
 function M.url() return cdp.url() end
 
+-- Google 新闻版式（tbm=nws）
+function M.news(q)
+    cdp.goto("https://www.google.com/search?tbm=nws&q=" .. enc(q))
+    return true
+end
+
+-- 新闻条目：[{source, title, snippet, url}, ...]
+function M.news_results(limit)
+    local js = [[(()=>{
+      const root=document.querySelector('#rso')||document.querySelector('#center_col')||document;
+      const out=[], seen=new Set();
+      for(const a of root.querySelectorAll('a[href]')){
+        const raw=(a.innerText||'').trim();
+        if(raw.length<15 || !/^https?:/.test(a.href)) continue;
+        if(seen.has(raw)) continue; seen.add(raw);
+        const lines=raw.split('\n').map(s=>s.trim()).filter(Boolean);
+        let source='', title=lines[0], snippet='';
+        if(lines.length>=3){ source=lines[0]; title=lines[1]; snippet=lines.slice(2).join(' '); }
+        else if(lines.length==2){ title=lines[0]; snippet=lines[1]; }
+        out.push({source:source, title:title, snippet:snippet, url:a.href});
+      }
+      return JSON.stringify(out);
+    })()]]
+    local out = cdp.eval(js)
+    local ok, res = pcall(cjson.decode, out or "")
+    return (ok and type(res) == "table") and res or {}
+end
+
+function M.read_news(limit)
+    local lines = {}
+    for _, r in ipairs(M.news_results(limit)) do
+        local head = (r.source ~= "" and (r.source .. " · ") or "") .. r.title
+        lines[#lines + 1] = string.format("%s\n    %s", head, r.snippet)
+    end
+    return lines
+end
+
 return M
