@@ -289,7 +289,8 @@ while true do
     else
     if hidden then wechat_open(win) end
     local shot, w = watcher.window_capture()
-    if not shot then
+    if not win then win = w end
+    if not shot or not win then
         io.write("[bridge] 微信不可见，跳过\n")
     else
         local res = watcher.ocr(shot, win)
