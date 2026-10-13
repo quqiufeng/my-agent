@@ -158,18 +158,18 @@ cmd_run() {
     case "$MODE" in
       both)
         log "===== 第一遍：写真(整体) LoRA「${TRIGGER}」（缩放→写真人像检测→打标→训练；合格图存 $SRC/style）====="
-        build_one "$SRC" "${TRIGGER}" style "${RANK:-16}" "${EPOCHS:-8}" "${RES:-1536}" "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/style" 1 \
+        build_one "$SRC" "${TRIGGER}" style "${RANK:-16}" "${EPOCHS:-8}" "${RES:-1536}" "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/style" 1 "" \
             || fail "写真 LoRA 失败(step $?)"
         log "===== 第二遍：人脸 LoRA「${TRIGGER}_face」（基于 $SRC/style/images → 扣脸→打标→训练；合格图存 $SRC/face）====="
-        build_one "$SRC/style/images" "${TRIGGER}_face" face "${FACE_RANK:-32}" "${FACE_EPOCHS:-12}" 512 "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/face" 0 \
+        build_one "$SRC/style/images" "${TRIGGER}_face" face "${FACE_RANK:-32}" "${FACE_EPOCHS:-12}" 512 "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/face" 0 "$SRC" \
             || fail "人脸 LoRA 失败(step $?)"
         ;;
       face)
-        build_one "$SRC" "$TRIGGER" face "${RANK:-32}" "${EPOCHS:-12}" 512 "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/face" 1 \
+        build_one "$SRC" "$TRIGGER" face "${RANK:-32}" "${EPOCHS:-12}" 512 "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/face" 1 "$SRC" \
             || fail "人脸 LoRA 失败(step $?)"
         ;;
       *)
-        build_one "$SRC" "$TRIGGER" style "${RANK:-16}" "${EPOCHS:-8}" "${RES:-1536}" "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/style" 1 \
+        build_one "$SRC" "$TRIGGER" style "${RANK:-16}" "${EPOCHS:-8}" "${RES:-1536}" "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/style" 1 "" \
             || fail "写真 LoRA 失败(step $?)"
         ;;
     esac
@@ -179,7 +179,7 @@ cmd_run() {
 # 单个 LoRA 全流程：数据集(检测筛→统一尺寸→打标) → 预缓存 → 训练 → 注册触发词 → 样图发微信
 # 参数: src trigger mode rank epochs res sample_prompt to jobdir
 build_one() {
-    local SRC="$1" T="$2" MODE="$3" RANK="$4" EPOCHS="$5" RES="$6" SAMPLE_PROMPT="$7" TO="$8" JOBDIR="$9" DEST="${10:-}" RMSRC="${11:-0}"
+    local SRC="$1" T="$2" MODE="$3" RANK="$4" EPOCHS="$5" RES="$6" SAMPLE_PROMPT="$7" TO="$8" JOBDIR="$9" DEST="${10:-}" RMSRC="${11:-0}" LORADEST="${12:-}"
     local DS OUT LORA
     DS="${DEST:-/data/datasets/${T}_${MODE}}"
     OUT="$LORADIR/$T"
@@ -211,6 +211,11 @@ build_one() {
 
     mkdir -p "$LORADIR"; touch "$TRIGGERS"
     grep -qF "$(basename "$LORA") = " "$TRIGGERS" || echo "$(basename "$LORA") = $T" >> "$TRIGGERS"
+
+    # 把 LoRA 另存到指定目录（如：face LoRA 存到图片源目录）
+    if [ -n "$LORADEST" ] && [ -d "$LORADEST" ]; then
+        cp -f "$LORA" "$LORADEST/$(basename "$LORA")" && log "LoRA 已保存到源目录: $LORADEST/$(basename "$LORA")"
+    fi
 
     local SAMPLE="$OUT/${T}_sample_$(date +%Y%m%d_%H%M%S).png"
     if [ -n "$SAMPLE_PROMPT" ]; then
