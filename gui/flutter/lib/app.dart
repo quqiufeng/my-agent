@@ -45,6 +45,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
   static const _cam = MethodChannel('agent/camera');
   int _texId = 0;
+  List<int> _streamIds = const [];
+  int? _full; // 双击某路后全屏显示该路的索引；null=分屏
   String _clock = '';
   int _mic = 0;
   int _micHold = 0;
@@ -90,6 +92,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _agentUrl = env['AGENT_URL'] ?? 'http://localhost:4097';
     _prefix = env['VOICE_PREFIX'] ?? '[语音输入]';
     _getTexture();
+    _getStreams();
     _micLoop(env['VOICE_MIC_DEV'] ?? 'plughw:2,0',
         env['VOICE_MIC_CARD'] ?? '2', env['VOICE_MIC_GAIN'] ?? '7810', env);
     _tickClock();
@@ -105,6 +108,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _snapTimer = Timer.periodic(const Duration(milliseconds: 700), (_) {
       try {
         _cam.invokeMethod('snapshot');
+        if (_streamIds.isNotEmpty) _cam.invokeMethod('snapshot2');
       } catch (_) {}
     });
   }
@@ -122,7 +126,23 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
-  // 归一化：去掉空白与标点，便于唤醒词模糊匹配
+  // 第二路起（萤石等 URL 流）。原生未启用时返回空列表 → 只显示 USB。
+  Future<void> _getStreams() async {
+    for (var i = 0; i < 50; i++) {
+      try {
+        final ids = await _cam.invokeMethod<List<Object?>>('streamIds');
+        final list = (ids ?? const [])
+            .whereType<int>()
+            .where((e) => e != 0)
+            .toList();
+        if (list.isNotEmpty) {
+          if (mounted) setState(() => _streamIds = list);
+          return;
+        }
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+  }
   String _norm(String s) => s
       .toLowerCase()
       .replaceAll(RegExp(r'[\s\u3000]'), '')
@@ -523,16 +543,55 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
-      Expanded(
-        child: _texId == 0
-            ? const Center(
-                child: Text('正在启动摄像头…', style: TextStyle(color: ChinaColors.muted)))
-            : Texture(textureId: _texId),
-      ),
-      _statusBar(),
-    ]);
+    final panes = <Widget>[_camView(_texId), ..._streamIds.map(_camView)];
+    Widget body;
+    if (_texId == 0) {
+      body = const Center(
+          child: Text('正在启动摄像头…', style: TextStyle(color: ChinaColors.muted)));
+    } else if (_full != null && _full! < panes.length) {
+      // 双击全屏：叠加返回图标
+      body = Stack(children: [
+        Positioned.fill(child: panes[_full!]),
+        Positioned(left: 12, top: 12, child: _backBtn()),
+      ]);
+    } else if (panes.length == 1) {
+      body = _tapPane(panes, 0);
+    } else {
+      body = Row(children: [
+        for (var i = 0; i < panes.length; i++) ...[
+          if (i > 0) Container(width: 2, color: ChinaColors.border),
+          Expanded(child: _tapPane(panes, i)),
+        ]
+      ]);
+    }
+    return Column(children: [Expanded(child: body), _statusBar()]);
   }
+
+  // 双击某路 → 全屏
+  Widget _tapPane(List<Widget> panes, int i) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onDoubleTap: () => setState(() => _full = i),
+        child: panes[i],
+      );
+
+  // 全屏时的返回图标（点它回到分屏）
+  Widget _backBtn() => Material(
+        color: Colors.black54,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => setState(() => _full = null),
+          child: const Padding(
+            padding: EdgeInsets.all(8),
+            child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
+          ),
+        ),
+      );
+
+  // 单路画面：按 16:9 等比铺满各自区域（不拉伸）
+  Widget _camView(int id) => Center(
+        child: AspectRatio(aspectRatio: 16 / 9, child: Texture(textureId: id)),
+      );
 
   Widget _statusBar() {
     final lc = _mic > 60 ? ChinaColors.zhusha : (_mic > 25 ? ChinaColors.warn : ChinaColors.qinglv);

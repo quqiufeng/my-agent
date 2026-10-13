@@ -12,10 +12,12 @@
 | `tools/chrome_debug.sh` | 每次启动前同步 profile，再用固定调试端口起专用 Chrome，供 chrome-devtools MCP(--browser-url) 连接（免反复授权） | `tools/chrome_debug.sh [端口]        # 默认 9222` |
 | `tools/cookie.sh` | 把某站点 cookie 从已登录 Chrome(CDP) 取出并存入 ~/.env，或直接读写 | `tools/cookie.sh save <域名> <ENVKEY> | set <ENVKEY> <值> | get <ENVKEY> | list` |
 | `tools/dash.sh` | 股票大屏（点阵风·暗色：指数环+自选股+小K线） | `tools/dash.sh [--to 会话] [--show]` |
+| `tools/detect.sh` | 对摄像头抓帧做 YOLO 目标识别（**原生 C++/libtorch**，无 Python）：框出人/物并返回带框图路径 | `tools/detect.sh [--src usb|keting|menkou|<图片路径>] [--conf 0.35] [--to 会话]` |
 | `tools/dev.sh` | 本项目结构与规范；新能力=一个**走专用 Chrome(免授权登录)+CDP/DOM 的网页工具**（能力来自网页，安全）；支持新建/索引/提交(可回滚)/重启 | `tools/dev.sh info | caps | list | new <name> | index | commit [msg] | push | restart` |
 | `tools/douyin.sh` | 抖音作品：前 N 条下载到 ~/douyin/<uid> （文案/标签/视频；高赞转 wav 供克隆）；默认抓自己，可指定 uid | `tools/douyin.sh list [N] [<主页URL>|--uid <sec_uid>|--url <主页URL>]                 # 列前 N 条(id/赞/文案/标签)` |
 | `tools/english_daily.sh` | 从多家科技媒体(HN/Ars/TechCrunch/Verge/Wired/Engadget/Register/BBC/MIT)每天随机取一篇英文 → Gemini 中英对照+生词 → 图文发微信（图底含原文来源 URL） | `tools/english_daily.sh [<主题> | --url <url>] [--words N] [--level B1-B2] [--display] [--to 会话] [--no-send]` |
 | `tools/english.sh` | 英语口语陪练（麦克风识别英文，回复用英文音色朗读） | `tools/english.sh start|stop|status` |
+| `tools/ezviz_url.sh` | 刷新萤石摄像头直播地址（纯 API）：用 ~/.env 的 appKey/appSecret 换 token → 取 HLS 播放地址（protocol=2）→ 写入指定文件；若设备加密已开启，自动用验证码关闭后重试 | `tools/ezviz_url.sh [序列号] [输出文件]   # 默认 802657358 → /tmp/myagent_ezviz.url；门口 815311181 → /tmp/myagent_door.url` |
 | `tools/fetch.sh` | 用 curl 抓取网页/接口，可带 ~/.env 里的 cookie（登录态） | `tools/fetch.sh <url> [--cookie ENVKEY] [--post DATA] [--json] [--save FILE] [--referer URL] [--header 'K: V'] [--ua UA]` |
 | `tools/find_file.sh` | 按文件名关键词搜索本机文件 + WebDAV，返回匹配（本地路径 或 可下载 URL） | `find_file.sh <关键词> [数量=15]` |
 | `tools/gemini_out.sh` | 把（Gemini 等）获取到的结果按目标转发 | `tools/gemini_out.sh` |
@@ -24,6 +26,7 @@
 | `tools/google_search.sh` | 用 Chrome(CDP/DOM) 谷歌搜索，先生成排版图再发文字到微信（默认文件传输助手） | `tools/google_search.sh <关键词> [--news] [--to 会话] [--no-image] [--no-send]` |
 | `tools/image.sh` | 生成图片并发送到微信（可指定 小红书/小红薯、朋友圈 尺寸） | `tools/image.sh [小红书|小红薯|朋友圈] "提示词" [--to 会话] [--force]` |
 | `tools/img_video.sh` | 动画短片：出图 → 配音+字幕+运镜/转场+片名卡 → 竖版短片（存 ~/image，默认不发微信） | `tools/img_video.sh [--voice <音色名>] [--title 成语] [--pinyin KEZHOU] [--source 出处] [--end 释义] [--img-preset xhs|pyq] [--outimg 目录] [--imgdir 目录] [--size WxH] [--n 张数] [--scenes "分镜1|…"] [--text "旁白1|…"] [--out out.mp4] [--send [--to 会话]] [--fg]` |
+| `tools/listen_cam.sh` | 监听萤石摄像头麦克风（从直播流抽 AAC 音频）：播放到本机音响，或录成 wav | `tools/listen_cam.sh [keting|menkou] [秒数=10] [--save <路径>] [--play]` |
 | `tools/music.sh` | 无损音乐：本地(WebDAV)搜索/播放 + 本地没有则在线(flac.music.hi.cn)取 FLAC 播放并存 NAS（VLC → USB 音响） | `tools/music.sh` |
 | `tools/note.sh` | 备忘 / 待办（存 ~/.myagent_notes，纯文本） | `tools/note.sh` |
 | `tools/now.sh` | 返回当前日期与时间 | `tools/now.sh` |
@@ -34,12 +37,14 @@
 | `tools/quote_web.sh` | 看行情（浏览器打开搜狐行情页并全屏截图发微信） | `tools/quote_web.sh [名称或代码] [--to 会话]` |
 | `tools/remote.sh` | 管理本机/远程的 tmux + opencode 集群 | `tools/remote.sh` |
 | `tools/sale_points.sh` | 读取带货引流视频资料包（规则说明 + 卖点） | `tools/sale_points.sh` |
+| `tools/say_cam.sh` | 让萤石摄像头喇叭播放一段音频（对讲/喊话/播报）：上传音频到萤石 → 设备播放 | `tools/say_cam.sh [keting|menkou] <音频.wav>` |
 | `tools/say.sh` | USB 音响发声（TTS）；可用 --voice 指定克隆音色 | `tools/say.sh [--voice <音色名>] "文本"` |
 | `tools/screenshot.sh` | 截屏（默认全屏），返回图片路径 | `screenshot.sh [可选输出路径]` |
 | `tools/send_images.sh` | 下载图片（小图自动换大图）：保存目录并报张数，或发微信 | `tools/send_images.sh [--save 目录] [--to 会话] [--each] [--limit N] <图片URL...>   （URL 也可从 stdin 每行一个）` |
 | `tools/stock.sh` | 股票查询：行情快照 / 历史K线 / 估值 / 财务指标（同花顺数据源） | `tools/stock.sh <名称或代码> | kline <名称或代码> [天数] | value <名称或代码> | fin <名称或代码> [报告期如2024-4] | list` |
 | `tools/termctl.sh` | 控制 qterminal 中的命令行应用：列出标签数 / 截图发微信 / 向指定标签注入指令并回车执行 | `tools/termctl.sh tabs | shot [N] [--to 会话] | send <N> "<指令>" [--no-enter]` |
 | `tools/tv.sh` | DAV 美剧/电影：列出 / 播放 / 下一集 / 停止（VLC 播放，默认本机屏幕） | `tools/tv.sh` |
+| `tools/vacuum.sh` | 控制科沃斯扫地机 DEEBOT（**原生 C 内核**，无 Python）：开始/暂停/继续/停止清扫、归位回充、找机、看状态 | `tools/vacuum.sh <status|start|pause|resume|stop|dock|find>` |
 | `tools/video_dub.sh` | 给已有视频配音+字幕（可克隆音色）；先用 --probe 生成配音比对时长，确保不超视频，再合成 | `tools/video_dub.sh <视频> "文案1|文案2|…" [--probe] [--speed 0.85] [--fit] [--ref 参考.wav] [--voice 名] [--out out.mp4] [--to 会话] [--send] [--keep-audio] [--fg]` |
 | `tools/vocab.sh` | 记单词（弹卡片→读单词判发音→✓下一个 / ✗弹释义卡帮助记忆） | `tools/vocab.sh start|stop|status | add <英文> <中文> | list` |
 | `tools/voices.sh` | 克隆音色：列出/注册/删除音色，或用指定音色发声 | `tools/voices.sh list | add <名> <参考.wav> ["参考文本"] | del <名> | say <名> "文本" [语速]` |
@@ -97,6 +102,11 @@
 35. 要看摄像头画面 → `tools/camera.sh`（返回图片路径，可直接读图）；要一段视频 → `--live <秒>`。
 36. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
 37. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
-38. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
+38. 萤石某路黑屏/过期时 → 重新跑本工具生成该路地址；app 重连即自动跟随（app 各路读各自文件：客厅 /tmp/myagent_ezviz.url、门口 /tmp/myagent_door.url）
+39. 用户说“扫地/让扫地机扫/开始扫地”→ start；“停/别扫了”→ stop；“回充/回去充电”→ dock；“找一下扫地机/它在哪”→ find；“扫地机状态/在干嘛”→ status
+40. 说“看看家里有谁 / 门前有人吗 / 识别一下客厅”→ tools/detect.sh [--src keting|menkou]；要发回用 --to
+41. 说“听听客厅/门口的声音/有没有动静”→ tools/listen_cam.sh keting 10（默认外放）；只想存文件用 --save
+42. 说“对客厅喊话 / 让门口响一下 / 往客厅播报”→ tools/say_cam.sh keting <wav>（**需已开通萤石「语音提醒」资源包**，否则返回 111000）
+43. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_

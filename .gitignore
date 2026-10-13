@@ -23,3 +23,25 @@ __pycache__/
 Thumbs.db
 models/
 fbank_lfr_cmvn_feature.json
+
+# --- 萤石 EZOPEN 原生 SDK（厂商包/编译产物，体积大；见 agentkit/ezopen/README.md）---
+agentkit/ezopen/inc/
+agentkit/ezopen/lib/
+agentkit/ezopen/demo/
+agentkit/ezopen/QtDemoSrc/
+agentkit/ezopen/openssl11/
+agentkit/ezopen/probe
+agentkit/ezopen/talk
+agentkit/ezopen/*.ini
+agentkit/ezopen/*.intlog
+agentkit/ezopen/log4cxx.properties
+
+# --- 原生工具：模型与编译产物 ---
+agentkit/native_yolo/yolov8n.torchscript
+agentkit/native_yolo/yolo_detect
+agentkit/native_vacuum/vacuum
+staticpy/lib/
+staticpy/detect
+staticpy/sp_selftest*
+*.so.*
+*.a
