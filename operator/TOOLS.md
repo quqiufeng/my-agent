@@ -44,7 +44,7 @@
 | `tools/stock.sh` | 股票查询：行情快照 / 历史K线 / 估值 / 财务指标（同花顺数据源） | `tools/stock.sh <名称或代码> | kline <名称或代码> [天数] | value <名称或代码> | fin <名称或代码> [报告期如2024-4] | list` |
 | `tools/termctl.sh` | 控制 qterminal 中的命令行应用：列出标签数 / 截图发微信 / 向指定标签注入指令并回车执行 | `tools/termctl.sh tabs | shot [N] [--to 会话] | send <N> "<指令>" [--no-enter]` |
 | `tools/tv.sh` | DAV 美剧/电影：列出 / 播放 / 下一集 / 停止（VLC 播放，默认本机屏幕） | `tools/tv.sh` |
-| `tools/vacuum.sh` | 控制科沃斯扫地机 DEEBOT（**原生 C 内核**，无 Python）：开始/暂停/继续/停止清扫、归位回充、找机、看状态 | `tools/vacuum.sh <status|start|pause|resume|stop|dock|find>` |
+| `tools/vacuum.sh` | 控制科沃斯扫地机 DEEBOT（**原生 C 内核**，无 Python）：清扫/回充/找机/吸力/水量/音量/次数/续扫/AI/地毯/高级模式；并读电量/故障/网络/统计 | `tools/vacuum.sh <cmd> [arg]` |
 | `tools/video_dub.sh` | 给已有视频配音+字幕（可克隆音色）；先用 --probe 生成配音比对时长，确保不超视频，再合成 | `tools/video_dub.sh <视频> "文案1|文案2|…" [--probe] [--speed 0.85] [--fit] [--ref 参考.wav] [--voice 名] [--out out.mp4] [--to 会话] [--send] [--keep-audio] [--fg]` |
 | `tools/vocab.sh` | 记单词（弹卡片→读单词判发音→✓下一个 / ✗弹释义卡帮助记忆） | `tools/vocab.sh start|stop|status | add <英文> <中文> | list` |
 | `tools/voices.sh` | 克隆音色：列出/注册/删除音色，或用指定音色发声 | `tools/voices.sh list | add <名> <参考.wav> ["参考文本"] | del <名> | say <名> "文本" [语速]` |
@@ -103,7 +103,7 @@
 36. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
 37. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
 38. 萤石某路黑屏/过期时 → 重新跑本工具生成该路地址；app 重连即自动跟随（app 各路读各自文件：客厅 /tmp/myagent_ezviz.url、门口 /tmp/myagent_door.url）
-39. 用户说“扫地/让扫地机扫/开始扫地”→ start；“停/别扫了”→ stop；“回充/回去充电”→ dock；“找一下扫地机/它在哪”→ find；“扫地机状态/在干嘛”→ status
+39. 用户说“扫地/开始扫地”→ start；“沿边”→ edge；“定点”→ spot；“停”→ stop；“回充”→ dock；“找一下扫地机/它在哪”→ find；“开大吸力/静音”→ fan max|quiet；“地毯增压”→ carpet 1；“扫地机状态/电量/统计”→ status|battery|stats|total
 40. 说“看看家里有谁 / 门前有人吗 / 识别一下客厅”→ tools/detect.sh [--src keting|menkou]；要发回用 --to
 41. 说“听听客厅/门口的声音/有没有动静”→ tools/listen_cam.sh keting 10（默认外放）；只想存文件用 --save
 42. 说“对客厅喊话 / 让门口响一下 / 往客厅播报”→ tools/say_cam.sh keting <wav>（**需已开通萤石「语音提醒」资源包**，否则返回 111000）

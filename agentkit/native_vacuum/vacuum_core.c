@@ -223,8 +223,16 @@ static const char *hdr(void) {
   (void)g; return b;
 }
 
+/* 简单 GET 命令（打印返回数据） */
+static int is_get(const char *c) {
+  const char *g[] = {"status","battery","error","netinfo","stats","total","logs","lifespan","map",NULL};
+  for (int i = 0; g[i]; i++) if (!strcmp(c, g[i])) return 1;
+  return 0;
+}
+
 int main(int argc, char **argv) {
   const char *cmd = argc > 1 ? argv[1] : "status";
+  const char *arg = argc > 2 ? argv[2] : "";
   const char *acct = getenv("ECOVACS_ACCOUNT"), *pwd = getenv("ECOVACS_PASSWORD");
   if (!acct || !pwd) { fprintf(stderr, "缺 ECOVACS_ACCOUNT/PASSWORD\n"); return 3; }
   curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -234,37 +242,52 @@ int main(int argc, char **argv) {
   rc = get_device(&cr);
   if (rc) { fprintf(stderr, "取设备失败 rc=%d\n", rc); return 1; }
 
-  char payload[512]; char *resp = NULL;
-  if (!strcmp(cmd, "status")) {
-    snprintf(payload, sizeof payload, "{\"header\":%s}", hdr());
-    resp = send_cmd(&cr, "getChargeState", payload);
-  } else if (!strcmp(cmd, "start")) {
-    snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"start\",\"type\":\"auto\"}}}", hdr());
-    resp = send_cmd(&cr, "clean", payload);
-  } else if (!strcmp(cmd, "stop")) {
-    snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"stop\"}}}", hdr());
-    resp = send_cmd(&cr, "clean", payload);
-  } else if (!strcmp(cmd, "pause")) {
-    snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"pause\"}}}", hdr());
-    resp = send_cmd(&cr, "clean", payload);
-  } else if (!strcmp(cmd, "resume")) {
-    snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"resume\"}}}", hdr());
-    resp = send_cmd(&cr, "clean", payload);
-  } else if (!strcmp(cmd, "dock")) {
-    snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"go\"}}}", hdr());
-    resp = send_cmd(&cr, "charge", payload);
-  } else if (!strcmp(cmd, "find")) {
-    snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"count\":1,\"sid\":30}}}", hdr());
-    resp = send_cmd(&cr, "playSound", payload);
-  } else {
-    fprintf(stderr, "未知命令: %s\n", cmd); return 2;
+  char payload[1536]; const char *cname = NULL; const char *msg = "";
+  char clean_extra[64] = "";
+  if (!strcmp(cmd, "status")) { snprintf(payload, sizeof payload, "{\"header\":%s}", hdr()); cname = "getChargeState"; }
+  else if (!strcmp(cmd, "battery")) { snprintf(payload, sizeof payload, "{\"header\":%s}", hdr()); cname = "getBattery"; }
+  else if (!strcmp(cmd, "error")) { snprintf(payload, sizeof payload, "{\"header\":%s}", hdr()); cname = "getError"; }
+  else if (!strcmp(cmd, "netinfo")) { snprintf(payload, sizeof payload, "{\"header\":%s}", hdr()); cname = "getNetInfo"; }
+  else if (!strcmp(cmd, "stats")) { snprintf(payload, sizeof payload, "{\"header\":%s}", hdr()); cname = "getStats"; }
+  else if (!strcmp(cmd, "total")) { snprintf(payload, sizeof payload, "{\"header\":%s}", hdr()); cname = "getTotalStats"; }
+  else if (!strcmp(cmd, "logs")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"count\":0}}}", hdr()); cname = "getCleanLogs"; }
+  else if (!strcmp(cmd, "lifespan")) {
+    snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":[\"brush\",\"heap\",\"sideBrush\",\"unitCare\",\"roundMop\",\"dModule\",\"uv\",\"humidify\",\"wbCare\",\"blade\",\"lensBrush\",\"dustBag\",\"autoWater_cleaningFluid\",\"strainer\",\"handFilter\",\"dustCaseHeap\",\"spHeap\"]}}", hdr());
+    cname = "getLifeSpan";
   }
+  else if (!strcmp(cmd, "start")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"start\",\"type\":\"auto\"}}}", hdr()); cname = "clean"; msg = "开始清扫"; }
+  else if (!strcmp(cmd, "edge")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"start\",\"type\":\"edge\"}}}", hdr()); cname = "clean"; msg = "开始沿边清扫"; }
+  else if (!strcmp(cmd, "spot")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"start\",\"type\":\"spot\"}}}", hdr()); cname = "clean"; msg = "开始定点清扫"; }
+  else if (!strcmp(cmd, "stop")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"stop\"}}}", hdr()); cname = "clean"; msg = "已停止"; }
+  else if (!strcmp(cmd, "pause")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"pause\"}}}", hdr()); cname = "clean"; msg = "已暂停"; }
+  else if (!strcmp(cmd, "resume")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"resume\"}}}", hdr()); cname = "clean"; msg = "继续清扫"; }
+  else if (!strcmp(cmd, "dock")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"act\":\"go\"}}}", hdr()); cname = "charge"; msg = "已发送归位（回充）"; }
+  else if (!strcmp(cmd, "find")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"count\":1,\"sid\":30}}}", hdr()); cname = "playSound"; msg = "已让它发声（找机）"; }
+  else if (!strcmp(cmd, "fan")) {
+    int s = !strcmp(arg, "quiet") ? 1000 : !strcmp(arg, "max") ? 1 : !strcmp(arg, "maxplus") ? 2 : 0;
+    snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"speed\":%d}}}", hdr(), s);
+    cname = "setSpeed"; snprintf(clean_extra, sizeof clean_extra, "吸力=%s", arg[0] ? arg : "normal"); msg = clean_extra;
+  }
+  else if (!strcmp(cmd, "water")) {
+    int a = !strcmp(arg, "low") ? 1 : !strcmp(arg, "medium") ? 2 : !strcmp(arg, "ultra") ? 4 : 3;
+    snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"amount\":%d}}}", hdr(), a);
+    cname = "setWaterInfo"; snprintf(clean_extra, sizeof clean_extra, "水量=%s", arg[0] ? arg : "high"); msg = clean_extra;
+  }
+  else if (!strcmp(cmd, "count")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"count\":%d}}}", hdr(), atoi(arg)); cname = "setCleanCount"; msg = "已设清扫次数"; }
+  else if (!strcmp(cmd, "volume")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"volume\":%d}}}", hdr(), atoi(arg)); cname = "setVolume"; msg = "已设音量"; }
+  else if (!strcmp(cmd, "continuous")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"enable\":%d}}}", hdr(), atoi(arg) ? 1 : 0); cname = "setBreakPoint"; msg = "已设断点续扫"; }
+  else if (!strcmp(cmd, "truedetect")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"enable\":%d}}}", hdr(), atoi(arg) ? 1 : 0); cname = "setTrueDetect"; msg = "已设 AI 识别"; }
+  else if (!strcmp(cmd, "carpet")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"enable\":%d}}}", hdr(), atoi(arg) ? 1 : 0); cname = "setCarpertPressure"; msg = "已设地毯增压"; }
+  else if (!strcmp(cmd, "advanced")) { snprintf(payload, sizeof payload, "{\"header\":%s,\"body\":{\"data\":{\"enable\":%d}}}", hdr(), atoi(arg) ? 1 : 0); cname = "setAdvancedMode"; msg = "已设高级模式"; }
+  else { fprintf(stderr, "未知命令: %s\n", cmd); return 2; }
+
+  char *resp = send_cmd(&cr, cname, payload);
   if (!resp) { fprintf(stderr, "命令无响应\n"); return 1; }
   if (getenv("VACUUM_DEBUG")) fprintf(stderr, "%s\n", resp);
   cJSON *jj = cJSON_Parse(resp);
   cJSON *ret = jj ? cJSON_GetObjectItem(jj, "ret") : NULL;
   int ok = ret && ret->valuestring && !strcmp(ret->valuestring, "ok");
-  if (!ok) { printf("执行失败: %s\n", resp); free(resp); return 1; }
+  if (!ok) { printf("执行失败: %s\n", resp); cJSON_Delete(jj); free(resp); return 1; }
   if (!strcmp(cmd, "status")) {
     cJSON *b = cJSON_GetObjectItem(cJSON_GetObjectItem(jj, "resp"), "body");
     cJSON *dd = b ? cJSON_GetObjectItem(b, "data") : NULL;
@@ -273,12 +296,14 @@ int main(int argc, char **argv) {
     int ch = ic && cJSON_IsNumber(ic) ? ic->valueint : 0;
     printf("%s；模式=%s\n", ch == 1 ? "充电中/在充电座" : "空闲/工作中",
            md && md->valuestring ? md->valuestring : "-");
+  } else if (is_get(cmd)) {
+    cJSON *b = cJSON_GetObjectItem(cJSON_GetObjectItem(jj, "resp"), "body");
+    cJSON *dd = b ? cJSON_GetObjectItem(b, "data") : NULL;
+    char *s = cJSON_PrintUnformatted(dd ? dd : b);
+    printf("%s\n", s ? s : "(空)");
+    if (s) free(s);
   } else {
-    printf("%s\n", !strcmp(cmd, "start") ? "开始清扫" :
-                   !strcmp(cmd, "stop") ? "已停止" :
-                   !strcmp(cmd, "pause") ? "已暂停" :
-                   !strcmp(cmd, "resume") ? "继续清扫" :
-                   !strcmp(cmd, "dock") ? "已发送归位（回充）" : "已让它发声（找机）");
+    printf("%s\n", msg[0] ? msg : "完成");
   }
   cJSON_Delete(jj);
   free(resp);
