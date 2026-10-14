@@ -158,7 +158,7 @@ cmd_run() {
     case "$MODE" in
       both)
         log "===== 第一遍：写真(整体) LoRA「${TRIGGER}」（缩放→写真人像检测→打标→训练；合格图存 $SRC/style）====="
-        build_one "$SRC" "${TRIGGER}" style "${RANK:-16}" "${EPOCHS:-8}" "${RES:-1536}" "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/style" 1 "" \
+        build_one "$SRC" "${TRIGGER}" style "${RANK:-16}" "${EPOCHS:-8}" "${RES:-1536}" "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/style" 1 "$SRC" \
             || fail "写真 LoRA 失败(step $?)"
         log "===== 第二遍：人脸 LoRA「${TRIGGER}_face」（基于 $SRC/style/images → 扣脸→打标→训练；合格图存 $SRC/face）====="
         build_one "$SRC/style/images" "${TRIGGER}_face" face "${FACE_RANK:-32}" "${FACE_EPOCHS:-12}" 512 "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/face" 0 "$SRC" \
@@ -169,7 +169,7 @@ cmd_run() {
             || fail "人脸 LoRA 失败(step $?)"
         ;;
       *)
-        build_one "$SRC" "$TRIGGER" style "${RANK:-16}" "${EPOCHS:-8}" "${RES:-1536}" "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/style" 1 "" \
+        build_one "$SRC" "$TRIGGER" style "${RANK:-16}" "${EPOCHS:-8}" "${RES:-1536}" "$SAMPLE_PROMPT" "$TO" "$JOBDIR" "$SRC/style" 1 "$SRC" \
             || fail "写真 LoRA 失败(step $?)"
         ;;
     esac
@@ -202,7 +202,10 @@ build_one() {
 
     log ">>> [$MODE/$T] 训练（musubi-tuner）"
     local BLOCKS=12; [ "$MODE" = face ] && BLOCKS=0    # 1536 必须换出(BLOCKS=12，自动算的8会OOM)；512 充裕不换出
-    DIT="$DIT" FP8=0 BLOCKS="$BLOCKS" DIM="$RANK" EPOCHS="$EPOCHS" DATA="$DS" OUT="$OUT" OUT_NAME="$T" \
+    local MST=""
+    [ "$MODE" = style ] && MST="${LORA_STYLE_STEPS:-}"
+    [ "$MODE" = face ] && MST="${LORA_FACE_STEPS:-}"
+    DIT="$DIT" FP8=0 BLOCKS="$BLOCKS" DIM="$RANK" EPOCHS="$EPOCHS" STEPS="$MST" DATA="$DS" OUT="$OUT" OUT_NAME="$T" \
         bash "$TL/musubi_train.sh" || return 5
 
     LORA="$OUT/${T}_sdcpp.safetensors"
