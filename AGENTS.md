@@ -42,7 +42,7 @@
 3. **两层 AGENTS.md 别混**：根目录本文件=开发说明；`operator/AGENTS.md`=运行时契约。
 4. **不提交大文件**：模型（`*.onnx/*.gguf`）、`build*/`、编译产物已在 `.gitignore`，不要 `git add -f`。
 5. **改完 opencode 配置需重启**：`opencode.json`、`guard.js`、`operator/AGENTS.md` 不会被热重载。
-6. **第三方素材保留署名**：点阵 UI kit（`operator/tools/dotkit/`，来自 karminski-design-skills）为 **CC BY-NC-SA 4.0**，勿删 `NOTICE.md`/`LICENSE`，仅非商业使用。等距绘图库（`operator/tools/iso/anatomy/`，来自 [wheresryan22/anatomy](https://github.com/wheresryan22/anatomy)，**MIT**）——保留 `LICENSE` 与致谢（见 `operator/tools/iso/README.md`）。
+6. **第三方素材保留署名**：点阵 UI kit（`operator/tools/dotkit/`，来自 karminski-design-skills）为 **CC BY-NC-SA 4.0**，勿删 `NOTICE.md`/`LICENSE`，仅非商业使用。等距图设计规范（`operator/tools/iso/anatomy/references/`，来自 [wheresryan22/anatomy](https://github.com/wheresryan22/anatomy)，**MIT**）——其 JS 引擎已移植为 Dart+Lua（`~/iso_flutter`），保留 `LICENSE` 与致谢（见 `operator/tools/iso/README.md`）。
 7. **Chrome 相关功能**：一律先 `operator/tools/chrome_debug.sh` 启动**专用固定端口 Chrome**（MCP 走 `--browser-url`，免授权弹窗、保留登录）；**不要让任何工具直连日常默认 Chrome**。详见 `chrome.md`。
 
 ---
@@ -68,6 +68,10 @@ cmake -S . -B build_lib -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_PREFIX_PATH="/data/venv/onnxruntime-linux-x64-gpu-1.26.0/lib/cmake"
 cmake --build build_lib -j"$(nproc)" --target wechat_ocr_core
 luajit bridge.lua                        # 微信监控→转发
+
+# 等距图 / 动画（native：Dart+Lua 引擎，无浏览器/node）
+operator/tools/iso_native.sh render tmall-genie --to 文件传输助手  # 出图→发微信
+operator/tools/iso_native.sh anim   tmall-genie --motion --to 文件传输助手  # 出 GIF/MP4
 ```
 
 ---
