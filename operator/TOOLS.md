@@ -26,6 +26,7 @@
 | `tools/google_search.sh` | 用 Chrome(CDP/DOM) 谷歌搜索，先生成排版图再发文字到微信（默认文件传输助手） | `tools/google_search.sh <关键词> [--news] [--to 会话] [--no-image] [--no-send]` |
 | `tools/image.sh` | 生成图片并发送到微信（可指定 小红书/小红薯、朋友圈 尺寸） | `tools/image.sh [小红书|小红薯|朋友圈] "提示词" [--to 会话] [--force]` |
 | `tools/img_video.sh` | 动画短片：出图 → 配音+字幕+运镜/转场+片名卡 → 竖版短片（存 ~/image，默认不发微信） | `tools/img_video.sh [--voice <音色名>] [--title 成语] [--pinyin KEZHOU] [--source 出处] [--end 释义] [--img-preset xhs|pyq] [--outimg 目录] [--imgdir 目录] [--size WxH] [--n 张数] [--scenes "分镜1|…"] [--text "旁白1|…"] [--out out.mp4] [--send [--to 会话]] [--fg]` |
+| `tools/iso.sh` | 等距解释图：kit→SVG→解析CSS变量→resvg 出 PNG（快，免浏览器）；`--page` 出整页卡片(Chrome)；`anim` 逐帧出 GIF/MP4（动画） | `tools/iso.sh render <build.mjs|example名> [--theme dark|light] [--page] [--out 目录] [--to 会话] [--no-send] [--zoom N]` |
 | `tools/listen_cam.sh` | 监听萤石摄像头麦克风（从直播流抽 AAC 音频）：播放到本机音响，或录成 wav | `tools/listen_cam.sh [keting|menkou] [秒数=10] [--save <路径>] [--play]` |
 | `tools/lora.sh` | 用一批图片训练 Z-Image LoRA；**写真/整体(style)** 与 **人脸(face)** 两种，可 `--both` 一遍出两个（图片处理两遍、先后训练）；图片来源=本地目录/微博搜索/微博相册；后台一条龙，完成发微信（样图+文件名） | `tools/lora.sh train (<图片目录> | --weibo <明星/关键词> | --album <昵称/uid>) <触发词> [--mode style|face|both] [--rank N] [--epochs N] [--res 512|1536] [--pages N|all] [--limit N] [--to 会话] [--force] | status | list | cancel` |
 | `tools/music.sh` | 无损音乐：本地(WebDAV)搜索/播放 + 本地没有则在线(flac.music.hi.cn)取 FLAC 播放并存 NAS（VLC → USB 音响） | `tools/music.sh` |
@@ -100,15 +101,16 @@
 32. 用户说“每日英语 / 英语短文 / 学英语 / 来篇英语文章” → `tools/english_daily.sh`（默认随机科技媒体，出图+发微信）；只要文本加 `--display`。
 33. 用户说“问 Google AI / 问 Gemini / 让 AI 回答 <问题> 并发我微信” → `tools/gemini.sh "<问题>"`；要**只要文本**供程序用 → 加 `--display`。
 34. 用户说“帮我 google 搜索/查一下 <关键词> 并发我微信” → `tools/google_search.sh "<关键词>"`（默认发图+文字）；查新闻加 `--news`。
-35. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
-36. 要看摄像头画面 → `tools/camera.sh`（返回图片路径，可直接读图）；要一段视频 → `--live <秒>`。
-37. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
-38. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
-39. 萤石某路黑屏/过期时 → 重新跑本工具生成该路地址；app 重连即自动跟随（app 各路读各自文件：客厅 /tmp/myagent_ezviz.url、门口 /tmp/myagent_door.url）
-40. 用户说“扫地/开始扫地”→ start；“沿边”→ edge；“定点”→ spot；“停”→ stop；“回充”→ dock；“找一下扫地机/它在哪”→ find；“开大吸力/静音”→ fan max|quiet；“地毯增压”→ carpet 1；“扫地机状态/电量/统计”→ status|battery|stats|total
-41. 说“看看家里有谁 / 门前有人吗 / 识别一下客厅”→ tools/detect.sh [--src keting|menkou]；要发回用 --to
-42. 说“听听客厅/门口的声音/有没有动静”→ tools/listen_cam.sh keting 10（默认外放）；只想存文件用 --save
-43. 说“对客厅喊话 / 让门口响一下 / 往客厅播报”→ tools/say_cam.sh keting <wav>（**需已开通萤石「语音提醒」资源包**，否则返回 111000）
-44. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
+35. **画等距图/动画**：按 `operator/tools/iso/anatomy/references/{craft,kit,motion}.md` 的 craft 写 `build.mjs`（用 `kit/iso-kit.mjs` 造零件；动画读环境 `ISO_FRAME/ISO_N` 逐帧重建运动件）。出图 `tools/iso.sh render <build.mjs>`；动画 `tools/iso.sh anim <build.mjs>`；也可 `render <样例名>`。
+36. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
+37. 要看摄像头画面 → `tools/camera.sh`（返回图片路径，可直接读图）；要一段视频 → `--live <秒>`。
+38. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
+39. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
+40. 萤石某路黑屏/过期时 → 重新跑本工具生成该路地址；app 重连即自动跟随（app 各路读各自文件：客厅 /tmp/myagent_ezviz.url、门口 /tmp/myagent_door.url）
+41. 用户说“扫地/开始扫地”→ start；“沿边”→ edge；“定点”→ spot；“停”→ stop；“回充”→ dock；“找一下扫地机/它在哪”→ find；“开大吸力/静音”→ fan max|quiet；“地毯增压”→ carpet 1；“扫地机状态/电量/统计”→ status|battery|stats|total
+42. 说“看看家里有谁 / 门前有人吗 / 识别一下客厅”→ tools/detect.sh [--src keting|menkou]；要发回用 --to
+43. 说“听听客厅/门口的声音/有没有动静”→ tools/listen_cam.sh keting 10（默认外放）；只想存文件用 --save
+44. 说“对客厅喊话 / 让门口响一下 / 往客厅播报”→ tools/say_cam.sh keting <wav>（**需已开通萤石「语音提醒」资源包**，否则返回 111000）
+45. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_
