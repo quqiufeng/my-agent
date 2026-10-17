@@ -205,7 +205,6 @@ function open_menu()
   mitems={}
   if #toc>0 then mitems[#mitems+1]={t="目录",a="toc"} end
   mitems[#mitems+1]={t="字号："..SIZES[ssize].name,a="size"}
-  mitems[#mitems+1]={t="游戏：贪吃蛇",a="snake"}
   mitems[#mitems+1]={t="返回书架",a="shelf"}
   mitems[#mitems+1]={t="继续阅读",a="close"}
   msel=1; mode="menu"; screen("list"); render_menu()
@@ -253,13 +252,9 @@ on_key=function(k)
       local a=mitems[msel].a
       if a=="toc" then open_toc()
       elseif a=="size" then set_size(1); render_menu()
-      elseif a=="snake" then
-        if load_snake() then screen("none"); mode="snake"; snake_start() end
       elseif a=="shelf" then shelf()
       else mode="reader"; screen("reader"); render() end
     elseif k=="left" or k=="back" or k=="home" then mode="reader"; screen("reader"); render() end
-  elseif mode=="snake" then
-    if snake_key and snake_key(k)=="exit" then mode="shelf"; shelf() end
   elseif mode=="toc" then
     if k=="down" then if tsel<#toc then tsel=tsel+1; render_toc() end
     elseif k=="up" then if tsel>1 then tsel=tsel-1; render_toc() end
@@ -270,17 +265,6 @@ on_key=function(k)
     elseif k=="up" or k=="left" then if sel>1 then sel=sel-1; render_list() end
     elseif k=="enter" then open_book(books[sel]) end
   end
-end
-
--- 游戏（按需加载）
-local snake_ready = false
-function load_snake()
-  if not snake_ready then
-    local f = loadfile(UIDIR.."snake.lua")
-    if f then local ok,err = pcall(f); if not ok then ui.log("snake load err "..tostring(err)) end end
-    snake_ready = (snake_start ~= nil)
-  end
-  return snake_ready
 end
 
 -- 顶部 lock 开关：锁定时清屏显示锁定页，解锁后恢复原界面
@@ -311,19 +295,7 @@ end
 -- 原始扫描码 → 名称（新版 lvgui 直接回调 on_code；无需 keyd）
 local CODE = {[98]="home",[91]="back",[139]="menu",[109]="prevpage",[124]="nextpage",
               [122]="up",[123]="down",[92]="enter",[105]="left",[106]="right"}
-function on_code(c)
-  if mode=="snake" and snake_key then
-    if snake_key(c)=="exit" then mode="shelf"; shelf() end
-    return
-  end
-  local k=CODE[c]; if k then on_key(k) end
-end
-
--- 游戏节拍（C 每 100ms 调用一次）
-function on_tick(dt)
-  if mode=="snake" and snake_tick then return snake_tick(dt) end
-  return false
-end
+function on_code(c) local k=CODE[c]; if k then on_key(k) end end
 
 -- ===== agent 自动化接口（状态查询 / 按键模拟 / 读屏文本）=====
 local CODE_BY_NAME = {}

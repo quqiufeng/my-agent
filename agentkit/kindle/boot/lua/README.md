@@ -336,58 +336,14 @@ end
 
 ---
 
-## 12. 游戏开发
+## 12. 性能与刷新（经验）
 
-已内置 **贪吃蛇**（`snake.lua`）：菜单 →「游戏：贪吃蛇」。
-
-**操作**：五向键 / `W A S D` 转向 · 中键或空格 暂停 · `R` 重开 · `1/2/3` 速度 · `Home` 退出。
-**存档**：最高分写 `/mnt/us/ui/snake_best`；`snake_state()` 返回 JSON 供 agent 断言。
-
-### 为游戏新增的底层能力
-
-| 能力 | 说明 |
-|---|---|
-| `on_tick(dt)` | C 每 100ms 回调一次；返回 true 表示界面有变化（游戏步进用） |
-| 任意按键透传 | C 把**所有**按键的原始码交给 `on_code(code)`（键盘数字/字母也能用） |
-| `ui.flushrect(x,y,w,h)` | 只推变化的矩形，实测位置与全刷一致，翻页/走一步快很多 |
-
-### 新增一个游戏的套路
-
-1. 在 `boot/lua/` 建 `xxx.lua`，导出 `xxx_start / xxx_key / xxx_tick / xxx_state`（参考 `snake.lua`）。
-2. `init.lua` 的 `open_menu()` 加一项 `{t="游戏：XXX", a="xxx"}`，动作里 `screen("none"); mode="xxx"; xxx_start()`。
-3. `on_key`/`on_code` 里把 `mode=="xxx"` 的输入转给 `xxx_key`；`on_tick` 里调 `xxx_tick(dt)`。
-4. 想被人/agent 测试：`xxx_state()` 输出 JSON，`kui tap` 驱动，`kui shot` 看画面。
-
-### 字体坑（重要）
-
-本机字体（仓耳今楷/CJK）**没有** `█`(U+2588) 和全角空格 `　`(U+3000)：
-实测宽度只有 **10px**，会把网格画歪。可用的全角方块/符号（fs=20 时均为 20px）：
-
-```
-■ □ ● ◆ ★ ▲ ○ ◎ ☆ △
-```
-
-### 渲染方式与性能（实测）
-
-- **对象化**：墙/食物/蛇身各自是独立 label，每步只 `ui.pos`/`show` 变化的 1~2 个对象，
-  避免整块文本（1260 字形）重排（那种做法 LVGL 每步要 ~248ms）。
-- **只推变动的格子**：`ui.flushrect` 逐格推送。eips 每次调用有 ~100ms 固定开销（与面积关系不大）。
-
-| 场景 | 耗时 |
-|---|---|
-| 首次/全屏 | ~680ms（png 86 + lvgl 248 + eips 349） |
-| 每步（2 个小格） | ~200ms |
-| **实测步频** | **~4.2 步/秒**（`interval=200ms`；1/2/3 键 = 400/250/150） |
-
-> 想要更快只能减少每步的 eips 调用次数或换更小的棋盘；e-ink 的刷新开销是硬下限。
-
-### 给 agent 玩的接口
-
-```lua
-snake_manual(true)        -- 关掉定时器，改为手动步进
-snake_state()             -- JSON：score/best/over/paused/len/moves/head/dir/food/size/body
-snake_setdir(dx,dy)       -- 定方向
-snake_step()              -- 走一步（含渲染）
-```
-`snake_state()` 里 `body` 是完整蛇身坐标，`moves` 是总步数，agent 可据此做 BFS 决策。
-设备状态同时写 `/tmp/snake_state.json`。
+- 帧缓冲 824×1200；一次刷新 = LVGL 重绘 → PNG → eips。
+- 两档刷新：全刷 `-f`（~680ms，消残影）/ 局部 `-g`（~100ms 固定开销 + 面积）。
+- **只推变化区域**：`ui.flushrect(x,y,w,h)`。实测「增量刷新后的屏幕」与「全刷后的屏幕」
+  用 fb0 对比只差 **0.08%**（纯墨水屏残影，不是逻辑错）；吃到/暂停/退出时做一次全刷即可清掉。
+- 性能拆解（全屏）：PNG ~86ms（adler32 已改分块累加）、LVGL ~248ms（整块文本 1260 字形重排）、
+  eips ~349ms。**用少量独立 label 对象**（而非一整块文本）可把 LVGL 那 248ms 降到忽略不计。
+- 字体坑：`█`(U+2588) 与全角空格 `　`(U+3000) 在本机字体里只有 **10px**（缺字），
+  全角方块/符号用 `■ □ ● ◆ ★ ▲`（fs=20 时实测 20px）。
+- `on_tick(dt)`（C 每 100ms 回调）与**全量按键透传**仍保留，供后续高频交互使用。

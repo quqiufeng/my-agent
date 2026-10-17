@@ -19,7 +19,6 @@ kindle/
 │   ├── lua/     # 应用层（界面/互动逻辑，改这里最常动）
 │   │   ├── init.lua     书架 + 阅读器（当前版本）
 │   │   ├── app.lua      早期版本（on_key 版）
-│   │   ├── snake.lua    贪吃蛇（游戏示例：键盘 + 局部刷新）
 │   │   └── README.md    Lua 开发指南（API/按键/排版/自动化测试）
 │   ├── lock/    # 锁屏图：lock.gray(824x1200 灰度) + make_lock.py + README(换图方法)
 │   └── test/    # agent 自动化测试（模拟人手动操作）

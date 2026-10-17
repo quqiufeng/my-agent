@@ -396,10 +396,9 @@ LD_LIBRARY_PATH=/opt/my_db ./tools/import_book /tmp/cache ~/book.mobi /books/书
 - 键默认被内核锁住：需 `echo unlock > /proc/keypad; echo unlock > /proc/fiveway`（init.lua 已做），无需额外 keyd。
 - 显示：抗锯齿边缘经 gamma 1.8 压暗，墨水屏上文字更实；状态栏贴近底边。
 - **刷新策略**：默认局部刷新（`eips -g`，翻页不闪）；切屏/换字号/锁屏/每 12 次局部自动全刷（`-f`）消残影。
-- **游戏**：内置贪吃蛇（`boot/lua/snake.lua`，菜单进入）。为此补了 `on_tick(100ms)`、任意按键透传、
-  `ui.flushrect()` 矩形局部推送；实测全屏刷新 ~680ms（png 86 + lvgl 248 + eips 349），
-  对象化渲染（墙/食物/蛇身各为独立对象）+ 逐格 `flushrect` 后实测 **~4.2 步/秒**。
-  字体缺 `█`/全角空格（只有 10px），用 `■ □ ● ◆ ★` 才是 20px 全角。
+- **刷新性能**：全屏刷新 ~680ms（png 86 + lvgl 248 + eips 349）；用独立 label 对象 + `ui.flushrect`
+  只推变化区域，可到 ~4 步/秒。字体缺 `█`/全角空格（只有 10px），用 `■ □ ● ◆ ★` 才是 20px 全角。
+- `on_tick(dt)`（100ms 回调）与全量按键透传保留备用。
 - 开发指南：`/opt/my-agent/agentkit/kindle/boot/lua/README.md`
 - **顶部 lock 开关有效**：拨动时驱动锁 keypad/fiveway/accelerometer（dmesg 可见 lock/unlock）；
   lvgui 轮询 `/proc/keypad` → 回调 `on_lock()`，锁定显示 `/mnt/us/ui/lock.gray`，解锁恢复原界面。
