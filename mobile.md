@@ -1,0 +1,343 @@
+# 把 Android 手机改造成「开机即自己的 UI」的 Linux 设备
+
+> 设备：**vivo Y31s 标准版（V2068A）**，Android 11 / arm64 / 无 root。
+> 目标：开机不经过 Android 桌面，直接进入自研 UI（LVGL+LuaJIT，见 `agentkit/kindle/`）。
+> 本文记录整个过程、原理与踩坑，所有结论都在真机上验证过。
+
+---
+
+## 0. 结论先行
+
+- **不能刷 Linux、不能 root**（bootloader 锁死 + 无主线移植），强行解锁=变砖风险。
+- 可行路线是 **Termux + proot Debian**（无 root 的用户态 Linux），性能约为原生 80~90%。
+- 显示用 **Xvfb + x11vnc + AVNC**（Termux:X11 在本机黑屏）。
+- UI 层加一个 **SDL2 后端**，同一份 Lua 界面代码在 Kindle（e-ink）和手机（LCD）上都能跑。
+- 开机用 **Termux:Boot** 拉起整套环境，再 `am start vnc://...` 直接全屏进 UI。
+- vivo 有三道厂商限制必须放行：**自启动**、**后台弹出界面**（关键）、**悬浮窗**。
+
+最终效果：开机 → 无锁屏 → 自动进入自研阅读器 UI；`ssh phone` 可远程维护。
+
+---
+
+## 1. 设备与环境
+
+| 项 | 值 |
+|---|---|
+| 型号 | vivo V2068A（Y31s 标准版） |
+| 系统 | Android 11（SDK 30，OriginOS/Funtouch） |
+| CPU/ABI | arm64-v8a（兼容 armeabi-v7a） |
+| 内存 | 5.7 GB |
+| 屏幕 | 720×1600 @320dpi |
+| 存储 | 128 GB（可用 ~82 GB） |
+| root | **无**（`su` 不存在） |
+| 网络 | Wi-Fi `192.168.1.99`（DHCP，会变，用 `kscan` 扫） |
+
+主机：Ubuntu，`adb` + `ssh`，`~/opt/arm-linux-musleabi-cross`（给 Kindle 的交叉链，与本文无关）。
+
+---
+
+## 2. 为什么不能 root / 刷 Linux
+
+1. **bootloader 锁死**：vivo 官方不提供 `fastboot oem unlock`，也没有公开救砖包。
+   没有解锁就写不了 boot/系统分区；所谓第三方解锁多为付费灰色工具，机型支持差、失败即砖。
+2. **没有主线移植**：postmarketOS / Ubuntu Touch / Mobian 都没有 V2068A 的设备树与内核，
+   屏幕、触摸、音频、基带驱动全要自己写，不是"刷"，是"造"。
+3. **root 也解决不了全部**：厂商的安装验证、系统应用保护是另一套策略。
+
+> 所以本文全部在**无 root**前提下完成。
+
+---
+
+## 3. 技术路线
+
+```
+Android 11（原封不动）
+└─ Termux（普通 App，F-Droid 版）
+   ├─ sshd（8022，免密 key）
+   ├─ Termux:Boot → ~/.termux/boot/start.sh（开机自启）
+   └─ proot Debian 12 arm64（用户态 Linux，无需 root）
+      ├─ Xvfb :1（824×1200×24，-ac 关访问控制）
+      ├─ x11vnc :5900（-nopw）
+      └─ /root/lv/lvgui（LVGL+LuaJIT，SDL2 后端）
+         界面脚本 /mnt/us/ui/init.lua（与 Kindle 同一套）
+手机屏 ← AVNC（com.gaurav.avnc）连 vnc://127.0.0.1:5900
+```
+
+要点：**proot** 用 ptrace 拦截系统调用，把进程的 `/` 重定向到 rootfs，实现"假 chroot"；
+不需要 root，但会有一些系统调用/性能开销（实测够用）。
+
+---
+
+## 4. 分步过程与原理
+
+### 4.1 开启 ADB 与 USB 权限
+
+1. 设置 → 关于手机 → 连点「版本号」7 次 → 开发者选项
+2. 打开「USB 调试」（vivo 另有「USB 调试（安全设置）」，模拟输入需要）
+3. 插 USB → 手机弹「允许 USB 调试吗」→ 勾「始终允许」→ 允许
+4. USB 用途改成「传输文件 (MTP)」
+
+**原理/排错**：`adb devices` 为空时，用 `lsusb` 看接口。
+- `bInterfaceClass=6 (PTP)`/`8 (Mass Storage)` → 只有 MTP/U 盘，**没有 ADB 接口**（ADB 是 `ff/42/01`），说明调试没开或没授权。
+- reboot 后出现 `no permissions (missing udev rules?)` → 主机缺 udev 规则：
+
+```bash
+sudo tee /etc/udev/rules.d/51-android-vivo.rules <<'X'
+SUBSYSTEM=="usb", ATTR{idVendor}=="2d95", MODE="0666", GROUP="plugdev"
+X
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+### 4.2 安装 Termux（vivo 会拦）
+
+```bash
+# F-Droid 版（Play 版已停更）
+VC=$(curl -s https://f-droid.org/api/v1/packages/com.termux | python3 -c 'import json,sys;print(json.load(sys.stdin)["suggestedVersionCode"])')
+curl -L -o termux.apk "https://f-droid.org/repo/com.termux_${VC}.apk"
+adb install -r termux.apk
+```
+
+**踩坑**：vivo 会弹「安全守护提示」并要求**指纹/锁屏密码**验证，`adb install` 会报
+`INSTALL_FAILED_ABORTED: User rejected permissions`。解决办法：用 uiautomator 拿到控件坐标，
+勾选「已了解应用的风险检测结果」→「继续安装」→「锁屏密码验证」→ 输密码。
+（也可以在设置里关掉「外部来源应用验证」，但每台机器入口不一样。）
+
+如果 adb 安装仍被拒，可 `adb push` 到 `/sdcard/Download/` 手动点安装。
+
+### 4.3 免密 SSH
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_phone -N ''
+# Termux 里：
+pkg install -y openssh
+mkdir -p ~/.ssh && echo '<pubkey>' > ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+sshd        # 监听 8022
+```
+
+主机 `~/.ssh/config`：
+
+```
+Host phone
+    HostName 192.168.1.99
+    Port 8022
+    User u0_a171
+    IdentityFile ~/.ssh/id_ed25519_phone
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+```
+
+**原理**：Termux 的 sshd 不校验用户名（任意名字都能登，实际运行在 App 的 uid 下）。
+IP 会变，用 `kscan --rebind` 扫描 8022 端口并自动改配置。
+
+### 4.4 proot Debian（Docker Hub 被墙）
+
+`proot-distro 5.x` 默认从 Docker Hub 拉镜像，国内会 `Connection reset by peer`。
+改用**清华 LXC 镜像**的 Debian rootfs（arm64）：
+
+```bash
+URL=https://mirrors.tuna.tsinghua.edu.cn/lxc-images/images/debian/bookworm/arm64/default/20261016_05:24/rootfs.tar.xz
+proot-distro install -n debian "$URL"      # 90.6 MiB
+proot-distro login debian
+```
+
+容器内换源并装依赖：
+
+```bash
+sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list
+apt update && apt install -y build-essential libsdl2-dev libfreetype-dev \
+    luajit libluajit-5.1-dev xvfb x11vnc xterm
+```
+
+> **原理**：LXC 的 `rootfs.tar.xz` 就是标准 Debian 根文件系统，proot-distro 支持从 URL 安装。
+
+### 4.5 显示：Termux:X11 黑屏 → 改 VNC
+
+先试了官方 **Termux:X11**（APK + `termux-x11-nightly` 包）：
+X server 正常、窗口树里能看到 `xeyes`，但手机屏幕上**始终黑屏**（surface 不刷新），
+`xsetroot -solid red` 也不显示。换机成本太高，放弃。
+
+改用 **Xvfb + x11vnc + AVNC**：
+
+```bash
+# 容器内
+Xvfb :1 -screen 0 824x1200x24 -ac &
+x11vnc -display :1 -nopw -forever -shared -rfbport 5900 &
+# 手机装 AVNC（F-Droid: com.gaurav.avnc），连 127.0.0.1:5900
+```
+
+**两个关键点**：
+1. `-ac` 关闭 X 访问控制，否则 x11vnc 连不上（报 Xauthority 相关错误）。
+2. **proot 会话一退出，后台进程会被杀**。必须让会话常驻：
+
+```bash
+nohup proot-distro login debian -- bash -c \
+  "Xvfb :1 -screen 0 824x1200x24 -ac & sleep 1; x11vnc ... & sleep 100000" >/dev/null 2>&1 &
+```
+
+AVNC 支持 URI，可直接打开并连接：
+
+```bash
+am start -a android.intent.action.VIEW -d "vnc://127.0.0.1:5900"
+```
+
+### 4.6 移植 UI 层（SDL2 后端）
+
+同一份 `lvgui.c`（C）+ Lua 界面，加 `-DUSE_SDL2`：
+
+- `flush_cb` 仍然把 LVGL 画到 `g_gray`，SDL 版本再上传成纹理、`SDL_RenderPresent` 显示；
+- 不再走 `eips`/PNG/evdev；
+- 键盘事件映射成与 Kindle **相同的扫描码**（↑122 ↓123 ←105 →106 回车92 空格57 …），
+  所以 `init.lua` 一行不用改；
+- `ui.flush()` 退化为"立即重绘上屏"。
+
+```bash
+gcc -O2 -DUSE_SDL2 -DLV_CONF_INCLUDE_SIMPLE -I lvgl -I lvgl/src -I . \
+  $(pkg-config --cflags sdl2 freetype2) $(find lvgl/src -name '*.c') lvgui.c \
+  $(pkg-config --libs sdl2 freetype2) -I/usr/include/luajit-2.1 -lluajit-5.1 -lm -ldl -o lvgui
+```
+
+**原理**：UI 逻辑全在 Lua；C 只是"渲染 + 输入 + 管道"的适配层。
+换显示后端（e-ink/窗口）不影响业务代码，这就是可移植的收益。
+
+> Lua 层在 Linux 上会有 `echo unlock > /proc/keypad` 报错（目录不存在），无害。
+
+### 4.7 开机自启与 kiosk
+
+装 **Termux:Boot**（`com.termux.boot`），它会在开机后执行 `~/.termux/boot/*.sh`。
+然后再打开一次 Termux:Boot 注册接收器。
+
+`~/.termux/boot/start.sh`：
+
+```bash
+#!/data/data/com.termux/files/usr/bin/bash
+exec >> ~/boot.log 2>&1
+echo "=== $(date) boot ==="
+export PATH=/data/data/com.termux/files/usr/bin:$PATH
+termux-wake-lock
+sshd
+pkill Xvfb; pkill x11vnc; pkill lvgui
+nohup proot-distro login debian -- bash -c \
+  "Xvfb :1 -screen 0 824x1200x24 -ac & sleep 1; x11vnc -display :1 -nopw -forever -shared -rfbport 5900 & sleep 2; DISPLAY=:1 /root/lv/lvgui & sleep 100000" >/dev/null 2>&1 &
+for i in $(seq 1 40); do
+  if (echo > /dev/tcp/127.0.0.1/5900) 2>/dev/null; then
+    am start -a android.intent.action.VIEW -d "vnc://127.0.0.1:5900" && break
+  fi
+  sleep 3
+done
+```
+
+> **不要**在脚本里 `pkill sshd`：如果这个脚本是通过 SSH 手动跑的，会把你自己踢下线。
+
+### 4.8 vivo 的三道坎（重点）
+
+| 限制 | 位置 | 作用 |
+|---|---|---|
+| 自启动 | `com.vivo.permissionmanager/.activity.BgStartUpManagerActivity` | 允许 Termux / Termux:Boot 开机启动 |
+| **后台弹出界面** | 权限管理 → 权限 → 后台弹出界面 | **允许 Termux 在后台启动 Activity**（关键） |
+| 悬浮窗 | 权限管理 → 权限 → 悬浮窗 | 辅助 |
+
+**踩坑过程**：
+- 开机脚本能跑（`boot.log` 有记录）、sshd 和 VNC 都起来了，但 AVNC 不弹出。
+- `am start` 返回 `Error: Activity not started, unknown error code 4002`。
+- 手动在 Termux 前台执行 `am start` 却成功 → 说明是 **Android 的后台启动 Activity 限制（BAL）**。
+- 先试 `appops set com.termux SYSTEM_ALERT_WINDOW allow`（悬浮窗）——不够。
+- 最终在 vivo 的「权限管理 → 后台弹出界面」里允许 Termux / AVNC，`am start` 立刻成功（rc=0）。
+
+> 原理：Android 10+ 禁止后台应用启动 Activity；部分厂商（vivo）把这条做成了独立权限，
+> 即使有 `SYSTEM_ALERT_WINDOW` 也仍然拦截。
+
+### 4.9 去掉锁屏
+
+vivo 的「无密码」默认仍是**滑动**锁屏，开机会停在那。
+用 adb 直接禁用锁屏（无密码时不需要提供凭据）：
+
+```bash
+adb shell locksettings set-disabled true
+adb shell locksettings get-disabled   # true
+```
+
+### 4.10 保活
+
+```bash
+termux-wake-lock                                   # Termux 内
+adb shell dumpsys deviceidle whitelist +com.termux # 免 Doze
+adb shell dumpsys deviceidle whitelist +com.gaurav.avnc
+adb shell settings put system screen_off_timeout 2147483647   # 屏幕常亮
+```
+
+---
+
+## 5. 逆向方法（可复用到别的机型）
+
+1. **找隐藏 Activity**：
+   ```bash
+   adb shell dumpsys package <pkg> | grep -oE '<pkg>/\.[A-Za-z.]+' | sort -u
+   ```
+   这次就是这样找到 `BgStartUpManagerActivity` 和 `PurviewTabActivity` 的。
+2. **驱动界面**：`uiautomator dump` 拿控件的 `text`/`bounds`，再 `input tap x y` / `input text`。
+   比盲点可靠得多（本次装 App、开权限全靠这套）。
+3. **判断被谁拦**：先看返回值/异常。
+   - `INSTALL_FAILED_ABORTED: User rejected permissions` → 厂商安装验证
+   - `DELETE_FAILED_USER_RESTRICTED` → 系统应用受保护，无 root 无法卸载
+   - `unknown error code 4002` → 后台启动 Activity 被拦
+4. **看 USB 接口**：`lsusb -v` 看 `bInterfaceClass`，`ff/42/01` 才是 ADB。
+5. **厂商设置项**：`设置` 里搜不到时，直接 `am start -n <pkg>/<activity>` 跳进去。
+
+---
+
+## 6. 速查命令
+
+```bash
+# 连接
+ssh phone                                   # 免密（~/.ssh/config 里的 Host phone）
+kscan                                       # 扫局域网 8022
+kscan --rebind                              # IP 变了，自动改配置
+
+# 状态
+ssh phone 'pgrep -a lvgui; pgrep -a Xvfb; (echo > /dev/tcp/127.0.0.1/5900) && echo OK'
+ssh phone 'tail -20 ~/boot.log'
+
+# 重启 UI
+ssh phone 'pkill lvgui'                     # 只杀界面（VNC 还在）
+ssh phone 'bash ~/.termux/boot/start.sh'    # 整套重来（会重开 AVNC）
+
+# 驱动 UI（容器内 FIFO）
+ssh phone 'proot-distro login debian -- bash -c "printf \"open_book(\\\"异类.mobi\\\")\n\" > /tmp/ui.cmd"'
+```
+
+---
+
+## 7. 排错表
+
+| 现象 | 原因 | 解决 |
+|---|---|---|
+| `adb devices` 空 | 没开 USB 调试 / 未授权 / 只有 MTP | 开发者选项打开调试，重插，允许授权 |
+| `no permissions (missing udev rules?)` | 主机 udev 无权限 | 加 `51-android-vivo.rules` 并 reload |
+| `INSTALL_FAILED_ABORTED` | vivo 安装验证 | 勾选风险提示 + 指纹/密码；或改设置 |
+| `DELETE_FAILED_USER_RESTRICTED` | 系统应用受保护 | 无 root 无解；只能设置里停用/加白名单 |
+| proot 装 Debian 卡在 registry | Docker Hub 被墙 | 用清华 LXC rootfs URL |
+| VNC 连不上 | x11vnc 未起 / 会话被杀 / 无 `-ac` | 常驻 proot 会话；加 `-ac` |
+| Termux:X11 黑屏 | 本机 surface 不刷新 | 换 Xvfb + x11vnc + AVNC |
+| 开机不自动进 UI | 自启动 / 后台弹出界面 未允许 | 两个权限都放行；看 `~/boot.log` |
+| `am start` 返回 4002 | 后台启动 Activity 被拦 | vivo 权限管理里开「后台弹出界面」 |
+| 开机停在滑动锁屏 | 锁屏模式是 Swipe | `locksettings set-disabled true` |
+
+---
+
+## 8. 安全与维护
+
+- **VNC 无密码**（`-nopw`，监听 0.0.0.0:5900）。仅限可信局域网；要收紧可加 `-localhost`
+  （AVNC 连本机，不影响使用）。
+- **SSH 用密钥**，不要开密码登录。
+- **回 Android**：按 Home 键（AVNC 不是桌面）。
+- **恢复原状**：卸载 Termux / Termux:Boot / AVNC / Termux:X11，删 `~/.termux/boot/start.sh`，
+  `locksettings set-disabled false`。
+
+---
+
+## 9. 未做 / 可选
+
+- **真 root**：需要可解锁 bootloader 的机型（Pixel / 部分小米），或换 PinePhone 之类原生 Linux 手机。
+- **原生帧缓冲**：无 root 拿不到 `/dev/fb0` 的写权限；VNC 是当前最稳的显示路径。
+- **性能**：proot 有 ptrace 开销；如果只跑界面/服务，完全够用。
+- **Android UI 换成自己的**：技术上只能"开机后立刻盖一层"，无法替换系统桌面/开机动画（需 root）。
