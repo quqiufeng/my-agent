@@ -32,8 +32,9 @@ static SDL_Renderer *g_ren=NULL;
 static SDL_Texture  *g_tex=NULL;
 #endif
 
-#define DISP_W 824
-#define DISP_H 1200
+/* 显示尺寸：默认 824x1200（Kindle），可用环境变量 UI_W/UI_H 覆盖（手机 SDL 版） */
+static int DISP_W = 824;
+static int DISP_H = 1200;
 #define CMD_FIFO "/tmp/ui.cmd"
 #define SAY_FIFO "/tmp/ui_say"   /* 纯文本指令通道（语音/远程），每行一条 */
 #define EVT_FILE "/mnt/us/ui/events"
@@ -42,7 +43,7 @@ static SDL_Texture  *g_tex=NULL;
 #define EIPS_BIN "/usr/sbin/eips"
 #define REFRESH_MS 1500
 
-static unsigned char g_gray[DISP_W * DISP_H];
+static unsigned char *g_gray = NULL;
 static unsigned char g_gam[256];
 static unsigned char *g_over=NULL;   /* 全屏灰度覆盖图（锁屏图），NULL=不覆盖 */
 static volatile int g_refresh_full=1;   /* 下次推屏是否全刷（防残影） */   /* 灰阶 gamma 查表：压暗抗锯齿中间调，让字更实 */
@@ -125,7 +126,8 @@ static int write_png(const char*path){ return write_png_rect(path,0,0,DISP_W,DIS
 #ifdef USE_SDL2
 static void sdl_present(void){
     if(!g_tex||!g_ren) return;
-    static uint32_t pix[DISP_W*DISP_H];
+    static uint32_t *pix = NULL;
+    if(!pix) pix = malloc(sizeof(uint32_t)*DISP_W*DISP_H);
     for(int i=0;i<DISP_W*DISP_H;i++){ unsigned char v=g_gray[i]; pix[i]=0xFF000000u|((uint32_t)v<<16)|((uint32_t)v<<8)|v; }
     SDL_UpdateTexture(g_tex,NULL,pix,DISP_W*4);
     SDL_RenderClear(g_ren);
@@ -358,6 +360,8 @@ static int sdl_key(int sym){
 }
 #endif
 int main(void){
+    { const char*e=getenv("UI_W"); if(e&&atoi(e)>0) DISP_W=atoi(e);
+      e=getenv("UI_H"); if(e&&atoi(e)>0) DISP_H=atoi(e); }
 #ifndef USE_SDL2
     key_fd=open("/dev/input/event1",O_RDONLY|O_NONBLOCK); if(key_fd<0) key_fd=open("/dev/input/event0",O_RDONLY|O_NONBLOCK);
     key_fd0=open("/dev/input/event0",O_RDONLY|O_NONBLOCK);
@@ -369,14 +373,16 @@ int main(void){
 #endif
     mkdir("/mnt/us/ui",0755);
     evf=fopen(EVT_FILE,"a");
-    memset(g_gray,255,sizeof g_gray);
+    g_gray = malloc((size_t)DISP_W*DISP_H);
+    memset(g_gray,255,(size_t)DISP_W*DISP_H);
     gam_setup(1.8);
 
     lv_init();
     lv_freetype_init(1,1,0);
     { int pre[]={16,17,22,24,26,30,32,34,38};
       for(unsigned i=0;i<sizeof(pre)/sizeof(pre[0]);i++) if(!font_any(pre[i])) emit("nofont %d",pre[i]); }
-    static lv_color_t buf[DISP_W*40]; static lv_disp_draw_buf_t db; lv_disp_draw_buf_init(&db,buf,NULL,DISP_W*40);
+    static lv_color_t *buf=NULL; if(!buf) buf=malloc(sizeof(lv_color_t)*DISP_W*40);
+    static lv_disp_draw_buf_t db; lv_disp_draw_buf_init(&db,buf,NULL,DISP_W*40);
     static lv_disp_drv_t dd; lv_disp_drv_init(&dd); dd.hor_res=DISP_W; dd.ver_res=DISP_H; dd.flush_cb=flush_cb; dd.draw_buf=&db; lv_disp_drv_register(&dd);
     static lv_indev_drv_t id; lv_indev_drv_init(&id); id.type=LV_INDEV_TYPE_KEYPAD; id.read_cb=key_read; lv_indev_t*ind=lv_indev_drv_register(&id);
     grp=lv_group_create(); lv_indev_set_group(ind,grp);

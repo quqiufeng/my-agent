@@ -14,8 +14,11 @@ local SIZES = {
 }
 local ssize = 2
 local cur_lines = 19   -- 当前每页正文行数（paginate 时按字体实算）
--- 正文可用区（由 W.r_body 位置 x=46,y=194 与分隔线决定）
-local BODY_W, BODY_H = 732, 926
+-- 屏幕尺寸：Kindle 824x1200；手机 kiosk 用 UI_W/UI_H（Xvfb 720x1600）
+local SW = tonumber(os.getenv("UI_W") or "") or 824
+local SH = tonumber(os.getenv("UI_H") or "") or 1200
+-- 正文可用区（W.r_body 起点 x=46,y=194；底部留给分隔线+页码）
+local BODY_W, BODY_H = SW-92, SH-274
 -- 按真实字体度量算：每行半角宽 maxw、每页行数 lines
 local function size_metrics(sz)
   local cw    = ui.measure("汉", sz.fs)          -- 单个汉字宽 ≈ 字号
@@ -105,14 +108,14 @@ local function mk(t,x,y,sz,gray) local o=ui.text(x,y,t,sz); if gray then ui.colo
 local function initui()
   W.r_eyebrow = mk("K I N D L E · 阅 读",46,58,16,0x999999)
   W.r_title   = mk("",46,106,34)
-  W.r_hr1     = ui.hr(46,172,732)
+  W.r_hr1     = ui.hr(46,172,BODY_W)
   W.r_body    = mk("",46,194,26); ui.style(W.r_body,SIZES[ssize].ls,1)
-  W.r_hr2     = ui.hr(46,1120,732)
-  W.r_page    = mk("",46,1146,17,0x777777)
-  W.r_hint    = mk("← → 翻页  ↑ ↓ ±10页  · 中键 菜单",360,1146,17,0xaaaaaa)
+  W.r_hr2     = ui.hr(46,SH-80,BODY_W)
+  W.r_page    = mk("",46,SH-54,17,0x777777)
+  W.r_hint    = mk("← → 翻页  ↑ ↓ ±10页  · 中键 菜单",SW-464,SH-54,17,0xaaaaaa)
   W.l_title   = mk("",0,0,34); ui.align(W.l_title,ui.ALIGN_TOP_MID,0,44)
   W.l_body    = mk("",46,150,26); ui.style(W.l_body,18,1)
-  W.l_hint    = mk("",46,1146,17,0xaaaaaa)
+  W.l_hint    = mk("",46,SH-54,17,0xaaaaaa)
   W.lock      = mk("已锁定\n\n拨动顶部 lock 开关解锁", 0, 0, 34)
   ui.align(W.lock, ui.ALIGN_CENTER, 0, 0)
   ui.talign(W.lock, 1)   -- 文字居中
