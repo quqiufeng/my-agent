@@ -393,3 +393,58 @@ fastboot flashing unlock            # 官方解锁（会清数据）
 # 提取 stock boot.img → Magisk 打补丁 → fastboot flash boot
 # 或用 TWRP 设备树编译 recovery 后刷入
 ```
+
+---
+
+## 11. Nubia Z18（NX606J）记录
+
+> 备用机，SDM845 / Android 8.1（SDK 27）/ verifiedboot green / 5.8GB RAM。
+> **注意：本文档记录的是实际发生过的事，包括失败。**
+
+### 11.1 关键操作：从原厂 recovery 进 fastboot（重点，别忘）
+
+原厂 recovery 菜单只有四项：
+`选择升级包（含 OTG） / 清理数据 / 重启手机 / 关机`
+
+- 在 recovery 里**音量键是导航**，所以没法用「音量下 + 电源」组合。
+- 正确做法：**先按住「音量下」不放**，再让它重启（选「重启手机」或「关机」，用**电源键**确认），
+  音量下一直按着 → 重启后停在 **fastboot**（USB `18d1:d00d`，序列号即设备 SN）。
+- 如果「关机」会自己重启（ABL 复位路径异常），也用同样办法：按住音量下让它重启。
+
+```bash
+sudo fastboot devices        # 看到 <sn> fastboot 即成功
+```
+
+### 11.2 EDL（9008）进入方式
+
+- 系统正常时：`adb -s <sn> reboot edl`
+- 关机后：**同时按住 音量＋ 和 音量－** 再插 USB（保持 8 秒）
+- 出现 `05c6:9008 QDL mode` 即成功
+
+### 11.3 已试过的东西（结论）
+
+| 尝试 | 结果 |
+|---|---|
+| `fastboot oem unlock` / `flashing unlock` / `oem nubia_unlock NUBIA_NX616J`（原厂 ABL） | 全部 `unknown command` |
+| 按 LineageOS wiki 刷自定义 ABL：`edl w abl abl-z18-custom.elf --memory=ufs --lun=4` | 写入成功（sector 40966） |
+| 刷完后 | **系统起不来，反复重启/进 recovery；USB 不枚举一段时间** |
+| recovery → fastboot（按住音量下重启） | **可以进 fastboot**，但解锁命令仍 `unknown command` |
+
+### 11.4 文件与位置
+
+- 自定义 ABL：`/tmp/opencode/abl-z18-custom.elf`（151552 B，来自 LineageOS wiki 的 androidfilehost 链接）
+- **原厂 ABL**：`/tmp/opencode/abl-stock.elf`（135168 B，来自 GitHub `TadiT7/nubia_nx606j_dump`）
+- EDL 工具：`/tmp/opencode/edl-tool`（bkerler/edl）+ `Loaders/`（bkerler/Loaders）
+- 分区表：`/tmp/opencode/gpt.txt`（`abl` 在 **LUN 4**，offset `0xa006000`，长度 `0x100000`；`ablbak` 在 `0x22ce6000`）
+
+原厂 ABL 恢复命令：
+
+```bash
+cd /tmp/opencode/edl-tool
+sudo /tmp/opencode/mtkenv/bin/python edl.py w abl /tmp/opencode/abl-stock.elf --memory=ufs --lun=4
+```
+
+### 11.5 待办
+
+- 若再进 EDL：先刷回**原厂 ABL**，确认能正常开机，再考虑其他解锁方案。
+- 否则送修（9008 盒子/EDL 线）。
