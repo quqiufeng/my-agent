@@ -321,15 +321,24 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   Future<void> _micLoop(String dev, String card, String gain, Map<String, String> env) async {
-    try {
-      await Process.run('amixer', ['-c', card, 'sset', 'Mic', gain]);
-    } catch (_) {}
+    // VOICE_MIC_URL：从网络音频源（手机 /audio）取 16k 单声道 PCM，替代本机声卡
+    final micUrl = (env['VOICE_MIC_URL'] ?? '').trim();
+    if (micUrl.isEmpty) {
+      try {
+        await Process.run('amixer', ['-c', card, 'sset', 'Mic', gain]);
+      } catch (_) {}
+    }
     final silenceFrames = ((int.tryParse(env['VOICE_SILENCE_MS'] ?? '1200') ?? 1200) ~/ 128).clamp(1, 99);
     final minFrames = ((int.tryParse(env['VOICE_MIN_SPEECH_MS'] ?? '300') ?? 300) ~/ 128).clamp(1, 99);
     while (mounted) {
       try {
-        final p = await Process.start('arecord',
-            ['-D', dev, '-f', 'S16_LE', '-r', '16000', '-c', '1', '-q', '-t', 'raw', '-']);
+        final p = micUrl.isNotEmpty
+            ? await Process.start('ffmpeg', [
+                '-loglevel', 'error', '-i', micUrl,
+                '-f', 's16le', '-ar', '16000', '-ac', '1', '-',
+              ])
+            : await Process.start('arecord',
+                ['-D', dev, '-f', 'S16_LE', '-r', '16000', '-c', '1', '-q', '-t', 'raw', '-']);
         _micProc = p;
         final buf = <int>[];
         var noise = 200, silent = 0;

@@ -9,6 +9,8 @@ export LD_LIBRARY_PATH="$ROOT/voice/libs:$ROOT/libs:$ROOT/agentkit/lib:/data/ven
 [ -x "$BIN" ] || { echo "尚未构建，编译中 ..."; "$HERE/build.sh" || { echo "构建失败" >&2; exit 1; }; }
 # 第二路（手机后摄）默认启用；可用环境变量覆盖
 export CAM2_URL="${CAM2_URL:-http://192.168.1.99:8080/video}"
+# 手机当麦克风：touch /tmp/myagent_phone_mic 启用（否则用本机声卡）
+[ -f /tmp/myagent_phone_mic ] && export VOICE_MIC_URL="${VOICE_MIC_URL:-http://192.168.1.99:8080/audio}"
 # 手机画面默认旋转 90°（竖放），/tmp 每次重启清空时补上；运行中改此文件后需重连生效
 [ -f /tmp/myagent_ezviz.rot ] || echo 90 > /tmp/myagent_ezviz.rot
 exec "$BIN" "$@"
