@@ -444,7 +444,43 @@ cd /tmp/opencode/edl-tool
 sudo /tmp/opencode/mtkenv/bin/python edl.py w abl /tmp/opencode/abl-stock.elf --memory=ufs --lun=4
 ```
 
-### 11.5 待办
+### 11.5 待办（按顺序）
 
-- 若再进 EDL：先刷回**原厂 ABL**，确认能正常开机，再考虑其他解锁方案。
-- 否则送修（9008 盒子/EDL 线）。
+1. [ ] 买 **9008 深刷线**（高通工程线，支持 SDM845，带开关）
+2. [ ] 线到后插上，确认主机 `lsusb` 出现 `05c6:9008`
+3. [ ] 刷回原厂 ABL：
+       `cd /tmp/opencode/edl-tool && sudo /tmp/opencode/mtkenv/bin/python edl.py w abl ~/abl-stock.elf --memory=ufs --lun=4`
+4. [ ] 重启，确认能正常进 Android
+5. [ ] 进系统后先 `adb reboot edl`，把 **全部分区 dump 备份**（`edl r <part> ...`），再考虑任何写操作
+6. [ ] 备份完成后再评估解锁（正确版本的自定义 ABL / TWRP / LineageOS）
+7. [ ] 若深刷线也不行 → 送修（EDL 盒子）
+
+**已知事实（别再踩）**
+- 原厂 ABL **不支持** `fastboot flash` / `download` / `getvar`，只能 `reboot` / `continue`
+- 按键组合（音量+/音量-/三个键）在这台机上**触发不了 EDL**
+- 数据（照片）已备份：`~/nubia_imgs`（226 个文件，1.7G）
+
+### 11.6 经验教训（写给下次的自己）
+
+1. **没有完整备份，不碰 bootloader。**
+   这次照片备份了，但**没有 dump 分区**（尤其 `abl`/`xbl`/`boot`），出事之后没有任何回滚手段。
+   正确顺序：`printgpt` → `edl r` 全分区 dump → 校验 → 才允许写。
+2. **先验证写入通道，再写。**
+   写之前先确认：EDL 能不能进、能不能读、能不能写、写完能不能恢复。
+   这次只验证了“能读”，就假设“能写、能恢复”。
+3. **确认镜像与机型/固件版本严格匹配。**
+   来自第三方网盘（androidfilehost）的 ABL，没有和本机固件版本比对，
+   也没检查它的签名/来源是否对应 NX606J。
+4. **“能进 fastboot” ≠ “能刷机”。**
+   原厂 ABL 可能不支持 `flash`/`download`/`getvar`，只有 `reboot`/`continue`。
+   刷机前先用 `fastboot getvar version` 试探。
+5. **不要把“应该能恢复”当成“随时能恢复”。**
+   恢复路径（EDL 按键组合）必须在动手前**当场验证一遍**；
+   这次是假设它能进，实际进不去，于是没有退路。
+6. **对不熟悉的机型，先只读、后写。**
+   能用 `edl printgpt`/`r` 做的事情，就不要先 `w`。
+7. **一次只改一个变量。**
+   这次同时做了：开 OEM 解锁、刷 ABL、准备解锁命令。
+   出问题后无法判断是哪一步导致的。
+8. **不夸口。** 说“几分钟恢复”“随时可恢复”之前，先确认前提成立。
+9. **备用机也是设备。** 动 bootloader 前要明确告知风险（变砖、无法恢复），并得到确认。
