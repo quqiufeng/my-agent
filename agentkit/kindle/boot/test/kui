@@ -11,7 +11,7 @@
 #   kui run <test.lua>         # 上传并执行 Lua 测试脚本
 #   kui log [n] | kui restart
 K=${KINDLE_HOST:-kindle}
-SSH="ssh -o BatchMode=yes $K"
+SSH="ssh -o BatchMode=yes -o ConnectTimeout=6 -o ControlMaster=auto -o ControlPath=/tmp/kui-%C -o ControlPersist=120 $K"
 SCP="scp -O -q"
 seq_now() { $SSH 'cat /tmp/ui_seq 2>/dev/null || echo 0'; }
 wait_seq() { $SSH "i=0; while [ \$i -lt 120 ]; do s=\$(cat /tmp/ui_seq 2>/dev/null || echo 0); [ \"\$s\" != \"$1\" ] && exit 0; usleep 100000; i=\$((i+1)); done; exit 1"; }

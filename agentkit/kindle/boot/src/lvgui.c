@@ -197,14 +197,14 @@ static int l_get(lua_State*S){ lv_obj_t*o=lua_touserdata(S,1);
 /* 同步重绘并推屏：自动化测试截图前调用，保证 PNG 是最新状态 */
 /* 设置/清除全屏灰度覆盖图：文件须为 824x1200 8 位灰度原始数据 */
 static int l_overlay(lua_State*S){
-    if(lua_isnoneornil(S,1)){ free(g_over); g_over=NULL; lua_pushboolean(S,1); return 1; }
+    if(lua_isnoneornil(S,1)){ free(g_over); g_over=NULL; g_dirty=1; g_ui_dirty=1; lua_pushboolean(S,1); return 1; }
     const char*p=luaL_checkstring(S,1);
     FILE*f=fopen(p,"rb"); if(!f){ lua_pushboolean(S,0); return 1; }
     unsigned char*b=malloc(DISP_W*DISP_H);
     if(!b){ fclose(f); lua_pushboolean(S,0); return 1; }
     size_t n=fread(b,1,DISP_W*DISP_H,f); fclose(f);
     if(n!=(size_t)(DISP_W*DISP_H)){ free(b); lua_pushboolean(S,0); return 1; }
-    free(g_over); g_over=b; lua_pushboolean(S,1); return 1;
+    free(g_over); g_over=b; g_dirty=1; g_ui_dirty=1; lua_pushboolean(S,1); return 1;
 }
 static int l_talign(lua_State*S){ lv_obj_t*o=lua_touserdata(S,1); int a=(int)luaL_optinteger(S,2,0);
     if(o) lv_obj_set_style_text_align(o,(lv_text_align_t)a,0); return 0; }
@@ -353,7 +353,7 @@ int main(void){
         }
         struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
         long now=ts.tv_sec*1000L+ts.tv_nsec/1000000L;
-        if((now-g_last_ms)>=REFRESH_MS){ do_refresh(); g_dirty=0; g_last_ms=now; }
+        if(g_dirty && (now-g_last_ms)>=REFRESH_MS){ do_refresh(); g_dirty=0; g_last_ms=now; }
         usleep(5000);
     }
     return 0;

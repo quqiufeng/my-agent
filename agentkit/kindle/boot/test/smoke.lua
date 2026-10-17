@@ -15,6 +15,10 @@ local function menu_goto(word)
   return item():find(word,1,true)~=nil
 end
 
+-- 记录测试前状态（结束后恢复，避免污染真实阅读进度）
+local saved = ui_info()
+local saved_book, saved_page, saved_size = saved.book, saved.page, saved.size
+
 -- 书架：选到多页书《异类》
 shelf()
 ok(S().mode=="shelf", "进入书架")
@@ -70,5 +74,11 @@ cmd("回到书架"); ok(S().mode=="shelf", "语音: 回书架")
 -- 屏幕文本可读（免 OCR）
 ui_save_text()
 ok(#(ui_dump())>0, "可读屏文本("..#(ui_dump()).." bytes)")
+
+-- 恢复测试前状态
+if saved_book and saved_book~="" then cmd("读"..saved_book) end
+if saved_size then cmd("字号"..saved_size) end
+if saved_page then cmd("跳到第"..saved_page.."页") end
+ui.log("已恢复: "..tostring(saved_book).." 第"..tostring(saved_page).."页 "..tostring(saved_size))
 
 ui.log(string.format("SMOKE DONE pass=%d fail=%d", pass, fail))

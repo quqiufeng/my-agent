@@ -98,7 +98,8 @@ local npages, page = 1, 1
 local books, sel = {}, 1
 local mitems, msel = {}, 1
 local tsel = 1
-local curtext, curname
+local curname
+local MAX_LINES = 50000   -- 单本书分页后的行数上限（防大书耗尽内存）
 
 local function mk(t,x,y,sz,gray) local o=ui.text(x,y,t,sz); if gray then ui.color(o,gray) end return o end
 local function initui()
@@ -146,6 +147,10 @@ local function paginate(txt)
         for _,l in ipairs(wrap("　　"..par, maxw)) do lines[#lines+1]=l end
       end
     end
+    if #lines >= MAX_LINES then
+      ui.log("WARN 文本过大，已截断到 "..MAX_LINES.." 行")
+      break
+    end
   end
   npages = math.max(1, math.ceil(#lines/nlines))
 end
@@ -164,8 +169,9 @@ end
 
 function open_book(name)
   local txt=load_text(name); if not txt then ui.log("no-text "..name); return end
-  curtext=txt; curname=name
+  curname=name
   paginate(txt)
+  txt=nil   -- 分页后释放整本书文本（内存紧张：设备仅 ~12MB free）
   page = pos[name] or 1
   if page<1 then page=1 end; if page>npages then page=npages end
   mode="reader"; last_book=name
@@ -176,8 +182,10 @@ end
 local function set_size(delta)
   local frac = npages>1 and (page-1)/(npages-1) or 0
   ssize = ((ssize-1+delta) % #SIZES) + 1
-  if curtext then
-    paginate(curtext)
+  local txt = curname and load_text(curname)
+  if txt then
+    paginate(txt)
+    txt=nil
     page = math.floor(frac*(npages-1)+0.5)+1
     if page<1 then page=1 end; if page>npages then page=npages end
     pos[curname]=page; save_pos(); render()
@@ -457,5 +465,4 @@ end
 load_pos(); initui()
 os.execute("echo unlock > /proc/keypad")
 os.execute("echo unlock > /proc/fiveway")
-os.execute("killall keyd 2>/dev/null")
 if last_book and load_text(last_book) then open_book(last_book) else shelf() end
