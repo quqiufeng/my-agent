@@ -395,6 +395,7 @@ LD_LIBRARY_PATH=/opt/my_db ./tools/import_book /tmp/cache ~/book.mobi /books/书
   实机扫描码：Home 98 · Back 91 · Menu 139 · 上一页 109 · 下一页 124；五向 上122 下123 中92 左105 右106。
 - 键默认被内核锁住：需 `echo unlock > /proc/keypad; echo unlock > /proc/fiveway`（init.lua 已做），无需额外 keyd。
 - 显示：抗锯齿边缘经 gamma 1.8 压暗，墨水屏上文字更实；状态栏贴近底边。
+- **刷新策略**：默认局部刷新（`eips -g`，翻页不闪）；切屏/换字号/锁屏/每 12 次局部自动全刷（`-f`）消残影。
 - 开发指南：`/opt/my-agent/agentkit/kindle/boot/lua/README.md`
 - **顶部 lock 开关有效**：拨动时驱动锁 keypad/fiveway/accelerometer（dmesg 可见 lock/unlock）；
   lvgui 轮询 `/proc/keypad` → 回调 `on_lock()`，锁定显示 `/mnt/us/ui/lock.gray`，解锁恢复原界面。

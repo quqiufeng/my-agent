@@ -37,7 +37,8 @@
 
 static unsigned char g_gray[DISP_W * DISP_H];
 static unsigned char g_gam[256];
-static unsigned char *g_over=NULL;   /* 全屏灰度覆盖图（锁屏图），NULL=不覆盖 */   /* 灰阶 gamma 查表：压暗抗锯齿中间调，让字更实 */
+static unsigned char *g_over=NULL;   /* 全屏灰度覆盖图（锁屏图），NULL=不覆盖 */
+static volatile int g_refresh_full=1;   /* 下次推屏是否全刷（防残影） */   /* 灰阶 gamma 查表：压暗抗锯齿中间调，让字更实 */
 static void gam_setup(double gamma){ for(int i=0;i<256;i++){ double y=pow(i/255.0,gamma); g_gam[i]=(unsigned char)(y*255.0+0.5); } }
 static volatile int g_dirty = 0;
 static volatile int g_key = 0;
@@ -107,10 +108,17 @@ static int write_png(const char*path){
     free(raw); free(z); fclose(f); return 0;
 }
 static void do_refresh(void){
+    static int partial_n=0;
     if(g_over) memcpy(g_gray,g_over,sizeof g_gray);
     if(write_png(FRAME_PNG)==0){
-        char cmd[128]; snprintf(cmd,sizeof cmd, EIPS_BIN " -f -g " FRAME_PNG " >/dev/null 2>&1");
+        char cmd[160];
+        int full = g_refresh_full;
+        if(full) snprintf(cmd,sizeof cmd, EIPS_BIN " -f -g " FRAME_PNG " >/dev/null 2>&1");
+        else     snprintf(cmd,sizeof cmd, EIPS_BIN " -g " FRAME_PNG " >/dev/null 2>&1");
         if(system(cmd)!=0){ }
+        emit("refresh %s", full?"full":"part");
+        if(full){ partial_n=0; g_refresh_full=0; }
+        else if(++partial_n>=12){ partial_n=0; g_refresh_full=1; }   /* 每 12 次局部强制全刷 */
     }
 }
 
@@ -208,7 +216,9 @@ static int l_overlay(lua_State*S){
 }
 static int l_talign(lua_State*S){ lv_obj_t*o=lua_touserdata(S,1); int a=(int)luaL_optinteger(S,2,0);
     if(o) lv_obj_set_style_text_align(o,(lv_text_align_t)a,0); return 0; }
-static int l_flush(lua_State*S){ (void)S; lv_obj_invalidate(lv_scr_act()); lv_refr_now(NULL); do_refresh(); return 0; }
+static int l_flush(lua_State*S){ if(lua_toboolean(S,1)) g_refresh_full=1;
+    lv_obj_invalidate(lv_scr_act()); lv_refr_now(NULL); do_refresh(); return 0; }
+static int l_full(lua_State*S){ (void)S; g_refresh_full=1; return 0; }
 static int l_seq(lua_State*S){ lua_pushnumber(S,(lua_Number)g_seq); return 1; }
 static int l_font(lua_State*S){ lv_font_t*f=font_any((int)luaL_checkinteger(S,1)); lua_pushlightuserdata(S,f); return 1; }
 static int l_setfont(lua_State*S){ lv_obj_t*o=lua_touserdata(S,1); if(o) lv_obj_set_style_text_font(o,arg_font(S,2,26),0); return 0; }
@@ -265,7 +275,7 @@ static const luaL_Reg uilib[]={
     {"clear",l_clear},{"title",l_title},{"label",l_label},{"text",l_text},
     {"set",l_set},{"pos",l_pos},{"size",l_size},{"align",l_align},
     {"log",l_log},{"button",l_button},{"color",l_color},{"list",l_list},{"style",l_style},{"hr",l_hr},{"show",l_show},
-    {"font",l_font},{"setfont",l_setfont},{"measure",l_measure},{"zoom",l_zoom},{"get",l_get},{"talign",l_talign},{"overlay",l_overlay},{"flush",l_flush},{"seq",l_seq},{NULL,NULL}
+    {"font",l_font},{"setfont",l_setfont},{"measure",l_measure},{"zoom",l_zoom},{"get",l_get},{"talign",l_talign},{"overlay",l_overlay},{"flush",l_flush},{"full",l_full},{"seq",l_seq},{NULL,NULL}
 };
 static void seq_tick(void){ g_seq++; FILE*f=fopen("/tmp/ui_seq","w"); if(f){ fprintf(f,"%lu\n",g_seq); fclose(f); } }
 static void dolua(const char*code){ if(luaL_loadstring(L,code)||lua_pcall(L,0,0,0)){ emit("luaerr %s",lua_tostring(L,-1)); lua_pop(L,1); } g_ui_dirty=1; seq_tick(); }

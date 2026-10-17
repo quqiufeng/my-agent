@@ -121,6 +121,7 @@ end
 local function screen(which)
   for _,o in ipairs({W.r_eyebrow,W.r_title,W.r_hr1,W.r_body,W.r_hr2,W.r_page,W.r_hint}) do ui.show(o, which=="reader") end
   for _,o in ipairs({W.l_title,W.l_body,W.l_hint}) do ui.show(o, which=="list") end
+  ui.full()   -- 切屏整页变，做一次全刷消残影
 end
 
 local function paginate(txt)
@@ -131,6 +132,7 @@ local function paginate(txt)
   ui.setfont(W.r_body,  sz.fs)
   ui.setfont(W.r_title, sz.title)
   ui.style(W.r_body, sz.ls, 1)
+  ui.full()   -- 重排后整页变
   lines={}; toc={}
   txt = (txt or ""):gsub("\r","")
   for par in (txt.."\n"):gmatch("(.-)\n") do
@@ -280,6 +282,7 @@ function on_lock(v)
     for _,o in ipairs({W.r_eyebrow,W.r_title,W.r_hr1,W.r_body,W.r_hr2,W.r_page,W.r_hint,
                        W.l_title,W.l_body,W.l_hint}) do ui.show(o,false) end
     -- 优先显示锁屏图片；文件缺失时回退文字
+    ui.full()
     if not ui.overlay("/mnt/us/ui/lock.gray") then ui.show(W.lock, true) end
   else
     ui.overlay(nil)

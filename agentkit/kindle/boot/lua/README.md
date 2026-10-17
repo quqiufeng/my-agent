@@ -18,8 +18,10 @@ lvgui 启动
 ```
 
 要点：
-- **UI 改动最多 1.5s 后出现在屏上**（`REFRESH_MS=1500`）；**只推脏页**，空闲不刷屏（省电、少残影）。
-  需要立即出图用 `ui.flush()`（`kui shot` 已内置）。
+- **UI 改动最多 1.5s 后出现在屏上**（`REFRESH_MS=1500`）；**只推脏页**，空闲不刷屏。
+- **刷新分两档**：默认**局部刷新**（`eips -g`，不闪，翻页很快）；
+  切屏 / 换字号 / 锁屏 / 每 12 次局部会自动做一次**全刷**（`eips -f`）消残影。
+  需要立即出图用 `ui.flush()`；强制全刷用 `ui.flush(1)` 或先 `ui.full()`。
 - 屏幕是 **824×1200 竖屏坐标系**（左上角 0,0）。
 - 所有控件都挂在当前活动屏上；`ui.clear()` 会全部清掉。
 - 日志写 `/mnt/us/ui/events`（`log/click/open/luaerr`）。
@@ -216,7 +218,8 @@ ssh kindle 'echo "ui.clear() dofile(\"/mnt/us/ui/init.lua\")" > /tmp/ui.cmd'
 | `ui_dump()` | 当前屏可见文本（直接读 label，**不需要 OCR**） |
 | `ui_save_text()` | 写 `/tmp/ui_text.txt` |
 | `ui.get(obj)` | 读任意 label 文本（C 提供） |
-| `ui.flush()` | 同步重绘并推屏（截图前调用，保证是最新帧） |
+| `ui.flush([full])` | 同步重绘并推屏（截图前调用）；`full=true` 强制全刷 |
+| `ui.full()` | 标记下一次推屏为全刷（不立即推） |
 | `ui.seq()` | 命令序号（供外部同步，见 `kui`） |
 | `ui.talign(obj, n)` | 文本对齐（0=左 / 1=中 / 2=右） |
 | `ui.overlay(path\|nil)` | 设置/清除全屏灰度覆盖图（824×1200 8 位原始数据，用于锁屏图） |
