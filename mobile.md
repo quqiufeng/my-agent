@@ -341,3 +341,55 @@ ssh phone 'proot-distro login debian -- bash -c "printf \"open_book(\\\"异类.m
 - **原生帧缓冲**：无 root 拿不到 `/dev/fb0` 的写权限；VNC 是当前最稳的显示路径。
 - **性能**：proot 有 ptrace 开销；如果只跑界面/服务，完全够用。
 - **Android UI 换成自己的**：技术上只能"开机后立刻盖一层"，无法替换系统桌面/开机动画（需 root）。
+
+---
+
+## 10. Root / 刷机可行性（实测结论：不可行）
+
+目标机型：vivo V2068A（Y31s 标准版），**MT6833（天玑 700）**。
+
+### 10.1 实测结果
+
+| 尝试 | 结果 |
+|---|---|
+| `fastboot getvar unlocked` | `no` |
+| `fastboot flashing unlock` | `unknown command` |
+| `fastboot oem unlock` / `unlock-go` | `unknown command` |
+| `fastboot oem unlock_vivo`（BBK 工程命令） | `unknown command` |
+| `fastboot flashing get_unlock_ability` | `unknown command` |
+| 音量+ 插线 → mtkclient `printgpt` | 进 **Preloader**（`0e8d:20ff`），握手连续失败 |
+| 音量+/- 同按 → 纯 BROM（`0e8d:0003`） | 进不去，仍停在 Preloader |
+
+**结论**：不是"锁着"，是这台机的 **bootloader 根本没实现解锁功能**；
+Preloader 侧还有 **SLA/DAA 签名认证**（mtkclient 无签名 DA，握手即失败）。
+
+### 10.2 为什么社区方案也没用
+
+- GitHub 有两个 PD2068 的 **TWRP 设备树**（`xxroot/twrp_vivo_PD2068`、
+  `qiurigao/android_device_vivo_PD2068-TWRP`），但 **releases 为 0**，没有现成镜像，
+  也没有解锁说明。
+- 就算自己编译出 TWRP，**也没有写入通道**：
+  - `fastboot flash` → bootloader 不支持解锁
+  - MTK BROM/Preloader → SLA 认证
+  - 原厂 recovery → 只接受 vivo 私钥签名的 OTA
+- `ppma/fastboot` 的 `bbk unlock_vivo` 本质只是转发 `oem unlock_vivo`，
+  在这台机上同样 `unknown command`。
+
+### 10.3 若一定要 root
+
+只剩**付费商业工具**（UnlockTool / TFM / Miracle Box / Hydra 等），特点：
+- 依赖厂商或第三方的授权服务器，按年/按次收费
+- 多数只支持 Windows（需虚拟机）
+- 是否覆盖 V2068A / MT6833 需查其机型列表，**大概率不支持**
+- 网上"免费破解版"基本带毒
+
+**建议**：这台机放弃 root。真要 root/原生 Linux，换可解锁机型
+（Pixel、部分一加/小米），或 PinePhone 这类原生 Linux 手机。
+
+### 10.4 如果未来换到可解锁机型，通用流程
+
+```bash
+fastboot flashing unlock            # 官方解锁（会清数据）
+# 提取 stock boot.img → Magisk 打补丁 → fastboot flash boot
+# 或用 TWRP 设备树编译 recovery 后刷入
+```
