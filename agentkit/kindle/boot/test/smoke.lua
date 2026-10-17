@@ -61,6 +61,17 @@ if S().toc_n>0 then
 end
 tap("home"); ok(S().mode=="shelf", "Home 回书架")
 
+-- 游戏：贪吃蛇（键盘/五向键 + 局部刷新）
+tap("enter"); ok(S().mode=="reader", "打开书(准备进菜单)")
+tap("enter"); ok(S().mode=="menu", "打开菜单(游戏)")
+if menu_goto("游戏") then
+  tap("enter"); ok(S().mode=="snake", "进入贪吃蛇")
+  local i = snake_info()
+  ok(i and i.len==3, "蛇初始长度 3")
+  tap("up"); ok(snake_info().dy==-1, "转向(上)")
+  tap("home"); ok(S().mode=="shelf", "退出游戏")
+end
+
 -- 文本指令（语音 / 无障碍通道）
 cmd("读异类"); ok(S().mode=="reader", "语音: 读异类 -> "..S().book)
 local p3=S().page

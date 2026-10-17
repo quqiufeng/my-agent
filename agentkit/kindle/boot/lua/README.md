@@ -49,6 +49,7 @@ lvgui 启动
 | `ui.setfont(obj, size)` | 改已有对象的字号（改字号后必须重排，见 §6） |
 | `ui.measure(str, size)` | 返回该串在指定字号下的 `宽, 高`（像素），用于精确排版 |
 | `ui.zoom(obj, z)` | 缩放（256=1x，实验性，墨水屏上优先用 `setfont`） |
+| `ui.flushrect(x,y,w,h)` | 只同步推送一个矩形区域（局部刷新，游戏/高频更新用） |
 | `ui.button(str, cb)` | 360×110 按钮，点击回调 `cb(str)` |
 | `ui.list(array, cb)` | 列表，每项点击回调 `cb(item)` |
 | `ui.clear()` | 清屏并重建按键组 |
@@ -331,3 +332,48 @@ end
 7. **`on_code` 一旦定义，`on_key` 不再被调用**。
 8. `ui.zoom` 是位图缩放，墨水屏上不如直接换字号清晰。
 9. 推屏只在画面有变化时发生；如果你直接改了 `g_gray` 或外挂逻辑却没触发重绘，记得 `ui.flush()`。
+
+
+---
+
+## 12. 游戏开发
+
+已内置 **贪吃蛇**（`snake.lua`）：菜单 →「游戏：贪吃蛇」。
+
+**操作**：五向键 / `W A S D` 转向 · 中键或空格 暂停 · `R` 重开 · `1/2/3` 速度 · `Home` 退出。
+**存档**：最高分写 `/mnt/us/ui/snake_best`；`snake_state()` 返回 JSON 供 agent 断言。
+
+### 为游戏新增的底层能力
+
+| 能力 | 说明 |
+|---|---|
+| `on_tick(dt)` | C 每 100ms 回调一次；返回 true 表示界面有变化（游戏步进用） |
+| 任意按键透传 | C 把**所有**按键的原始码交给 `on_code(code)`（键盘数字/字母也能用） |
+| `ui.flushrect(x,y,w,h)` | 只推变化的矩形，实测位置与全刷一致，翻页/走一步快很多 |
+
+### 新增一个游戏的套路
+
+1. 在 `boot/lua/` 建 `xxx.lua`，导出 `xxx_start / xxx_key / xxx_tick / xxx_state`（参考 `snake.lua`）。
+2. `init.lua` 的 `open_menu()` 加一项 `{t="游戏：XXX", a="xxx"}`，动作里 `screen("none"); mode="xxx"; xxx_start()`。
+3. `on_key`/`on_code` 里把 `mode=="xxx"` 的输入转给 `xxx_key`；`on_tick` 里调 `xxx_tick(dt)`。
+4. 想被人/agent 测试：`xxx_state()` 输出 JSON，`kui tap` 驱动，`kui shot` 看画面。
+
+### 字体坑（重要）
+
+本机字体（仓耳今楷/CJK）**没有** `█`(U+2588) 和全角空格 `　`(U+3000)：
+实测宽度只有 **10px**，会把网格画歪。可用的全角方块/符号（fs=20 时均为 20px）：
+
+```
+■ □ ● ◆ ★ ▲ ○ ◎ ☆ △
+```
+
+### 性能参考（实测）
+
+| 阶段 | 全屏刷新 | 说明 |
+|---|---|---|
+| PNG 编码 | ~86ms | adler32 已改分块累加，否则要 300ms+ |
+| LVGL 重绘 | ~248ms | 整块文本 label（约 1260 字）重排 |
+| eips 推屏 | ~349ms | 全屏局部更新 |
+| **合计** | **~680ms** | 改 `ui.flushrect` 后贪吃蛇约 **2.7 步/秒** |
+
+> 想再快：把棋盘拆成少量对象（只重绘变化格），或缩小棋盘（减少字形数）。

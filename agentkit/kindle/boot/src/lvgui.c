@@ -23,6 +23,7 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <math.h>
+#include <sys/time.h>
 #include <linux/input.h>
 
 #define DISP_W 824
@@ -82,9 +83,9 @@ static void chunk(FILE*f,const char*type,const unsigned char*data,int len){
     uint32_t c=0xffffffff; c=crc_upd(c,(const unsigned char*)type,4); if(len) c=crc_upd(c,data,len); c^=0xffffffff;
     unsigned char cb[4]; be32(cb,c); fwrite(cb,1,4,f);
 }
-static int write_png(const char*path){
+static int write_png_rect(const char*path,int x0,int y0,int W,int H){
     static int inited=0; if(!inited){ crc_setup(); inited=1; }
-    const int W=DISP_W,H=DISP_H;
+    if(x0<0||y0<0||x0+W>DISP_W||y0+H>DISP_H||W<=0||H<=0) return -1;
     FILE*f=fopen(path,"wb"); if(!f) return -1;
     fwrite(PNG_SIG,1,8,f);
     unsigned char ihdr[13]; be32(ihdr,W); be32(ihdr+4,H); ihdr[8]=8; ihdr[9]=0; ihdr[10]=0; ihdr[11]=0; ihdr[12]=0;
@@ -92,7 +93,8 @@ static int write_png(const char*path){
     long rawlen=(long)H*(W+1);
     unsigned char *raw=malloc(rawlen);
     if(!raw){ fclose(f); return -1; }
-    for(int y=0;y<H;y++){ raw[(long)y*(W+1)]=0; memcpy(raw+(long)y*(W+1)+1, g_gray+(size_t)y*W, W); }
+    for(int y=0;y<H;y++){ raw[(long)y*(W+1)]=0;
+        memcpy(raw+(long)y*(W+1)+1, g_gray+(size_t)(y0+y)*DISP_W + x0, W); }
     long cap=rawlen + (rawlen/65535+1)*5 + 16;
     unsigned char *z=malloc(cap); if(!z){ free(raw); fclose(f); return -1; }
     long zl=0; z[zl++]=0x78; z[zl++]=0x01;
@@ -101,12 +103,19 @@ static int write_png(const char*path){
         z[zl++]=last?1:0; z[zl++]=blk&0xff; z[zl++]=(blk>>8)&0xff; unsigned nlen=(unsigned)((~blk)&0xffff); z[zl++]=nlen&0xff; z[zl++]=(nlen>>8)&0xff;
         memcpy(z+zl,raw+off,blk); zl+=blk; off+=blk;
     }
-    uint32_t a=1,b=0; for(long i=0;i<rawlen;i++){ a=(a+raw[i])%65521; b=(b+a)%65521; }
-    uint32_t ad=(b<<16)|a; z[zl++]=ad>>24; z[zl++]=ad>>16; z[zl++]=ad>>8; z[zl++]=ad;
+    /* adler32：分块累加，避免逐字节取模（ARM 上取模极慢） */
+    uint32_t s1=1, s2=0; long ii=0;
+    while(ii<rawlen){
+        long n=rawlen-ii; if(n>5552) n=5552;
+        for(long j=0;j<n;j++){ s1 += raw[ii]; s2 += s1; ii++; }
+        s1 %= 65521; s2 %= 65521;
+    }
+    uint32_t ad=(s2<<16)|s1; z[zl++]=ad>>24; z[zl++]=ad>>16; z[zl++]=ad>>8; z[zl++]=ad;
     chunk(f,"IDAT",z,zl);
     chunk(f,"IEND",NULL,0);
     free(raw); free(z); fclose(f); return 0;
 }
+static int write_png(const char*path){ return write_png_rect(path,0,0,DISP_W,DISP_H); }
 static void do_refresh(void){
     static int partial_n=0;
     if(g_over) memcpy(g_gray,g_over,sizeof g_gray);
@@ -116,9 +125,8 @@ static void do_refresh(void){
         if(full) snprintf(cmd,sizeof cmd, EIPS_BIN " -f -g " FRAME_PNG " >/dev/null 2>&1");
         else     snprintf(cmd,sizeof cmd, EIPS_BIN " -g " FRAME_PNG " >/dev/null 2>&1");
         if(system(cmd)!=0){ }
-        emit("refresh %s", full?"full":"part");
         if(full){ partial_n=0; g_refresh_full=0; }
-        else if(++partial_n>=12){ partial_n=0; g_refresh_full=1; }   /* 每 12 次局部强制全刷 */
+        else if(++partial_n>=12){ partial_n=0; g_refresh_full=1; }
     }
 }
 
@@ -148,7 +156,7 @@ static void key_read(lv_indev_drv_t *drv, lv_indev_data_t *data){
             case 124: case KEY_RIGHT:  k=LV_KEY_RIGHT; break;
             default: k=0;
         }
-        if(k && ev.value==1){ g_key=k; g_rawcode=ev.code; }
+        if(ev.value==1){ g_key = k?k:2000; g_rawcode=ev.code; }
     }
     if(key_fd>=0) while(read(key_fd,&ev,sizeof ev)==(ssize_t)sizeof ev){
         if(ev.type!=EV_KEY) continue; lv_key_t k=0;
@@ -160,7 +168,8 @@ static void key_read(lv_indev_drv_t *drv, lv_indev_data_t *data){
             case 92:  case KEY_ENTER: k=LV_KEY_ENTER; break;
             default:k=0;
         }
-        if(!k) continue; if(ev.value==1){last=k;pr=1;g_key=(int)k;g_rawcode=ev.code;} else if(ev.value==0) pr=0;
+        if(!k){ if(ev.value==1){ g_key=2000; g_rawcode=ev.code; } continue; }
+        if(ev.value==1){last=k;pr=1;g_key=(int)k;g_rawcode=ev.code;} else if(ev.value==0) pr=0;
     }
     data->key=last; data->state=pr?LV_INDEV_STATE_PRESSED:LV_INDEV_STATE_RELEASED;
 }
@@ -216,8 +225,38 @@ static int l_overlay(lua_State*S){
 }
 static int l_talign(lua_State*S){ lv_obj_t*o=lua_touserdata(S,1); int a=(int)luaL_optinteger(S,2,0);
     if(o) lv_obj_set_style_text_align(o,(lv_text_align_t)a,0); return 0; }
-static int l_flush(lua_State*S){ if(lua_toboolean(S,1)) g_refresh_full=1;
-    lv_obj_invalidate(lv_scr_act()); lv_refr_now(NULL); do_refresh(); return 0; }
+static int l_flush(lua_State*S){
+    if(lua_toboolean(S,1)) g_refresh_full=1;
+    lv_obj_invalidate(lv_scr_act()); lv_refr_now(NULL);
+    g_ui_dirty=0;            /* 已同步重绘，避免主循环再推一次 */
+    do_refresh();
+    g_dirty=0;
+    return 0; }
+/* 只推一个矩形区域（局部刷新，极快）：ui.flushrect(x,y,w,h) */
+static int l_flushrect(lua_State*S){
+    int x=(int)luaL_checkinteger(S,1), y=(int)luaL_checkinteger(S,2);
+    int w=(int)luaL_checkinteger(S,3), h=(int)luaL_checkinteger(S,4);
+    if(x<0){ w+=x; x=0; } if(y<0){ h+=y; y=0; }
+    if(x+w>DISP_W) w=DISP_W-x; if(y+h>DISP_H) h=DISP_H-y;
+    if(w<=0||h<=0) return 0;
+    lv_refr_now(NULL);
+    if(write_png_rect("/tmp/ui_rect.png",x,y,w,h)==0){
+        char cmd[200];
+        snprintf(cmd,sizeof cmd, EIPS_BIN " -g /tmp/ui_rect.png %d %d >/dev/null 2>&1", x, y);
+        system(cmd);
+    }
+    g_ui_dirty=0; g_dirty=0;
+    return 0; }
+static int l_bench(lua_State*S){
+    struct timeval a,b; int n=10;
+    gettimeofday(&a,0); for(int i=0;i<n;i++) write_png(FRAME_PNG);
+    gettimeofday(&b,0); long png=((b.tv_sec-a.tv_sec)*1000L+(b.tv_usec-a.tv_usec)/1000L)/n;
+    gettimeofday(&a,0); for(int i=0;i<n;i++){ lv_obj_invalidate(lv_scr_act()); lv_refr_now(NULL); }
+    gettimeofday(&b,0); long lvgl=((b.tv_sec-a.tv_sec)*1000L+(b.tv_usec-a.tv_usec)/1000L)/n;
+    gettimeofday(&a,0); for(int i=0;i<3;i++){ char cmd[160];
+        snprintf(cmd,sizeof cmd, EIPS_BIN " -g " FRAME_PNG " >/dev/null 2>&1"); system(cmd); }
+    gettimeofday(&b,0); long eips=((b.tv_sec-a.tv_sec)*1000L+(b.tv_usec-a.tv_usec)/1000L)/3;
+    lua_pushinteger(S,png); lua_pushinteger(S,lvgl); lua_pushinteger(S,eips); return 3; }
 static int l_full(lua_State*S){ (void)S; g_refresh_full=1; return 0; }
 static int l_seq(lua_State*S){ lua_pushnumber(S,(lua_Number)g_seq); return 1; }
 static int l_font(lua_State*S){ lv_font_t*f=font_any((int)luaL_checkinteger(S,1)); lua_pushlightuserdata(S,f); return 1; }
@@ -275,7 +314,7 @@ static const luaL_Reg uilib[]={
     {"clear",l_clear},{"title",l_title},{"label",l_label},{"text",l_text},
     {"set",l_set},{"pos",l_pos},{"size",l_size},{"align",l_align},
     {"log",l_log},{"button",l_button},{"color",l_color},{"list",l_list},{"style",l_style},{"hr",l_hr},{"show",l_show},
-    {"font",l_font},{"setfont",l_setfont},{"measure",l_measure},{"zoom",l_zoom},{"get",l_get},{"talign",l_talign},{"overlay",l_overlay},{"flush",l_flush},{"full",l_full},{"seq",l_seq},{NULL,NULL}
+    {"font",l_font},{"setfont",l_setfont},{"measure",l_measure},{"zoom",l_zoom},{"get",l_get},{"talign",l_talign},{"overlay",l_overlay},{"flush",l_flush},{"full",l_full},{"bench",l_bench},{"flushrect",l_flushrect},{"seq",l_seq},{NULL,NULL}
 };
 static void seq_tick(void){ g_seq++; FILE*f=fopen("/tmp/ui_seq","w"); if(f){ fprintf(f,"%lu\n",g_seq); fclose(f); } }
 static void dolua(const char*code){ if(luaL_loadstring(L,code)||lua_pcall(L,0,0,0)){ emit("luaerr %s",lua_tostring(L,-1)); lua_pop(L,1); } g_ui_dirty=1; seq_tick(); }
@@ -365,6 +404,13 @@ int main(void){
             }
             g_ui_dirty=1;
         }
+        { static long tk=0;
+          if(now-tk>=100){ int dt = tk ? (int)(now-tk) : 100; tk=now;
+            lua_getglobal(L,"on_tick");
+            if(lua_isfunction(L,-1)){ lua_pushinteger(L,dt);
+              if(lua_pcall(L,1,1,0)==0){ if(lua_toboolean(L,-1)) g_ui_dirty=1; lua_pop(L,1); }
+              else { emit("luaerr %s",lua_tostring(L,-1)); lua_pop(L,1); } }
+            else lua_pop(L,1); } }
         if(g_dirty && (now-g_last_ms)>=REFRESH_MS){ do_refresh(); g_dirty=0; g_last_ms=now; }
         usleep(5000);
     }
