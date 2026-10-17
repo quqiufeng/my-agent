@@ -484,3 +484,61 @@ sudo /tmp/opencode/mtkenv/bin/python edl.py w abl /tmp/opencode/abl-stock.elf --
    出问题后无法判断是哪一步导致的。
 8. **不夸口。** 说“几分钟恢复”“随时可恢复”之前，先确认前提成立。
 9. **备用机也是设备。** 动 bootloader 前要明确告知风险（变砖、无法恢复），并得到确认。
+
+---
+
+## 12. 把手机当监控摄像头/麦克风（CamStream）
+
+自己写的 Android App（`agentkit/camstream/`），无 root，把**前后摄像头**和**麦克风**
+通过局域网 HTTP 推给任何程序。
+
+### 12.1 接口（局域网直接可用）
+
+```bash
+curl http://192.168.1.99:8080/info           # {"current":"back","cameras":[...]}
+ffplay "http://192.168.1.99:8080/video?cam=back"   # 后置 MJPEG
+ffplay "http://192.168.1.99:8080/video?cam=front"  # 前置 MJPEG
+ffplay "http://192.168.1.99:8080/audio"            # WAV 16k 单声道
+ffmpeg -i "http://.../video?cam=back" -i "http://.../audio" -c:v libx264 -c:a aac out.mp4
+```
+
+主机侧封装：`phone-cam info|view [back|front]|audio|snap [out] [cam]|record [dir] [seg] [cam]`
+
+### 12.2 实现要点
+
+- Camera2 + YUV_420_888 → NV21 → JPEG（`YuvImage.compressToJpeg`），限 10fps 省 CPU
+- 前后摄像头切换：`/video?cam=xxx` 触发 close→open（`camLock` 同步）
+- AudioRecord 16k/16bit/mono → 共享队列 → `/audio` 输出 WAV
+- 前台服务 + `PARTIAL_WAKE_LOCK`：**熄屏也推流**
+- 极简 HTTP 服务（ServerSocket），多线程处理客户端
+
+### 12.3 构建 / 安装
+
+```bash
+cd agentkit/camstream && ./build.sh        # 需 JDK 17（d8 与 JDK21 不兼容）+ SDK 34/30
+adb install -r build/camstream.apk
+```
+
+**vivo 安装拦截**的两个坑：
+1. 安装验证要 vivo 账号密码（账号丢失时无法通过）→ 安装前
+   `adb shell am force-stop com.bbk.account`，安装弹窗里勾选「已了解风险」→「继续安装」
+2. 后台启动前台服务被限制（`startForegroundCount=0`）→ 必须 `am start -n .../.MainActivity`
+   起 Activity，不能只 `am startservice`
+
+### 12.4 开机自启
+
+`~/.termux/boot/start.sh` 里（必须在 AVNC 之前，否则监控界面会盖住阅读器）：
+
+```bash
+[ -f ~/monitor.enable ] && am start -n com.example.camstream/.MainActivity
+```
+
+`touch ~/monitor.enable` 开；删掉关。
+
+### 12.5 已知限制
+
+- MJPEG 带宽 ~6Mbps@10fps；要 H.264 需改 MediaCodec
+- 音频只支持一个客户端（共享队列）
+- 无鉴权/加密（仅可信局域网）
+- 切换摄像头有 1~2 秒空窗（关旧相机会话→开新会话）
+- 手机面朝下时前摄全黑（正常）
