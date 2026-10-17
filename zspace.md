@@ -75,6 +75,20 @@ Host zspace nas
 - **Web 网关**：openresty（5055/5056 + 多个 127.0.0.1 端口 2999/8020/8111/20123…）
 - 本地微服务端口（`127.0.0.1`）：`zds`5577、`downloader`8001、`storage-pool`8003、`zspoolv3`8004、`transcode`8010、`upgrader`8012、`leds`8022、`file_search`8023、`media-converter`8024、`netdiskv2`8027、`zmusic`8028、`zreader`8029、`baseset`8038… ；`zrps-worker`5050、`xunlei`5051/5052、`zbasic`12200(对外)
 
+## 家庭网络拓扑（2026-10-18 实测）
+
+```
+光猫(192.168.1.1, 中国电信智能网关/LuCI, MAC a0:36:79:d5:35:e0)
+  ├─ 路由器（桥接/AP 模式，不 NAT）
+  │    └─ 电脑 192.168.1.10/24（网线 enp34s0，默认网关直接是 192.168.1.1）
+  ├─ 手机 vivo V2068A 192.168.1.99（WiFi；ssh 8022、adb 5555、摄像头 8080）
+  └─ 极空间 Z2Pro 192.168.1.53（SSH 12200）
+```
+
+- **只有一个子网 `192.168.1.0/24`**：电脑网关就是光猫本身（`/cgi-bin/luci` 标题“中国电信智能网关”），说明中间路由器为桥接/AP，没有双层 NAT。
+- 因此手机/电脑/NAS/萤石在同一网段，天然互通；**不存在“两个子网”问题**。
+- 只有当手机不在这个 WiFi（4G/别的网络）时，才需要中转：NAS 的 `zfrp` 端口映射（按端口），或 Tailscale/WireGuard（整段互通，安卓需 VpnService App）。
+
 ## 容器 / 应用生态（极丰富）
 
 - **Docker + Portainer + appstore**（`/var/appstore/pkg`、`/data_s00*/appstore/pkg`）
