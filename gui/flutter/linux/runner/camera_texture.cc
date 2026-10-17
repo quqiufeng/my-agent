@@ -194,7 +194,10 @@ static void capture_loop(CameraTexture* self) {
         for (int i = 0; i < 20 && st->run; ++i) usleep(100000);
         continue;
       }
-      cap.open(url, cv::CAP_FFMPEG);
+      // 读/打开都设超时：HLS 断流时不会卡死在 read 里（否则纹理冻住）
+      const std::vector<int> to = {cv::CAP_PROP_OPEN_TIMEOUT_MSEC, 8000,
+                                   cv::CAP_PROP_READ_TIMEOUT_MSEC, 8000};
+      cap.open(url, cv::CAP_FFMPEG, to);
     } else {
       int idx = st->idx;
       if (const char* e = getenv("CAM_USB_INDEX")) if (st->idx == 0) idx = atoi(e);
@@ -237,7 +240,10 @@ static void capture_loop(CameraTexture* self) {
       }
     }
     cap.release();
-    if (st->run) usleep(300000);
+    if (st->run) {
+      fprintf(stderr, "[camera] stream disconnected (%s), reconnecting\n", url.c_str());
+      usleep(300000);
+    }
   }
 }
 
@@ -306,9 +312,12 @@ void camera_texture_register(FlPluginRegistry* registry) {
     }
     if (want) specs.push_back({url, url.empty() ? file : std::string(""), def_snap, def_rot});
   };
-  add_spec("CAM2_URL", "CAM2_URL_FILE", "/tmp/myagent_ezviz.url",
+  // 路2=手机（CAM2_URL）；路3=客厅萤石；路4=门口萤石
+  add_spec("CAM2_URL", "CAM2_URL_FILE", "/tmp/myagent_phone.url",
            "/tmp/myagent_cam_stream.jpg", "/tmp/myagent_ezviz.rot");
-  add_spec("CAM3_URL", "CAM3_URL_FILE", "/tmp/myagent_door.url",
+  add_spec("CAM3_URL", "CAM3_URL_FILE", "/tmp/myagent_ezviz.url",
+           "/tmp/myagent_ezviz2.jpg", "/tmp/myagent_ezviz2.rot");
+  add_spec("CAM4_URL", "CAM4_URL_FILE", "/tmp/myagent_door.url",
            "/tmp/myagent_cam_door.jpg", "/tmp/myagent_door.rot");
   for (const Spec& s : specs)
     g_keep_streams.push_back(make_cam(tr, true, 0, s.url, s.file, s.snap, s.rot));

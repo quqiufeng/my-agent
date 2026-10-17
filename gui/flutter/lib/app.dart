@@ -574,12 +574,21 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     } else if (panes.length == 1) {
       body = _tapPane(panes, 0);
     } else {
-      // 每路按自身宽高比分配宽度：竖屏流窄、横屏流宽，互不迁就
-      body = Row(children: [
-        for (var i = 0; i < panes.length; i++) ...[
-          if (i > 0) Container(width: 2, color: ChinaColors.border),
-          Expanded(flex: _paneFlex(i), child: _tapPane(panes, i)),
-        ]
+      // 网格排版：≤2 路一行两格；3~4 路 2x2。格子等分对齐，画面按比例居中
+      body = Column(children: [
+        for (var r = 0; r * _perRow < panes.length; r++) ...[
+          if (r > 0) Container(height: 2, color: ChinaColors.border),
+          Expanded(
+            child: Row(children: [
+              for (var i = r * _perRow;
+                  i < (r + 1) * _perRow && i < panes.length;
+                  i++) ...[
+                if (i > r * _perRow) Container(width: 2, color: ChinaColors.border),
+                Expanded(child: _tapPane(panes, i)),
+              ]
+            ]),
+          ),
+        ],
       ]);
     }
     return Column(children: [Expanded(child: body), _statusBar()]);
@@ -606,6 +615,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         ),
       );
 
+  // 每行几路：1~2 路一行放，3~4 路两行放
+  int get _perRow => 2;
+
   // 该路的宽高比（未知时按 16:9）
   double _aspect(int slot) {
     if (slot * 2 + 1 < _wh.length) {
@@ -618,10 +630,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   // 分屏时该路占的宽度权重（正比于宽高比，高度一致 → 不裁不扁）
   int _paneFlex(int slot) => (_aspect(slot) * 1000).round().clamp(100, 10000);
 
-  // 单路画面：按该路实际分辨率等比缩放居中，不拉伸、不裁切
-  Widget _camView(int id, int slot) => Center(
-        child: AspectRatio(
-            aspectRatio: _aspect(slot), child: Texture(textureId: id)),
+  // 单路画面：黑底，按实际分辨率等比缩放居中（不拉伸、不裁切）
+  Widget _camView(int id, int slot) => ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: AspectRatio(
+              aspectRatio: _aspect(slot), child: Texture(textureId: id)),
+        ),
       );
 
   Widget _statusBar() {
