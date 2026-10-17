@@ -468,4 +468,9 @@ end
 load_pos(); initui()
 os.execute("echo unlock > /proc/keypad")
 os.execute("echo unlock > /proc/fiveway")
-if last_book and load_text(last_book) then open_book(last_book) else shelf() end
+-- UI_START=shelf 时固定从书架开始（手机 kiosk 等场景），否则续读上次的书
+if os.getenv("UI_START") ~= "shelf" and last_book and load_text(last_book) then
+  open_book(last_book)
+else
+  shelf()
+end
