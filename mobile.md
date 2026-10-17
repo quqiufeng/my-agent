@@ -504,15 +504,6 @@ ffmpeg -i "http://.../video?cam=back" -i "http://.../audio" -c:v libx264 -c:a aa
 
 主机侧封装：`phone-cam info|view [back|front]|audio|snap [out] [cam]|record [dir] [seg] [cam]`
 
-接进 my-agent 的桌面统一界面（`voice/app`）：
-
-```bash
-CAM_URL="http://192.168.1.99:8080/video?cam=back" \
-VOICE_MIC_URL="http://192.168.1.99:8080/audio" \
-voice/app.sh --rtsp-only
-```
-
-默认仍然是「USB 摄像头 + 摄像头麦克风（plughw:2,0）」，不配置无需改动。
 
 ### 12.2 实现要点
 
