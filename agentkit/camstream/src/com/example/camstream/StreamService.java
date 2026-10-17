@@ -42,6 +42,8 @@ public class StreamService extends Service {
     private static final int PORT = 8080;
     private static final int AUDIO_RATE = 16000;
     private static final int MAX_FPS = 10;
+    private static final int JPEG_QUALITY = 92;
+    private volatile int streamW = 0, streamH = 0;
 
     private HandlerThread bgThread;
     private Handler bg;
@@ -189,6 +191,7 @@ public class StreamService extends Service {
         StringBuilder sb = new StringBuilder("{\"current\":");
         sb.append(curFacing == CameraCharacteristics.LENS_FACING_FRONT ? "\"front\""
                  : curFacing == CameraCharacteristics.LENS_FACING_BACK ? "\"back\"" : "\"none\"");
+        sb.append(",\"size\":\"").append(streamW).append("x").append(streamH).append("\"");
         sb.append(",\"cameras\":[");
         try {
             CameraManager cm = (CameraManager) getSystemService(CAMERA_SERVICE);
@@ -200,6 +203,21 @@ public class StreamService extends Service {
                 if (!first) sb.append(",");
                 sb.append("{\"id\":\"").append(cid).append("\",\"facing\":\"").append(name).append("\"}");
                 first = false;
+            }
+        } catch (Exception e) { }
+        sb.append("],\"sizes\":[");
+        try {
+            CameraManager cm2 = (CameraManager) getSystemService(CAMERA_SERVICE);
+            String cid = findCameraId(curFacing);
+            if (cid != null) {
+                StreamConfigurationMap m = cm2.getCameraCharacteristics(cid)
+                        .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+                boolean f2 = true;
+                for (Size sz : m.getOutputSizes(ImageFormat.YUV_420_888)) {
+                    if (!f2) sb.append(",");
+                    sb.append("\"").append(sz.getWidth()).append("x").append(sz.getHeight()).append("\"");
+                    f2 = false;
+                }
             }
         } catch (Exception e) { }
         sb.append("]}");
@@ -229,13 +247,20 @@ public class StreamService extends Service {
             CameraCharacteristics cc = cm.getCameraCharacteristics(id);
             StreamConfigurationMap map = cc.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             Size[] sizes = map.getOutputSizes(ImageFormat.YUV_420_888);
+            // 不裁不缩：取传感器原生 4:3 的最大尺寸（≤1920 宽，保证 MJPEG 流畅）
             Size pick = sizes[0];
-            for (Size sz : sizes) if (sz.getWidth() == 1280 && sz.getHeight() == 720) { pick = sz; break; }
-            if (pick.getWidth() != 1280) {
-                for (Size sz : sizes)
-                    if (sz.getWidth() <= 1280 && sz.getWidth() * 9 == sz.getHeight() * 16) { pick = sz; break; }
+            for (Size sz : sizes) {
+                if (sz.getWidth() * 3 == sz.getHeight() * 4 && sz.getWidth() <= 1920) { pick = sz; break; }
+            }
+            if (pick.getWidth() > 1920) {
+                pick = sizes[0];
+                for (Size sz : sizes) {
+                    if (sz.getWidth() <= 1920) { pick = sz; break; }
+                }
             }
             final int W = pick.getWidth(), H = pick.getHeight();
+            streamW = W; streamH = H;
+            android.util.Log.i("camstream", "stream size " + W + "x" + H);
             final int useFacing = facing;
             reader = ImageReader.newInstance(W, H, ImageFormat.YUV_420_888, 2);
             reader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
@@ -253,7 +278,7 @@ public class StreamService extends Service {
                         byte[] nv21 = toNv21(img, W, H);
                         YuvImage yu = new YuvImage(nv21, ImageFormat.NV21, W, H, null);
                         ByteArrayOutputStream bo = new ByteArrayOutputStream();
-                        yu.compressToJpeg(new Rect(0, 0, W, H), 70, bo);
+                        yu.compressToJpeg(new Rect(0, 0, W, H), JPEG_QUALITY, bo);
                         latestJpeg = bo.toByteArray();
                         jpegSeq++;
                         lastConv = now;
