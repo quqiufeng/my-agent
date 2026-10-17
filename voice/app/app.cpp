@@ -75,7 +75,8 @@ UiState g_ui;
 struct Config {
     // 摄像头
     int usb_index = atoi(env_str("CAM_USB_INDEX", "0").c_str());
-    std::string rtsp = env_str("RTSP_URL", "");
+    std::string rtsp = env_str("CAM_URL", "");           // 通用视频源（HTTP MJPEG / RTSP）
+    std::string mic_url = env_str("VOICE_MIC_URL", "");  // 音频源 URL（为空=用 mic_dev 的 ALSA 摄像头麦克风）
     int win_w = atoi(env_str("CAM_W", "1280").c_str());
     int win_h = atoi(env_str("CAM_H", "800").c_str());
     bool use_usb = true, use_rtsp = true;
@@ -313,24 +314,13 @@ void face_thread(Config cfg) {
 // ── 音频线程 ─────────────────────────────────────────────────
 void audio_capture(const Config &cfg, std::queue<std::vector<short>> &q,
                    std::mutex &qm, std::condition_variable &cv) {
-    snd_pcm_t *cap = nullptr;
-    if (snd_pcm_open(&cap, cfg.mic_dev.c_str(), SND_PCM_STREAM_CAPTURE, 0) != 0) {
-        fprintf(stderr, "[app] 无法打开采集设备 %s（音频监控关闭）\n", cfg.mic_dev.c_str());
-        g_ui.set_status("麦克风打开失败");
-        return;
-    }
-    snd_pcm_set_params(cap, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED,
-                       1, kSampleRate, 1, 500000);
-
     std::vector<short> frame(kFrameLen), acc;
     bool speaking = false;
     int silent = 0, noise = 200;
     const int end_frames = std::max(1, cfg.silence_ms / 100);
     const int min_frames = std::max(1, cfg.min_speech_ms / 100);
 
-    while (g_run) {
-        int r = snd_pcm_readi(cap, frame.data(), kFrameLen);
-        if (r < 0) { snd_pcm_prepare(cap); continue; }
+    auto feed = [&](int r) {
         int peak = 0;
         for (int i = 0; i < r; ++i) { int a = std::abs(frame[i]); if (a > peak) peak = a; }
         int thr = std::max(500, noise * 2);
@@ -339,7 +329,7 @@ void audio_capture(const Config &cfg, std::queue<std::vector<short>> &q,
         if (!speaking) {
             noise = (noise * 3 + peak) / 4;
             if (peak >= thr) { speaking = true; silent = 0; acc.clear(); g_ui.set_status("录音中..."); }
-            else continue;
+            else return;
         }
         if (peak >= thr) silent = 0; else ++silent;
         acc.insert(acc.end(), frame.begin(), frame.begin() + r);
@@ -354,6 +344,40 @@ void audio_capture(const Config &cfg, std::queue<std::vector<short>> &q,
             acc.clear(); silent = 0;
             if (g_run) g_ui.set_status("等待语音");
         }
+    };
+
+    // 音频源 1：URL（HTTP/RTSP），用 ffmpeg 转成 16k/mono/s16le
+    if (!cfg.mic_url.empty()) {
+        char cmd[1024];
+        snprintf(cmd, sizeof cmd,
+                 "ffmpeg -nostdin -loglevel quiet -i '%s' -vn -f s16le -ac 1 -ar %d -",
+                 cfg.mic_url.c_str(), kSampleRate);
+        FILE *p = popen(cmd, "r");
+        if (!p) { fprintf(stderr, "[app] 无法打开音频源 %s\n", cfg.mic_url.c_str()); return; }
+        printf("[app] 音频源: %s\n", cfg.mic_url.c_str());
+        while (g_run) {
+            size_t n = fread(frame.data(), sizeof(short), kFrameLen, p);
+            if (n == 0) { if (feof(p)) break; usleep(20000); continue; }
+            feed(static_cast<int>(n));
+        }
+        pclose(p);
+        return;
+    }
+
+    // 音频源 2（默认）：ALSA 设备，默认就是 USB 摄像头的麦克风（plughw:2,0）
+    snd_pcm_t *cap = nullptr;
+    if (snd_pcm_open(&cap, cfg.mic_dev.c_str(), SND_PCM_STREAM_CAPTURE, 0) != 0) {
+        fprintf(stderr, "[app] 无法打开采集设备 %s（音频监控关闭）\n", cfg.mic_dev.c_str());
+        g_ui.set_status("麦克风打开失败");
+        return;
+    }
+    printf("[app] 音频源: ALSA %s\n", cfg.mic_dev.c_str());
+    snd_pcm_set_params(cap, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED,
+                       1, kSampleRate, 1, 500000);
+    while (g_run) {
+        int r = snd_pcm_readi(cap, frame.data(), kFrameLen);
+        if (r < 0) { snd_pcm_prepare(cap); continue; }
+        feed(r);
     }
     snd_pcm_close(cap);
 }
@@ -406,6 +430,8 @@ int main(int argc, char **argv) {
         std::string a = argv[i];
         if (a == "--usb" && i + 1 < argc) cfg.usb_index = atoi(argv[++i]);
         else if (a == "--rtsp" && i + 1 < argc) cfg.rtsp = argv[++i];
+        else if (a == "--url" && i + 1 < argc) cfg.rtsp = argv[++i];
+        else if (a == "--mic-url" && i + 1 < argc) cfg.mic_url = argv[++i];
         else if (a == "--usb-only") cfg.use_rtsp = false;
         else if (a == "--rtsp-only") cfg.use_usb = false;
         else if (a == "--no-face-gate") cfg.face_gate = false;
@@ -416,11 +442,12 @@ int main(int argc, char **argv) {
         else if (a == "--size" && i + 1 < argc) { int w, h; if (sscanf(argv[++i], "%dx%d", &w, &h) == 2) { cfg.win_w = w; cfg.win_h = h; } }
         else if (a == "-h" || a == "--help") {
             printf("用法: %s [--no-audio] [--no-face-gate] [--no-forward]\n", argv[0]);
-            printf("       [--usb N] [--rtsp URL] [--usb-only|--rtsp-only] [--size WxH]\n");
+            printf("       [--usb N] [--url URL] [--mic-url URL] [--usb-only|--rtsp-only] [--size WxH]\n");
             printf("  统一界面：摄像头画面（人脸门控）+ 语音监听（SenseVoice）+ 状态栏\n");
             return 0;
         }
     }
+    if (cfg.rtsp.empty()) cfg.rtsp = env_str("RTSP_URL", "");
     if (cfg.use_rtsp && cfg.rtsp.empty()) cfg.use_rtsp = false;
     if (!cfg.use_usb && !cfg.use_rtsp && !cfg.audio) { fprintf(stderr, "[app] 无可用输入源\n"); return 1; }
 
