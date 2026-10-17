@@ -387,10 +387,27 @@ LD_LIBRARY_PATH=/opt/my_db ./tools/import_book /tmp/cache ~/book.mobi /books/书
 ```
 
 ### 渲染与交互
-- 字体：`/mnt/us/ui/font.ttf`（文泉驿微米黑子集，GB2312），FreeType 运行时加载，中文正常。
-- 两屏（Lua）：**书架**（`ui.list` 列 `/mnt/us/documents`）+ **阅读器**（按 82 半角/行、19 行/页分页，`ui.text`）。
-- 按键：五向键 → C `key_read` 设 `g_key` → 主循环调 Lua `on_key(name)`（up/down/left/right/enter/home/back/menu）→ 翻页/返回。
-- 键码：五向键 `/dev/input/event1`；HOME/BACK/MENU 来自 `/dev/input/event0`。
+- 字体：`/mnt/us/ui/font.ttf`（CJK，FreeType 运行时加载）。**字号=真实像素**，按需加载并缓存
+  （`ui.font(px)` / `ui.setfont`），三档 小22 / 中26 / 大34。
+- 两屏（Lua）：**书架** + **阅读器**。正文用 `ui.text` 单个 label 装整页；
+  分页用 `ui.measure` 实测字宽/行高来算每行字数与行数（**切字号必须重排**）。
+- 按键：C `key_read` 读 event0/event1 → 主循环优先回调 `on_code(rawcode)`；无 `on_code` 才回退 `on_key(name)`。
+  实机扫描码：Home 98 · Back 91 · Menu 139 · 上一页 109 · 下一页 124；五向 上122 下123 中92 左105 右106。
+- 键默认被内核锁住：需 `echo unlock > /proc/keypad; echo unlock > /proc/fiveway`（init.lua 已做），无需额外 keyd。
+- 显示：抗锯齿边缘经 gamma 1.8 压暗，墨水屏上文字更实；状态栏贴近底边。
+- 开发指南：`/opt/my-agent/agentkit/kindle/boot/lua/README.md`
+- **顶部 lock 开关有效**：拨动时驱动锁 keypad/fiveway/accelerometer（dmesg 可见 lock/unlock）；
+  lvgui 轮询 `/proc/keypad` → 回调 `on_lock()`，锁定显示 `/mnt/us/ui/lock.gray`，解锁恢复原界面。
+- **换锁屏图**（详见 `agentkit/kindle/boot/lock/README.md`）：
+  ```bash
+  python3 agentkit/kindle/boot/lock/make_lock.py ~/图片.png      # -> lock.gray (824x1200 灰度)
+  scp -O agentkit/kindle/boot/lock/lock.gray kindle:/mnt/us/ui/lock.gray
+  cd agentkit/kindle/boot/test && ./kui lock on    # 测试；./kui lock off 解锁
+  ```
+  文件缺失/大小不对时自动回退为文字锁屏；换图无需重启。
+- agent 自动化：`ui_info()/ui_state()/tap(name|code)/ui_dump()`；主机工具 `boot/test/kui`，冒烟测试 `boot/test/smoke.lua`（pass=15/fail=0）
+- 文本指令（语音/无障碍）：设备端原生通道 `/tmp/ui_say`，每行一条中文指令（读某本书/下一页/跳到第N页/字号大…），由 `init.lua` 的 `cmd()` 解析；`kui say "下一页"`。
+- AI 闭环测试（截图→看界面→改→回归）：见 `boot/test/README.md`；`ui.flush()` 保证截图同步，`imgdiff.py` 做像素回归，`smoke.lua` 当前 pass=25/fail=0。
 
 ### ⚠️ 关键 bug 修复（血泪）
 LVGL 只靠 `lv_timer_handler()` **不会把后续帧推送到 e-ink**（首帧后画面冻结）。
@@ -398,7 +415,7 @@ LVGL 只靠 `lv_timer_handler()` **不会把后续帧推送到 e-ink**（首帧�
 
 ### 产物
 ```
-/mnt/us/lvgui                      # 单体(LVGL+LuaJIT+FreeType, musl 静态, ~4.3MB)
+/mnt/us/lvgui                      # 单体(LVGL+LuaJIT+FreeType, musl 静态, ~2.0MB)
 /mnt/us/ui/{init.lua, font.ttf,    # init.lua=书架+阅读器; 字体
             books/<书名>.txt,       # 预解析的书文本
             start.sh, open.sh}      # 启停 / 交接
@@ -407,11 +424,15 @@ FIFO /tmp/ui.cmd  ·  事件 /mnt/us/ui/events
 
 ### 编译（主机）
 ```bash
-CC=~/opt/arm-linux-musleabi-cross/bin/arm-linux-musleabi-gcc
-$CC -O2 -march=armv6 -mfloat-abi=softfp -mfpu=vfp -marm -DLV_CONF_INCLUDE_SIMPLE \
-  -Ilvgl -Ilvgl/src -Ilvport -Iluajit/src -Ift-out/include/freetype2 \
-  $(find lvgl/src -name '*.c') lvgui.c luajit/src/libluajit.a ft-out/lib/libfreetype.a \
-  -o lvgui -static -lm
+cd /opt/my-agent/agentkit/kindle/boot/src && sh build.sh     # 产物 ./lvgui
+# 依赖源码树默认 /opt/kindle-deps/{lvgl,luajit,ft-out}；可用 LVGL_SRC/LUAJIT_DIR/FT_OUT 覆盖
+```
+
+### 目录（应用层/内核层分离，便于回滚）
+```
+/opt/my-agent/agentkit/kindle/boot/src/   # lvgui.c lv_conf.h build.sh start.sh open.sh lvgui lvgui.prev
+/opt/my-agent/agentkit/kindle/boot/lua/   # init.lua app.lua（改界面只动这里）
+/opt/kindle-deps/                         # 依赖源码树 lvgl/ luajit/ freetype/ ft-out/
 ```
 
 ### agent 驱动示例

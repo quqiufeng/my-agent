@@ -45,3 +45,8 @@ staticpy/detect
 staticpy/sp_selftest*
 *.so.*
 *.a
+
+# --- Kindle 阅读器：构建产物 / 生成预览（源码与默认锁屏图仍入库）---
+agentkit/kindle/boot/src/lvgui
+agentkit/kindle/boot/src/lvgui.prev
+agentkit/kindle/boot/lock/*.prev.png

@@ -1,0 +1,36 @@
+#!/bin/sh
+# kui — Kindle 阅读器 agent 自动化 / 语音指令工具
+# 用法:
+#   kui state                  # 读状态 JSON
+#   kui tap nextpage           # 模拟按键(name 或扫描码)
+#   kui say "读异类"            # 文本指令（原生通道 /tmp/ui_say，语音/无障碍直接用）
+#   kui say "下一页"
+#   kui dump                   # 当前屏可见文本（免 OCR）
+#   kui shot [out.png]         # 同步刷屏后抓 824x1200 灰度 PNG
+#   kui eval '<lua>'           # 设备上执行一条 Lua
+#   kui run <test.lua>         # 上传并执行 Lua 测试脚本
+#   kui log [n] | kui restart
+K=${KINDLE_HOST:-kindle}
+SSH="ssh -o BatchMode=yes $K"
+SCP="scp -O -q"
+seq_now() { $SSH 'cat /tmp/ui_seq 2>/dev/null || echo 0'; }
+wait_seq() { $SSH "i=0; while [ \$i -lt 120 ]; do s=\$(cat /tmp/ui_seq 2>/dev/null || echo 0); [ \"\$s\" != \"$1\" ] && exit 0; usleep 100000; i=\$((i+1)); done; exit 1"; }
+send() { s0=$(seq_now); printf '%s\n' "$*" | $SSH 'cat > /tmp/ui.cmd'; wait_seq "$s0"; }
+say()  { s0=$(seq_now); printf '%s\n' "$1" | $SSH 'cat > /tmp/ui_say'; wait_seq "$s0"; }
+
+cmd=$1; [ $# -gt 0 ] && shift
+case "$cmd" in
+  state)  send 'ui_save_state()'; $SSH 'cat /tmp/ui_state.json' ;;
+  tap)    send "tap(\"$1\")";       $SSH 'cat /tmp/ui_state.json' ;;
+  say)    say "$1";                 $SSH 'cat /tmp/ui_state.json' ;;
+  dump)   send 'ui_save_text()';    $SSH 'cat /tmp/ui_text.txt' ;;
+  page)   send 'ui_save_page()';    $SSH 'cat /tmp/ui_page.txt' ;;
+  shot)   send 'ui.flush()'; out=${1:-ui_frame.png}; $SCP $K:/tmp/ui_frame.png "$out"; echo "$out" ;;
+  eval)   send "$*"; $SSH 'tail -5 /mnt/us/ui/events' ;;
+  run)    $SCP "$1" $K:/mnt/us/ui/t.lua; send 'dofile("/mnt/us/ui/t.lua")'; $SSH 'tail -80 /mnt/us/ui/events' ;;
+  lock)   case "${1:-on}" in on|lock) v=lock;; off|unlock) v=unlock;; *) v="$1";; esac
+          $SSH "echo $v > /proc/keypad"; sleep 0.6; $SSH 'cat /tmp/ui_state.json' ;;
+  log)    $SSH "tail -${1:-20} /mnt/us/ui/events" ;;
+  restart) $SSH 'killall lvgui; sleep 1; /sbin/start-stop-daemon -S -b -x /mnt/us/lvgui; sleep 2; tail -3 /mnt/us/ui/events' ;;
+  *) echo "usage: kui {state|tap <key>|say <文本>|dump|shot [png]|eval <lua>|page|lock on/off|run <file.lua>|log [n]|restart}" >&2; exit 2 ;;
+esac

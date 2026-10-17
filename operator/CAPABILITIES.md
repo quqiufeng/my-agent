@@ -40,6 +40,9 @@ ak.voice.tts/asr/record    ak.batch.run(app,kind,items)   ak.record(app)  -- 语
 - 屏幕/图像/视频：`screenshot.sh image.sh img_video.sh video_dub.sh`
 - 行情/大屏：`stock.sh quote_web.sh dash.sh`；音乐/电视：`music.sh tv.sh`
 - 手机：`phone.sh`；音频：`say.sh voices.sh`；其他见 `TOOLS.md` 全表
+- **电纸书（Kindle DXG）**：`tools/ebook.sh state|say|shot|dump|speak|books|test`
+  自研 LVGL 阅读器（书架/阅读/目录/进度/三档字号）；**文本指令**（`/tmp/ui_say`，语音/无障碍）、
+  **截图可被 AI 直接读**做视觉验证；闭环测试/工具链见 `agentkit/kindle/boot/test/README.md`
 
 ## 六、自我扩展（网页能力，安全）
 - 目录/机制：新能力 = 一个 `tools/<name>.sh`，内部走**专用 Chrome（免授权登录）+ `ak.cdp` DOM 操作**；**能力只来自网页**，不碰本机任意文件/进程/网络权限。
