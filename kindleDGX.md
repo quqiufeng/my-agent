@@ -412,6 +412,9 @@ LD_LIBRARY_PATH=/opt/my_db ./tools/import_book /tmp/cache ~/book.mobi /books/书
 ### ⚠️ 关键 bug 修复（血泪）
 LVGL 只靠 `lv_timer_handler()` **不会把后续帧推送到 e-ink**（首帧后画面冻结）。
 **正解**：UI 变化时手动 **`lv_obj_invalidate(lv_scr_act()); lv_refr_now(NULL);`** 强制同步重绘，再写灰度 PNG 调 `eips`。
+同样容易踩的坑：LVGL **必须外部喂 tick**（每次循环 `lv_tick_inc(dt)`），否则 `lv_timer_handler()`
+的定时器永不触发 → **按键读取回调一次都不会被调用**（表现为"按键完全没反应"）。
+曾误判为驱动/锁的问题并外挂 keyd；清掉 keyd 后按键全失效才定位到 tick。
 
 ### 产物
 ```

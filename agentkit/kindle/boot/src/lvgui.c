@@ -325,9 +325,9 @@ int main(void){
                     st=nl+1; }
                 int rem=(int)strlen(st); memmove(sbuf,st,rem+1); sn=rem;
             } }
-        { static int ls_ms=0; struct timespec ts0; clock_gettime(CLOCK_MONOTONIC,&ts0);
+        { static long ls_ms=0; struct timespec ts0; clock_gettime(CLOCK_MONOTONIC,&ts0);
           long n0=ts0.tv_sec*1000L+ts0.tv_nsec/1000000L;
-          if(n0-ls_ms>=400){ ls_ms=(int)n0; int ls=keypad_locked();
+          if(n0-ls_ms>=400){ ls_ms=n0; int ls=keypad_locked();
             if(ls>=0 && ls!=g_lock_state){ g_lock_state=ls; emit("lock %d",ls);
               lua_getglobal(L,"on_lock");
               if(lua_isfunction(L,-1)){ lua_pushboolean(L,ls);
@@ -336,6 +336,10 @@ int main(void){
               g_ui_dirty=1; seq_tick(); } } }
         if(g_ui_dirty){ lv_obj_invalidate(lv_scr_act()); lv_refr_now(NULL); g_ui_dirty=0;
             if(g_over) memcpy(g_gray,g_over,sizeof g_gray); }
+        struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+        long now=ts.tv_sec*1000L+ts.tv_nsec/1000000L;
+        /* LVGL 需要外部喂 tick，否则 lv_timer_handler 不跑、按键回调不触发 */
+        { static long last=0; if(!last) last=now; if(now>last) lv_tick_inc((uint32_t)(now-last)); last=now; }
         lv_timer_handler();
         if(g_key){ int kk=g_key, rc=g_rawcode; g_key=0;
             lua_getglobal(L,"on_code");
@@ -351,8 +355,6 @@ int main(void){
             }
             g_ui_dirty=1;
         }
-        struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
-        long now=ts.tv_sec*1000L+ts.tv_nsec/1000000L;
         if(g_dirty && (now-g_last_ms)>=REFRESH_MS){ do_refresh(); g_dirty=0; g_last_ms=now; }
         usleep(5000);
     }
