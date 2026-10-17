@@ -367,13 +367,27 @@ end
 ■ □ ● ◆ ★ ▲ ○ ◎ ☆ △
 ```
 
-### 性能参考（实测）
+### 渲染方式与性能（实测）
 
-| 阶段 | 全屏刷新 | 说明 |
-|---|---|---|
-| PNG 编码 | ~86ms | adler32 已改分块累加，否则要 300ms+ |
-| LVGL 重绘 | ~248ms | 整块文本 label（约 1260 字）重排 |
-| eips 推屏 | ~349ms | 全屏局部更新 |
-| **合计** | **~680ms** | 改 `ui.flushrect` 后贪吃蛇约 **2.7 步/秒** |
+- **对象化**：墙/食物/蛇身各自是独立 label，每步只 `ui.pos`/`show` 变化的 1~2 个对象，
+  避免整块文本（1260 字形）重排（那种做法 LVGL 每步要 ~248ms）。
+- **只推变动的格子**：`ui.flushrect` 逐格推送。eips 每次调用有 ~100ms 固定开销（与面积关系不大）。
 
-> 想再快：把棋盘拆成少量对象（只重绘变化格），或缩小棋盘（减少字形数）。
+| 场景 | 耗时 |
+|---|---|
+| 首次/全屏 | ~680ms（png 86 + lvgl 248 + eips 349） |
+| 每步（2 个小格） | ~200ms |
+| **实测步频** | **~4.2 步/秒**（`interval=200ms`；1/2/3 键 = 400/250/150） |
+
+> 想要更快只能减少每步的 eips 调用次数或换更小的棋盘；e-ink 的刷新开销是硬下限。
+
+### 给 agent 玩的接口
+
+```lua
+snake_manual(true)        -- 关掉定时器，改为手动步进
+snake_state()             -- JSON：score/best/over/paused/len/moves/head/dir/food/size/body
+snake_setdir(dx,dy)       -- 定方向
+snake_step()              -- 走一步（含渲染）
+```
+`snake_state()` 里 `body` 是完整蛇身坐标，`moves` 是总步数，agent 可据此做 BFS 决策。
+设备状态同时写 `/tmp/snake_state.json`。
