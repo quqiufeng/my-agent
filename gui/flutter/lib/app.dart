@@ -46,6 +46,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   static const _cam = MethodChannel('agent/camera');
   int _texId = 0;
   List<int> _streamIds = const [];
+  List<int> _wh = const []; // 每路纹理尺寸 [usbW,usbH, 流1W,流1H, ...]
   int? _full; // 双击某路后全屏显示该路的索引；null=分屏
   String _clock = '';
   int _mic = 0;
@@ -110,6 +111,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         _cam.invokeMethod('snapshot');
         if (_streamIds.isNotEmpty) _cam.invokeMethod('snapshot2');
       } catch (_) {}
+      unawaited(_refreshSizes());
     });
   }
 
@@ -124,6 +126,18 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       } catch (_) {}
       await Future.delayed(const Duration(milliseconds: 200));
     }
+  }
+
+  // 纹理实际尺寸：让每格按视频自身宽高比显示，避免竖屏流被撑扁。
+  Future<void> _refreshSizes() async {
+    try {
+      final v = await _cam.invokeMethod<List<Object?>>('textureSizes');
+      if (v == null) return;
+      final l = v.whereType<int>().toList();
+      if (l.toString() != _wh.toString()) {
+        if (mounted) setState(() => _wh = l);
+      }
+    } catch (_) {}
   }
 
   // 第二路起（萤石等 URL 流）。原生未启用时返回空列表 → 只显示 USB。
@@ -543,7 +557,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    final panes = <Widget>[_camView(_texId), ..._streamIds.map(_camView)];
+    final panes = <Widget>[
+      _camView(_texId, 0),
+      for (var i = 0; i < _streamIds.length; i++) _camView(_streamIds[i], i + 1),
+    ];
     Widget body;
     if (_texId == 0) {
       body = const Center(
@@ -557,10 +574,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     } else if (panes.length == 1) {
       body = _tapPane(panes, 0);
     } else {
+      // 每路按自身宽高比分配宽度：竖屏流窄、横屏流宽，互不迁就
       body = Row(children: [
         for (var i = 0; i < panes.length; i++) ...[
           if (i > 0) Container(width: 2, color: ChinaColors.border),
-          Expanded(child: _tapPane(panes, i)),
+          Expanded(flex: _paneFlex(i), child: _tapPane(panes, i)),
         ]
       ]);
     }
@@ -588,9 +606,22 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         ),
       );
 
-  // 单路画面：按 16:9 等比铺满各自区域（不拉伸）
-  Widget _camView(int id) => Center(
-        child: AspectRatio(aspectRatio: 16 / 9, child: Texture(textureId: id)),
+  // 该路的宽高比（未知时按 16:9）
+  double _aspect(int slot) {
+    if (slot * 2 + 1 < _wh.length) {
+      final w = _wh[slot * 2], h = _wh[slot * 2 + 1];
+      if (w > 0 && h > 0) return w / h;
+    }
+    return 16 / 9;
+  }
+
+  // 分屏时该路占的宽度权重（正比于宽高比，高度一致 → 不裁不扁）
+  int _paneFlex(int slot) => (_aspect(slot) * 1000).round().clamp(100, 10000);
+
+  // 单路画面：按该路实际分辨率等比缩放居中，不拉伸、不裁切
+  Widget _camView(int id, int slot) => Center(
+        child: AspectRatio(
+            aspectRatio: _aspect(slot), child: Texture(textureId: id)),
       );
 
   Widget _statusBar() {

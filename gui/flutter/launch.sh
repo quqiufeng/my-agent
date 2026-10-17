@@ -7,7 +7,7 @@ LOG=/tmp/myagent_launch.log
 {
     echo "=== $(date '+%F %T') ==="
     echo "DISPLAY=$DISPLAY XAUTHORITY=${XAUTHORITY:-}"
-    if pgrep -f 'bundle/myagent_ui' >/dev/null 2>&1; then
+    if pgrep -x myagent_ui >/dev/null 2>&1; then
         wmctrl -a "My Agent" 2>/dev/null || true
         echo "already running, bring to front"; exit 0
     fi

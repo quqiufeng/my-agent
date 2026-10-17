@@ -142,6 +142,21 @@ static void method_call_cb(FlMethodChannel* channel, FlMethodCall* call, gpointe
     for (CameraTexture* t : g_keep_streams)
       fl_value_append_take(list, fl_value_new_int(t && t->st ? t->st->id : 0));
     respond_ok(call, list);
+  } else if (g_strcmp0(name, "textureSizes") == 0) {
+    FlValue* list = fl_value_new_list();
+    auto add_size = [&](CameraTexture* t) {
+      int w = 0, h = 0;
+      if (t && t->st) {
+        std::lock_guard<std::mutex> lk(t->st->m);
+        w = t->st->bw;
+        h = t->st->bh;
+      }
+      fl_value_append_take(list, fl_value_new_int(w));
+      fl_value_append_take(list, fl_value_new_int(h));
+    };
+    add_size(g_keep_usb);
+    for (CameraTexture* t : g_keep_streams) add_size(t);
+    respond_ok(call, list);
   } else if (g_strcmp0(name, "snapshot") == 0) {
     CameraTexture* t = g_keep_usb;
     respond_ok(call, fl_value_new_bool(t && t->st ? write_snapshot(t->st) : false));
