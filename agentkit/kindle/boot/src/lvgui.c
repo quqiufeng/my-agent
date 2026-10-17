@@ -25,6 +25,12 @@
 #include <math.h>
 #include <sys/time.h>
 #include <linux/input.h>
+#ifdef USE_SDL2
+#include <SDL2/SDL.h>
+static SDL_Window   *g_win=NULL;
+static SDL_Renderer *g_ren=NULL;
+static SDL_Texture  *g_tex=NULL;
+#endif
 
 #define DISP_W 824
 #define DISP_H 1200
@@ -116,7 +122,23 @@ static int write_png_rect(const char*path,int x0,int y0,int W,int H){
     free(raw); free(z); fclose(f); return 0;
 }
 static int write_png(const char*path){ return write_png_rect(path,0,0,DISP_W,DISP_H); }
+#ifdef USE_SDL2
+static void sdl_present(void){
+    if(!g_tex||!g_ren) return;
+    static uint32_t pix[DISP_W*DISP_H];
+    for(int i=0;i<DISP_W*DISP_H;i++){ unsigned char v=g_gray[i]; pix[i]=0xFF000000u|((uint32_t)v<<16)|((uint32_t)v<<8)|v; }
+    SDL_UpdateTexture(g_tex,NULL,pix,DISP_W*4);
+    SDL_RenderClear(g_ren);
+    SDL_RenderCopy(g_ren,g_tex,NULL,NULL);
+    SDL_RenderPresent(g_ren);
+}
+#endif
 static void do_refresh(void){
+#ifdef USE_SDL2
+    if(g_over) memcpy(g_gray,g_over,sizeof g_gray);
+    sdl_present(); g_refresh_full=0;
+    return;
+#endif
     static int partial_n=0;
     if(g_over) memcpy(g_gray,g_over,sizeof g_gray);
     if(write_png(FRAME_PNG)==0){
@@ -228,7 +250,7 @@ static int l_talign(lua_State*S){ lv_obj_t*o=lua_touserdata(S,1); int a=(int)lua
 static int l_flush(lua_State*S){
     if(lua_toboolean(S,1)) g_refresh_full=1;
     lv_obj_invalidate(lv_scr_act()); lv_refr_now(NULL);
-    g_ui_dirty=0;            /* 已同步重绘，避免主循环再推一次 */
+    g_ui_dirty=0;
     do_refresh();
     g_dirty=0;
     return 0; }
@@ -319,9 +341,32 @@ static const luaL_Reg uilib[]={
 static void seq_tick(void){ g_seq++; FILE*f=fopen("/tmp/ui_seq","w"); if(f){ fprintf(f,"%lu\n",g_seq); fclose(f); } }
 static void dolua(const char*code){ if(luaL_loadstring(L,code)||lua_pcall(L,0,0,0)){ emit("luaerr %s",lua_tostring(L,-1)); lua_pop(L,1); } g_ui_dirty=1; seq_tick(); }
 
+#ifdef USE_SDL2
+static int sdl_key(int sym){
+    switch(sym){
+        case SDLK_UP: return 122;    case SDLK_DOWN: return 123;
+        case SDLK_LEFT: return 105;  case SDLK_RIGHT: return 106;
+        case SDLK_RETURN: case SDLK_KP_ENTER: return 92;
+        case SDLK_SPACE: return 57;  case SDLK_ESCAPE: return 91;
+        case SDLK_HOME: return 98;   case SDLK_m: return 139;
+        case SDLK_w: return 17;      case SDLK_s: return 31;
+        case SDLK_a: return 30;      case SDLK_d: return 32;
+        case SDLK_r: return 19;
+        case SDLK_1: return 2;       case SDLK_2: return 3;  case SDLK_3: return 4;
+    }
+    return 0;
+}
+#endif
 int main(void){
+#ifndef USE_SDL2
     key_fd=open("/dev/input/event1",O_RDONLY|O_NONBLOCK); if(key_fd<0) key_fd=open("/dev/input/event0",O_RDONLY|O_NONBLOCK);
     key_fd0=open("/dev/input/event0",O_RDONLY|O_NONBLOCK);
+#else
+    SDL_Init(SDL_INIT_VIDEO);
+    g_win=SDL_CreateWindow("lvgui",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,DISP_W,DISP_H,0);
+    g_ren=SDL_CreateRenderer(g_win,-1,SDL_RENDERER_ACCELERATED|SDL_RENDERER_PRESENTVSYNC);
+    g_tex=SDL_CreateTexture(g_ren,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,DISP_W,DISP_H);
+#endif
     mkdir("/mnt/us/ui",0755);
     evf=fopen(EVT_FILE,"a");
     memset(g_gray,255,sizeof g_gray);
@@ -357,6 +402,13 @@ int main(void){
     char sbuf[1024]; int sn=0;
 
     while(1){
+#ifdef USE_SDL2
+        SDL_Event ev;
+        while(SDL_PollEvent(&ev)){
+            if(ev.type==SDL_QUIT){ SDL_Quit(); return 0; }
+            if(ev.type==SDL_KEYDOWN){ int c=sdl_key(ev.key.keysym.sym); if(c){ g_key=2000; g_rawcode=c; } }
+        }
+#endif
         if(cfd>=0){ ssize_t n=read(cfd,rbuf+rn,sizeof(rbuf)-1-rn);
             if(n>0){ rn+=(int)n; rbuf[rn]=0; char*start=rbuf,*nl;
                 while((nl=strchr(start,'\n'))){ *nl=0; if(*start) dolua(start); start=nl+1; }
@@ -411,7 +463,11 @@ int main(void){
               if(lua_pcall(L,1,1,0)==0){ if(lua_toboolean(L,-1)) g_ui_dirty=1; lua_pop(L,1); }
               else { emit("luaerr %s",lua_tostring(L,-1)); lua_pop(L,1); } }
             else lua_pop(L,1); } }
+#ifdef USE_SDL2
+        if(g_dirty){ do_refresh(); g_dirty=0; }
+#else
         if(g_dirty && (now-g_last_ms)>=REFRESH_MS){ do_refresh(); g_dirty=0; g_last_ms=now; }
+#endif
         usleep(5000);
     }
     return 0;
