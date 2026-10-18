@@ -1,4 +1,5 @@
 # Build outputs
+agentkit/*/build/
 wechat-ocr/build/
 wechat-ocr/build_lib/
 *.o
