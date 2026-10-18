@@ -101,7 +101,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 return;
             }
             String playUrl = url;
-            if (url.startsWith("http://") || url.startsWith("https://")) {
+            if ("proxy".equals(getIntent().getStringExtra("engine"))
+                    && (url.startsWith("http://") || url.startsWith("https://"))) {
                 proxy = new Proxy(url);
                 playUrl = proxy.url();
             }

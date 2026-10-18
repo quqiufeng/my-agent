@@ -323,6 +323,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Future<void> _micLoop(String dev, String card, String gain, Map<String, String> env) async {
     // VOICE_MIC_URL：从网络音频源（手机 /audio）取 16k 单声道 PCM，替代本机声卡
     final micUrl = (env['VOICE_MIC_URL'] ?? '').trim();
+    final micMix = (env['VOICE_MIC_MIX'] ?? '0') == '1';
     if (micUrl.isEmpty) {
       try {
         await Process.run('amixer', ['-c', card, 'sset', 'Mic', gain]);
@@ -332,13 +333,29 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final minFrames = ((int.tryParse(env['VOICE_MIN_SPEECH_MS'] ?? '300') ?? 300) ~/ 128).clamp(1, 99);
     while (mounted) {
       try {
-        final p = micUrl.isNotEmpty
-            ? await Process.start('ffmpeg', [
-                '-loglevel', 'error', '-i', micUrl,
-                '-f', 's16le', '-ar', '16000', '-ac', '1', '-',
-              ])
-            : await Process.start('arecord',
-                ['-D', dev, '-f', 'S16_LE', '-r', '16000', '-c', '1', '-q', '-t', 'raw', '-']);
+        // 三选一：本机声卡 / 网络源 / 两者混音
+        final String cmd; final List<String> args;
+        if (micUrl.isNotEmpty && micMix) {
+          cmd = 'ffmpeg';
+          args = [
+            '-loglevel', 'error',
+            '-f', 'alsa', '-i', dev,
+            '-i', micUrl,
+            '-filter_complex',
+            '[0:a]aresample=16000:async=1[a0];'
+                '[1:a]aresample=16000:async=1[a1];'
+                '[a0][a1]amix=inputs=2:duration=longest:dropout_transition=0',
+            '-f', 's16le', '-ar', '16000', '-ac', '1', '-',
+          ];
+        } else if (micUrl.isNotEmpty) {
+          cmd = 'ffmpeg';
+          args = ['-loglevel', 'error', '-i', micUrl,
+                  '-f', 's16le', '-ar', '16000', '-ac', '1', '-'];
+        } else {
+          cmd = 'arecord';
+          args = ['-D', dev, '-f', 'S16_LE', '-r', '16000', '-c', '1', '-q', '-t', 'raw', '-'];
+        }
+        final p = await Process.start(cmd, args);
         _micProc = p;
         final buf = <int>[];
         var noise = 200, silent = 0;
