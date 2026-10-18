@@ -95,7 +95,7 @@ Host zspace nas
 | 极空间 Z2Pro | 192.168.1.53 | 网线 `eth0` | SSH 12200，Docker 24，zfrp/DDNS 内网穿透 |
 | 科沃斯扫地机 | 192.168.1.98 | WiFi `wifi332` | MAC `ec:30:8e:20:7b:5e`；`operator/tools/vacuum.sh` 控制 |
 | 小机箱（客厅机） | 192.168.1.68 | 网线 `enp2s0` | i5-2400(4C)/11G/120G NVMe，Ubuntu 24.04（自定义 6.8 内核）；SSH 22、RDP 3389、免密 sudo；**无无线网卡**；MAC `00:e0:6b:25:23:20`；已配本机免密 SSH |
-| Sony 电视 | 待定 | 待定 | 尚未开 ADB；计划做“拉流播放器 + 监控墙” |
+| Sony 电视（BRAVIA 4K GB） | 192.168.1.101 | WiFi | Android 8.0 / ARMv7 / 1080p / 1.6G 内存；**ADB 5555 已开**；已装 TV Bro、VLC、自写 tvplay（硬解）；NAS `rangeserve:8099` 提供带 Range 的 HTTP 点播 |
 
 - **只有一个子网 `192.168.1.0/24`**：电脑/手机/NAS/扫地机天然互通，**不存在“两个子网”问题**。
 - 只有手机离开这个 WiFi（4G/别处）时才需要中转：NAS 的 `zfrp` 端口映射（按端口），或 Tailscale/WireGuard（整段互通，安卓需 VpnService App）。
