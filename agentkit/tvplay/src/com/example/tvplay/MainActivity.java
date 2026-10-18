@@ -28,6 +28,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     private TextView status;
     private String url;
     private boolean prepared = false;
+    private Proxy proxy;
+    private JavaPlayer jp;
+    private final android.os.Handler saver = new android.os.Handler();
+    private Runnable saveTick;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -83,14 +87,36 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         if (url == null) return;
         release();
         try {
+            if ("java".equals(getIntent().getStringExtra("engine"))
+                    && surface.getHolder().getSurface() != null
+                    && (url.startsWith("http://") || url.startsWith("https://"))) {
+                jp = new JavaPlayer(url, surface.getHolder().getSurface(),
+                        getIntent().getBooleanExtra("noaudio", false));
+                jp.start();
+                prepared = true;
+                status.setText("");
+                int pos = getSharedPreferences("tvplay", 0).getInt("pos:" + url, 0);
+                if (pos > 5000) jp.seekTo(pos);
+                scheduleSave();
+                return;
+            }
+            String playUrl = url;
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                proxy = new Proxy(url);
+                playUrl = proxy.url();
+            }
             mp = new MediaPlayer();
-            mp.setDataSource(url);
+            mp.setDataSource(playUrl);
             mp.setDisplay(surface.getHolder());
             mp.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 public void onPrepared(MediaPlayer m) {
                     prepared = true;
                     status.setText("");
+                    int pos = getSharedPreferences("tvplay", 0)
+                            .getInt("pos:" + url, 0);
+                    if (pos > 5000) m.seekTo(pos);
                     m.start();
+                    scheduleSave();
                 }
             });
             mp.setOnErrorListener(new MediaPlayer.OnErrorListener() {
@@ -104,6 +130,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
                 public void onCompletion(MediaPlayer m) {
                     status.setText("播放结束");
+                    getSharedPreferences("tvplay", 0).edit().remove("pos:" + url).apply();
                 }
             });
             mp.setOnInfoListener(new MediaPlayer.OnInfoListener() {
@@ -119,8 +146,27 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         }
     }
 
+    private void scheduleSave() {
+        if (saveTick != null) saver.removeCallbacks(saveTick);
+        saveTick = new Runnable() {
+            public void run() {
+                try {
+                    int p = 0;
+                    if (jp != null) p = (int) jp.positionMs();
+                    else if (mp != null) p = mp.getCurrentPosition();
+                    if (p > 0) getSharedPreferences("tvplay", 0).edit()
+                            .putInt("pos:" + url, p).apply();
+                } catch (Exception ignored) { }
+                saver.postDelayed(this, 5000);
+            }
+        };
+        saver.postDelayed(saveTick, 5000);
+    }
+
     private void release() {
+        if (saveTick != null) { saver.removeCallbacks(saveTick); saveTick = null; }
         prepared = false;
+        if (proxy != null) { proxy.stop(); proxy = null; }
         if (mp != null) {
             try { mp.reset(); mp.release(); } catch (Exception ignored) { }
             mp = null;
@@ -153,7 +199,9 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     public boolean onKeyDown(int code, KeyEvent ev) {
         if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
                 || code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
-            if (mp != null) {
+            if (jp != null) {
+                jp.toggle();
+            } else if (mp != null) {
                 if (mp.isPlaying()) mp.pause(); else mp.start();
             }
             return true;
@@ -168,7 +216,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     @Override
     protected void onPause() {
         super.onPause();
-        if (mp != null && mp.isPlaying()) mp.pause();
+        if (jp != null) jp.pause(true);
+        else if (mp != null && mp.isPlaying()) mp.pause();
     }
 
     @Override

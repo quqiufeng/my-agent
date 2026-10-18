@@ -12,6 +12,7 @@
     <application
         android:label="tvplay"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+        android:extractNativeLibs="true"
         android:usesCleartextTraffic="true">
 
         <activity
