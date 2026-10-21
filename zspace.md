@@ -75,32 +75,36 @@ Host zspace nas
 - **Web 网关**：openresty（5055/5056 + 多个 127.0.0.1 端口 2999/8020/8111/20123…）
 - 本地微服务端口（`127.0.0.1`）：`zds`5577、`downloader`8001、`storage-pool`8003、`zspoolv3`8004、`transcode`8010、`upgrader`8012、`leds`8022、`file_search`8023、`media-converter`8024、`netdiskv2`8027、`zmusic`8028、`zreader`8029、`baseset`8038… ；`zrps-worker`5050、`xunlei`5051/5052、`zbasic`12200(对外)
 
-## 家庭网络拓扑（2026-10-18 实测）
+## 家庭网络拓扑（2026-10-21 实测）
 
 ```
-光猫 192.168.1.1（中国电信智能网关 / LuCI；MAC a0:36:79:d5:35:e0）
-  └─ 路由器（桥接/AP 模式，不做 NAT）
-       ├─ 电脑 192.168.1.10/24（网线 enp34s0，网关直接是 192.168.1.1）
-       ├─ 手机 vivo V2068A 192.168.1.99（WiFi；ssh 8022、adb 5555、CamStream 8080）
+光猫 192.168.1.1（中国电信智能网关；MAC a0:36:79:d5:35:e0）
+  └─ AP/路由 192.168.1.52（H3C；MAC 00:be:d5:22:7b:3c；桥接，不 NAT）
+       ├─ 主电脑 quqiufeng 192.168.1.10/24（网线 enp34s0）
+       ├─ 小机箱（客厅）192.168.1.105/24（USB WiFi MT7612U，SSID wifi332；MAC 8c:3d:16:62:3c:1e）
+       │    ├─ HDMI3 → Sony 电视（BRAVIA，画面）
+       │    ├─ 3.5mm 绿色孔 → 小音响（默认音频输出）
+       │    └─ USB → Comica EJoy Uni 麦克风（默认输入）
        ├─ 极空间 Z2Pro 192.168.1.53（网线 eth0；SSH 12200）
-       └─ 科沃斯扫地机 192.168.1.98（WiFi wifi332；MAC ec:30:8e:20:7b:5e）
+       └─ 其他在线设备：.5/.8/.17/.23/.46/.47/.48（未识别）
 ```
 
 | 设备 | IP | 接入 | 备注 |
 |---|---|---|---|
 | 光猫（中国电信智能网关） | 192.168.1.1 | — | LuCI `/cgi-bin/luci`，MAC `a0:36:79:d5:35:e0` |
-| 路由器（桥接/AP） | — | — | 不 NAT，PC 网关直接指向光猫 |
-| 电脑（quqiufeng） | 192.168.1.10 | 网线 `enp34s0` | 跑 my-agent / Flutter 界面（四路视频+手机麦克风） |
-| 手机 vivo V2068A | 192.168.1.99 | WiFi | Termux(8022)、无线 adb(5555)、CamStream 视频/音频(8080)、kiosk(VNC 5900) |
-| 极空间 Z2Pro | 192.168.1.53 | 网线 `eth0` | SSH 12200，Docker 24，zfrp/DDNS 内网穿透 |
-| 科沃斯扫地机 | 192.168.1.98 | WiFi `wifi332` | MAC `ec:30:8e:20:7b:5e`；`operator/tools/vacuum.sh` 控制 |
-| 小机箱（客厅机） | 192.168.1.68 | 网线 `enp2s0` | i5-2400(4C)/11G/120G NVMe，Ubuntu 24.04（自定义 6.8 内核）；SSH 22、RDP 3389、免密 sudo；**无无线网卡**；MAC `00:e0:6b:25:23:20`；已配本机免密 SSH |
-| Sony 电视（BRAVIA 4K GB） | 192.168.1.101 | WiFi | Android 8.0 / ARMv7 / 1080p / 1.6G 内存；**ADB 5555 已开**；WiFi 已切 **5GHz(5180MHz/300Mbps)**；只装自写 **tvplay**（系统硬解，续播/暂停）；NAS `rangeserve:8099` 提供带 Range 的 HTTP 点播 |
+| AP/路由（H3C，桥接） | 192.168.1.52 | — | 不 NAT；MAC `00:be:d5:22:7b:3c`，HTTP 管理页在线 |
+| 主电脑（quqiufeng） | 192.168.1.10 | 网线 `enp34s0` | 跑 my-agent / 界面；网关直接是 `192.168.1.1` |
+| 小机箱（客厅机） | 192.168.1.105 | USB WiFi `wifi332`；有线 `enp2s0` 备用 | i5-2400/11G/115G，Ubuntu 24.04.5 + Lubuntu；SSH 22、免密；HDMI 画面到 Sony 电视；3.5mm 小音响；Comica USB 麦克风；MAC `8c:3d:16:62:3c:1e` |
+| 极空间 Z2Pro | 192.168.1.53 | 网线 `eth0` | SSH 12200，Docker，WebDAV 5005，zfrp/DDNS 内网穿透 |
+| Sony 电视（BRAVIA） | 待确认 | HDMI3 ← 小机箱 | 独立设备/显示端；小机箱接 HDMI3；电视音频未使用，声音固定走小音响；ADB 5555 当前不可达，需在电视上开 ADB 调试并确认 IP |
+| 其他在线未识别 | .5/.8/.17/.23/.46/.47/.48 | 局域网 | 暂不归类 |
 
-- **只有一个子网 `192.168.1.0/24`**：电脑/手机/NAS/扫地机天然互通，**不存在“两个子网”问题**。
-- 只有手机离开这个 WiFi（4G/别处）时才需要中转：NAS 的 `zfrp` 端口映射（按端口），或 Tailscale/WireGuard（整段互通，安卓需 VpnService App）。
+- **只有一个子网 `192.168.1.0/24`**：主电脑、小机箱、NAS、AP 管理口天然互通。
+- 小机箱当前无线在线（`.105`），原客厅有线地址 `.68` 仅作备用，当前未插。
+- 小机箱音频：视频画面走 HDMI3 到 Sony 电视；声音固定 3.5mm 绿色孔小音响；麦克风走 Comica USB。
+- Sony ADB 可用时，`input keyevent 245` 可切 HDMI3（HDMI1–4 对应 243–246）；当前 5555 不可达。
+- 客厅摄像头为 EZVIZ 云服务，不作为局域网内固定 IP 设备列出。
 - 排查方法（本机无 `ping`/`nmap`）：读 `/proc/net/arp`、SSDP M-SEARCH、按端口探测；`avahi-browse` 可用。
-- 局域网还扫到若干未识别主机（如 .5/.23/.46/.52/.59 等），暂不列入。
 
 ## 容器 / 应用生态（极丰富）
 
