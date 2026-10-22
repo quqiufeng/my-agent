@@ -29,12 +29,15 @@
 | `tools/img_video.sh` | 动画短片：出图 → 配音+字幕+运镜/转场+片名卡 → 竖版短片（存 ~/image，默认不发微信） | `tools/img_video.sh [--voice <音色名>] [--title 成语] [--pinyin KEZHOU] [--source 出处] [--end 释义] [--img-preset xhs|pyq] [--outimg 目录] [--imgdir 目录] [--size WxH] [--n 张数] [--scenes "分镜1|…"] [--text "旁白1|…"] [--out out.mp4] [--send [--to 会话]] [--fg]` |
 | `tools/iso_native.sh` | 等距解释图/动画：调用 `~/iso_flutter/bin/iso.sh`（native：Dart+Lua 引擎，Flutter 离屏渲染）生成 PNG/GIF/MP4，再发微信。引擎/图/设计规范都在 `~/iso_flutter`，本工具只做"调用 + 发微信"。 | `tools/iso_native.sh render <图名> [--ss N] [--lift 0..1] [--theme dark|light] [--out 目录] [--to 会话] [--no-send]` |
 | `tools/listen_cam.sh` | 监听萤石摄像头麦克风（从直播流抽 AAC 音频）：播放到本机音响，或录成 wav | `tools/listen_cam.sh [keting|menkou] [秒数=10] [--save <路径>] [--play]` |
+| `tools/living_audio.sh` | 客厅小音响播放音频；文本在本机 TTS 合成后 scp 到小机箱，由 VLC 输出到 3.5mm 小音响 | `tools/living_audio.sh say <文本> | play <本地文件|http(s) URL> | stop` |
 | `tools/living_chrome.sh` | 远程控制客厅小机箱 Chrome 打开网页（小机箱 HDMI 输出到 Sony 电视） | `tools/living_chrome.sh open <http/https URL>` |
 | `tools/lora.sh` | 用一批图片训练 Z-Image LoRA；**写真/整体(style)** 与 **人脸(face)** 两种，可 `--both` 一遍出两个（图片处理两遍、先后训练）；图片来源=本地目录/微博搜索/微博相册；后台一条龙，完成发微信（样图+文件名） | `tools/lora.sh train (<图片目录> | --weibo <明星/关键词> | --album <昵称/uid>) <触发词> [--mode style|face|both] [--rank N] [--epochs N] [--res 512|1536] [--pages N|all] [--limit N] [--to 会话] [--force] | status | list | cancel` |
 | `tools/music.sh` | 无损音乐：本地(WebDAV)搜索/播放 + 本地没有则在线(flac.music.hi.cn)取 FLAC 播放并存 NAS（VLC → USB 音响） | `tools/music.sh` |
 | `tools/note.sh` | 备忘 / 待办（存 ~/.myagent_notes，纯文本） | `tools/note.sh` |
 | `tools/now.sh` | 返回当前日期与时间 | `tools/now.sh` |
 | `tools/open_app.sh` | 打开白名单内的本机应用 | `open_app.sh <chrome|terminal|files|editor|wechat>` |
+| `tools/phone_audio.sh` | 把 USB 连接手机的播放音频经 scrcpy 转发到小机箱 3.5mm 小音响；手机继续自己控制播放/暂停 | `tools/phone_audio.sh start | stop | status` |
+| `tools/phone_music.sh` | 手机汽水音乐播放：确保手机音频转发到小机箱小音响，打开汽水音乐并开始播放 | `tools/phone_music.sh play | stop` |
 | `tools/phone.sh` | 控制连接的安卓手机：截屏、点击、滑动、按键、输入(含中文)、打开应用、列出/安装应用 | `tools/phone.sh status                        # 查看是否已连接` |
 | `tools/photo.sh` | USB 摄像头拍照并发微信（默认文件传输助手） | `tools/photo.sh` |
 | `tools/progress.sh` | 查看开发进度：点击 qterminal，逐个 tab 截图 opencode，合并后发微信 | `progress.sh [--to 会话]` |
@@ -115,6 +118,9 @@
 44. 说“听听客厅/门口的声音/有没有动静”→ tools/listen_cam.sh keting 10（默认外放）；只想存文件用 --save
 45. 说“对客厅喊话 / 让门口响一下 / 往客厅播报”→ tools/say_cam.sh keting <wav>（**需已开通萤石「语音提醒」资源包**，否则返回 111000）
 46. 说“客厅电视/小机箱打开网页/放某个网页” → tools/living_chrome.sh open <URL>；只允许 http/https。
-47. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
+47. 说“客厅/小机箱/小音响 说话/播放音频/放这段声音”→ `say <文本>` 或 `play <文件/URL>`；停止→`stop`。
+48. 说“手机声音转到小音响/开手机音频/关手机音频”→ start/stop；只转发音频，不控制手机播放。
+49. 说“打开汽水音乐/手机放汽水音乐/用手机听歌/汽水音乐播放”→ play；停止转发→stop（手机播放/暂停由手机自己控制）。
+50. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_
