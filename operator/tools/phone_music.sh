@@ -17,7 +17,7 @@ remote() { ssh -o BatchMode=yes -o ConnectTimeout=5 "$HOST" "$@"; }
 case "${1:-}" in
     play)
         "$TOOL_DIR/phone_audio.sh" start || exit 1
-        SERIAL="$(remote "adb devices | awk '\$2==\"device\" {print \$1; exit}'")"
+        SERIAL="$(remote "adb devices | awk '\$2==\"device\" && \$1 !~ /:/ {print \$1; exit}'")"
         [ -n "$SERIAL" ] || { echo "未发现 USB 手机设备" >&2; exit 1; }
         if ! remote "adb -s '$SERIAL' shell pm list packages | grep -q '^package:${PKG}\$'"; then
             echo "手机未安装汽水音乐（${PKG}）" >&2

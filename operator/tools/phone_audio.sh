@@ -18,7 +18,7 @@ case "${1:-}" in
     start)
         remote 'bash -s' <<'REMOTE'
 set -u
-if pgrep -x scrcpy >/dev/null 2>&1; then
+if pgrep -f 'scrcpy.*--audio-source=playback' >/dev/null 2>&1; then
     echo "scrcpy 音频已在运行"
     exit 0
 fi
@@ -47,14 +47,14 @@ if [ -f /tmp/scrcpy-audio.pid ]; then
     kill "$(cat /tmp/scrcpy-audio.pid)" 2>/dev/null || true
     rm -f /tmp/scrcpy-audio.pid
 fi
-pkill -x scrcpy 2>/dev/null || true
+pkill -f 'scrcpy.*--audio-source=playback' 2>/dev/null || true
 echo "已停止手机音频转发（手机播放不受影响）"
 REMOTE
         ;;
     status)
         remote 'bash -s' <<'REMOTE'
-if pgrep -x scrcpy >/dev/null 2>&1; then
-    echo "音频转发: 运行中 (PID $(pgrep -x scrcpy | head -1))"
+if pgrep -f 'scrcpy.*--audio-source=playback' >/dev/null 2>&1; then
+    echo "音频转发: 运行中 (PID $(pgrep -f 'scrcpy.*--audio-source=playback' | head -1))"
 else
     echo "音频转发: 已停止"
 fi
