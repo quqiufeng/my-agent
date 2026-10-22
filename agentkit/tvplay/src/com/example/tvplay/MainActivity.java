@@ -87,7 +87,9 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         if (url == null) return;
         release();
         try {
-            if ("java".equals(getIntent().getStringExtra("engine"))
+            String engine = getIntent().getStringExtra("engine");
+            if (engine == null) engine = "proxy";
+            if ("java".equals(engine)
                     && surface.getHolder().getSurface() != null
                     && (url.startsWith("http://") || url.startsWith("https://"))) {
                 jp = new JavaPlayer(url, surface.getHolder().getSurface(),
@@ -101,7 +103,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 return;
             }
             String playUrl = url;
-            if ("proxy".equals(getIntent().getStringExtra("engine"))
+            if ("proxy".equals(engine)
                     && (url.startsWith("http://") || url.startsWith("https://"))) {
                 proxy = new Proxy(url);
                 playUrl = proxy.url();
@@ -143,7 +145,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             });
             mp.prepareAsync();
         } catch (Exception e) {
-            status.setText("打不开: " + e.getMessage());
+            android.util.Log.e("tvplay", "play error", e);
+            status.setText("打不开: " + e);
         }
     }
 

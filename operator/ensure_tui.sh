@@ -9,7 +9,7 @@ PORT="${AGENT_PORT:-4097}"
 export DISPLAY="${DISPLAY:-:0}"
 
 # 已有 TUI
-if pgrep -f "opencode attach" >/dev/null 2>&1; then
+if pgrep -f "opencode[ ]attach" >/dev/null 2>&1; then
     exit 0
 fi
 
@@ -17,7 +17,7 @@ fi
 if ! tmux has-session -t "$SESSION" 2>/dev/null; then
     tmux new-session -d -s "$SESSION" -n serve "cd '$DIR' && opencode serve --port $PORT" 2>/dev/null
     for _ in $(seq 1 30); do
-        curl -sf "http://localhost:$PORT/global/health" >/dev/null 2>&1 && break
+        curl --max-time 2 -sf "http://localhost:$PORT/global/health" >/dev/null 2>&1 && break
         sleep 1
     done
 fi
