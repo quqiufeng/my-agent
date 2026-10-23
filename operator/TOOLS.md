@@ -36,6 +36,7 @@
 | `tools/note.sh` | 备忘 / 待办（存 ~/.myagent_notes，纯文本） | `tools/note.sh` |
 | `tools/now.sh` | 返回当前日期与时间 | `tools/now.sh` |
 | `tools/open_app.sh` | 打开白名单内的本机应用 | `open_app.sh <chrome|terminal|files|editor|wechat>` |
+| `tools/opencode_supervise.sh` | 监督 opencode 工作：向指定 opencode TUI 标签页发送“继续”并回车，避免任务中断 | `tools/opencode_supervise.sh [要发送的文字，默认“继续”]` |
 | `tools/phone_audio.sh` | 把 USB 连接手机的播放音频经 scrcpy 转发到小机箱 3.5mm 小音响；手机继续自己控制播放/暂停 | `tools/phone_audio.sh start | stop | status` |
 | `tools/phone_music.sh` | 手机汽水音乐播放：确保手机音频转发到小机箱小音响，打开汽水音乐并开始播放 | `tools/phone_music.sh play | stop` |
 | `tools/phone.sh` | 控制连接的安卓手机：截屏、点击、滑动、按键、输入(含中文)、打开应用、列出/安装应用 | `tools/phone.sh status                        # 查看是否已连接` |
@@ -121,6 +122,7 @@
 47. 说“客厅/小机箱/小音响 说话/播放音频/放这段声音”→ `say <文本>` 或 `play <文件/URL>`；停止→`stop`。
 48. 说“手机声音转到小音响/开手机音频/关手机音频”→ start/stop；只转发音频，不控制手机播放。
 49. 说“打开汽水音乐/手机放汽水音乐/用手机听歌/汽水音乐播放”→ play；停止转发→stop（手机播放/暂停由手机自己控制）。
-50. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
+50. 说“监督 opencode/让 opencode 继续/盯着它干活”→ tools/opencode_supervise.sh；默认发送“继续”，可带自定义文字。
+51. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_
