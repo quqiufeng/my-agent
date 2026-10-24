@@ -46,10 +46,27 @@ const arg = process.argv[3] || '';
   };
   await new Promise(r => ws.onopen = r);
 
-  const { targetInfos } = await send('Target.getTargets');
-  const page = (targetInfos || []).find(t => t.type === 'page');
-  if (!page) { process.stderr.write('no page target\n'); process.exit(1); }
-  const { sessionId } = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true });
+  const TARGET_FILE = '/tmp/myagent_cdp_target';
+  let page;
+  if (fs.existsSync(TARGET_FILE)) {
+    const tid = fs.readFileSync(TARGET_FILE, 'utf8').trim();
+    const { targetInfos } = await send('Target.getTargets');
+    page = (targetInfos || []).find(t => t.targetId === tid && t.type === 'page');
+  }
+  if (!page) {
+    const t = await send('Target.createTarget', { url: 'about:blank' });
+    page = { targetId: t.targetId };
+    fs.writeFileSync(TARGET_FILE, page.targetId);
+  }
+  let sessionId;
+  try {
+    ({ sessionId } = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true }));
+  } catch (e) {
+    const t = await send('Target.createTarget', { url: 'about:blank' });
+    page = { targetId: t.targetId };
+    fs.writeFileSync(TARGET_FILE, page.targetId);
+    ({ sessionId } = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true }));
+  }
 
   const ev = async expr => {
     const r = await send('Runtime.evaluate',

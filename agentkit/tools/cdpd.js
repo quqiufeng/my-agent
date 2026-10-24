@@ -34,9 +34,27 @@ async function connectChrome() {
   ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pend[m.id]) { m.error ? pend[m.id].rej(m.error) : pend[m.id].res(m.result); delete pend[m.id]; } };
   ws.onclose = () => { sendFn = null; process.stderr.write('chrome ws closed (no auto-reconnect)\n'); };
   await new Promise(r => ws.onopen = r);
-  const { targetInfos } = await send('Target.getTargets');
-  const page = (targetInfos || []).find(t => t.type === 'page');
-  const r = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true });
+  const TARGET_FILE = '/tmp/myagent_cdpd_target';
+  let page;
+  if (fs.existsSync(TARGET_FILE)) {
+    const tid = fs.readFileSync(TARGET_FILE, 'utf8').trim();
+    const { targetInfos } = await send('Target.getTargets');
+    page = (targetInfos || []).find(t => t.targetId === tid && t.type === 'page');
+  }
+  if (!page) {
+    const t = await send('Target.createTarget', { url: 'about:blank' });
+    page = { targetId: t.targetId };
+    fs.writeFileSync(TARGET_FILE, page.targetId);
+  }
+  let r;
+  try {
+    r = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true });
+  } catch (e) {
+    const t = await send('Target.createTarget', { url: 'about:blank' });
+    page = { targetId: t.targetId };
+    fs.writeFileSync(TARGET_FILE, page.targetId);
+    r = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true });
+  }
   sessionId = r.sessionId;
   sendFn = send;
 }
@@ -79,14 +97,17 @@ async function handle(cmd, a) {
       await ev(`document.querySelector(${JSON.stringify(EDITOR)}).focus()`);
       await sendFn('Input.insertText', { text: a.prompt || '' }, sessionId);
       await sleep(400);
-      await sendFn('Input.dispatchKeyEvent', key('keyDown'), sessionId);
-      await sendFn('Input.dispatchKeyEvent', key('keyUp'), sessionId);
+      const clicked = await ev(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>{const a=(b.getAttribute('aria-label')||'')+' '+(b.title||''); return /发送|Send|提交/.test(a)});if(b){b.click();return true}return false})()`);
+      if (!clicked) {
+        await sendFn('Input.dispatchKeyEvent', key('keyDown'), sessionId);
+        await sendFn('Input.dispatchKeyEvent', key('keyUp'), sessionId);
+      }
       const GET = `(()=>{const els=[...document.querySelectorAll(${JSON.stringify(RESP)})];` +
         `const inner=els.filter(e=>!els.some(o=>o!==e&&e.contains(o)));` +
         `return inner.map(e=>e.innerText.trim()).filter(Boolean).join('\\n\\n')})()`;
       let last = '', stable = 0;
-      for (let i = 0; i < 90; i++) { await sleep(1000); const cur = await ev(GET);
-        if (cur && cur === last) { if (++stable >= 3) break; } else { stable = 0; last = cur; } }
+      for (let i = 0; i < 180; i++) { await sleep(1000); const cur = await ev(GET);
+        if (cur && cur === last) { if (++stable >= 5) break; } else { stable = 0; last = cur; } }
       return last || '';
     }
     case 'ask': {
@@ -96,14 +117,17 @@ async function handle(cmd, a) {
       await ev(`(()=>{const e=document.querySelector(${JSON.stringify(EDITOR)});e.focus();document.execCommand('selectAll');document.execCommand('delete');return true})()`);
       await sendFn('Input.insertText', { text: a.prompt || '' }, sessionId);
       await sleep(300);
-      await sendFn('Input.dispatchKeyEvent', key('keyDown'), sessionId);
-      await sendFn('Input.dispatchKeyEvent', key('keyUp'), sessionId);
+      const clicked = await ev(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>{const a=(b.getAttribute('aria-label')||'')+' '+(b.title||''); return /发送|Send|提交/.test(a)});if(b){b.click();return true}return false})()`);
+      if (!clicked) {
+        await sendFn('Input.dispatchKeyEvent', key('keyDown'), sessionId);
+        await sendFn('Input.dispatchKeyEvent', key('keyUp'), sessionId);
+      }
       const LAST = `(()=>{const els=[...document.querySelectorAll(${JSON.stringify(RESP)})];` +
         `const inner=els.filter(e=>!els.some(o=>o!==e&&e.contains(o)));` +
         `return inner.length?inner[inner.length-1].innerText.trim():''})()`;
       let last = '', stable = 0;
-      for (let i = 0; i < 90; i++) { await sleep(1000); const cur = await ev(LAST);
-        if (cur && cur === last) { if (++stable >= 3) break; } else { stable = 0; last = cur; } }
+      for (let i = 0; i < 180; i++) { await sleep(1000); const cur = await ev(LAST);
+        if (cur && cur === last) { if (++stable >= 5) break; } else { stable = 0; last = cur; } }
       return last || '';
     }
     default: throw new Error('unknown cmd: ' + cmd);

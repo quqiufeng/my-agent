@@ -35,9 +35,27 @@ const RESP = '.model-response-text, message-content, .response-container-content
   ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pend[m.id]) { m.error ? pend[m.id].rej(m.error) : pend[m.id].res(m.result); delete pend[m.id]; } };
   await new Promise(r => ws.onopen = r);
 
-  const { targetInfos } = await send('Target.getTargets');
-  const page = (targetInfos || []).find(t => t.type === 'page');
-  const { sessionId: sid } = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true });
+  const TARGET_FILE = '/tmp/myagent_gemini_target';
+  let page;
+  if (fs.existsSync(TARGET_FILE)) {
+    const tid = fs.readFileSync(TARGET_FILE, 'utf8').trim();
+    const { targetInfos } = await send('Target.getTargets');
+    page = (targetInfos || []).find(t => t.targetId === tid && t.type === 'page');
+  }
+  if (!page) {
+    const t = await send('Target.createTarget', { url: 'about:blank' });
+    page = { targetId: t.targetId };
+    fs.writeFileSync(TARGET_FILE, page.targetId);
+  }
+  let sid;
+  try {
+    ({ sessionId: sid } = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true }));
+  } catch (e) {
+    const t = await send('Target.createTarget', { url: 'about:blank' });
+    page = { targetId: t.targetId };
+    fs.writeFileSync(TARGET_FILE, page.targetId);
+    ({ sessionId: sid } = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true }));
+  }
 
   const ev = async expr => {
     const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }, sid);
@@ -59,19 +77,22 @@ const RESP = '.model-response-text, message-content, .response-container-content
   await ev(`document.querySelector(${JSON.stringify(EDITOR)}).focus()`);
   await send('Input.insertText', { text: prompt }, sid);
   await sleep(400);
-  // 回车发送
-  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }, sid);
-  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }, sid);
+  // 优先点发送按钮；旧版 UI 没有按钮时回退到回车
+  const clicked = await ev(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>{const a=(b.getAttribute('aria-label')||'')+' '+(b.title||''); return /发送|Send|提交/.test(a)});if(b){b.click();return true}return false})()`);
+  if (!clicked) {
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }, sid);
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }, sid);
+  }
 
-  // 等回复稳定（3s 无变化）；只取最内层匹配元素，避免嵌套容器重复
+  // 等回复稳定（5s 无变化；最多等 180s）；只取最内层匹配元素，避免嵌套容器重复
   const GET = `(()=>{const els=[...document.querySelectorAll(${JSON.stringify(RESP)})];` +
     `const inner=els.filter(e=>!els.some(o=>o!==e&&e.contains(o)));` +
     `return inner.map(e=>e.innerText.trim()).filter(Boolean).join(String.fromCharCode(10)+String.fromCharCode(10))})()`;
   let last = '', stable = 0;
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 180; i++) {
     await sleep(1000);
     const cur = await ev(GET);
-    if (cur && cur === last) { stable++; if (stable >= 3) break; } else { stable = 0; last = cur; }
+    if (cur && cur === last) { stable++; if (stable >= 5) break; } else { stable = 0; last = cur; }
   }
   process.stdout.write(last || '');
   ws.close(); process.exit(0);

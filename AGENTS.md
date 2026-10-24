@@ -73,6 +73,7 @@
 
 1. **运行时禁止引入 Python**。语音识别用 C++ 的 `SenseVoice.cpp`，合成用 `sherpa-onnx + Kokoro`，微信用 LuaJIT + C++。不要新增 `.py` 运行时依赖。
 2. **白名单是安全边界**。任何“大脑能执行的操作”都必须是一个 `operator/tools/*.sh`：
+   - 新增能力时，业务逻辑用 **Lua 或 JS** 实现；`.sh` 只做几行兼容入口，不把逻辑写进 shell。
    - 新增工具时，必须同步：`operator/tools/<name>.sh`、`operator/AGENTS.md` 的工具表、`operator/opencode.json` 的 `bash` 放行项、`guard.js` 正则（当前限定 `tools/<name>.sh`，一般无需改）。
    - 不要给大脑开放任意 shell、文件读写、网络。
 3. **两层 AGENTS.md 别混**：根目录本文件=开发说明；`operator/AGENTS.md`=运行时契约。
