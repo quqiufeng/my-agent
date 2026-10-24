@@ -7,6 +7,7 @@
 | 工具 | 用途 | 用法 |
 |------|------|------|
 | `tools/browser.sh` | 操作本机 Chrome（不新开浏览器，LuaJIT 实现） | `browser.sh new_tab` |
+| `tools/camera_grid.sh` | 抓 EZVIZ 客厅/门口、TP-Link、USB 四路画面，拼图发送微信 | `tools/camera_grid.sh [--to 会话] [--no-send] [--out 路径]` |
 | `tools/camera.sh` | 读摄像头(USB/RTSP/HLS/TP-Link)一帧给 Agent 读图：优先用常驻界面(Flutter)产出的实时帧，其次自抓；也可录像 | `tools/camera.sh [--usb N | --rtsp URL | --hls URL | --ezviz keting|menkou | --tplink] [--help] [--out 路径] [--live 秒] [--bg]` |
 | `tools/chrome_debug.sh` | 每次启动前同步 profile，再用固定调试端口起专用 Chrome，供 chrome-devtools MCP(--browser-url) 连接（免反复授权） | `tools/chrome_debug.sh [端口]        # 默认 9222` |
 | `tools/cookie.sh` | 把某站点 cookie 从已登录 Chrome(CDP) 取出并存入 ~/.env，或直接读写 | `tools/cookie.sh save <域名> <ENVKEY> | set <ENVKEY> <值> | get <ENVKEY> | list` |
@@ -28,7 +29,7 @@
 | `tools/img_video.sh` | 动画/图片视频：按提示词出图，再合成竖版 MP4（默认 1080×1920，不发微信） | `tools/img_video.sh --scenes "提示词1|提示词2|…" [--out out.mp4] [--img-preset xhs|pyq] [--seconds N] [--send [--to 会话]] [--fg]` |
 | `tools/iso_native.sh` | 等距解释图/动画：调用 `~/iso_flutter/bin/iso.sh`（native：Dart+Lua 引擎，Flutter 离屏渲染）生成 PNG/GIF/MP4，再发微信。引擎/图/设计规范都在 `~/iso_flutter`，本工具只做"调用 + 发微信"。 | `tools/iso_native.sh render <图名> [--ss N] [--lift 0..1] [--theme dark|light] [--out 目录] [--to 会话] [--no-send]` |
 | `tools/jobs.sh` | 后台任务：列出、看日志尾部、停止、查状态 | `tools/jobs.sh list | tail <id> [行数] | stop <id> | status <id>` |
-| `tools/listen_cam.sh` | 监听萤石摄像头麦克风（从直播流抽 AAC 音频）：播放到本机音响，或录成 wav | `tools/listen_cam.sh [keting|menkou] [秒数=10] [--save <路径>] [--play] [--bg]` |
+| `tools/listen_cam.sh` | 监听音频来源（EZVIZ/TP-Link/本机USB麦克风）：播放到本机音响，或录成 wav | `tools/listen_cam.sh [keting|menkou|tplink|usb] [秒数=10] [--save <路径>] [--play] [--bg]` |
 | `tools/music.sh` | 无损音乐：本地(WebDAV)搜索/播放 + 在线 FLAC（LuaJIT 实现） | `tools/music.sh` |
 | `tools/open_app.sh` | 打开白名单内的本机应用（LuaJIT 实现） | `open_app.sh <chrome|terminal|files|editor|wechat>` |
 | `tools/opencode_supervise.sh` | 监督 opencode 工作：向指定 opencode TUI 标签页发送“继续”并回车，避免任务中断（LuaJIT 实现） | `tools/opencode_supervise.sh [要发送的文字，默认“继续”]` |
@@ -39,7 +40,7 @@
 | `tools/sale_points.sh` | 读取带货引流视频资料包（规则说明 + 卖点） | `tools/sale_points.sh` |
 | `tools/say_cam.sh` | 让萤石摄像头喇叭播放一段音频（对讲/喊话/播报）：上传音频到萤石 → 设备播放 | `tools/say_cam.sh [keting|menkou] <音频.wav>` |
 | `tools/say.sh` | USB 音响发声（TTS）；可用 --voice 指定克隆音色（LuaJIT 编排） | `tools/say.sh [--voice <音色名>] [--bg] "文本"` |
-| `tools/screenshot.sh` | 截屏（默认全屏），返回图片路径（LuaJIT 实现） | `tools/screenshot.sh` |
+| `tools/screenshot.sh` | 只截本机全屏并返回路径，不发送；摄像头拼图用 camera_grid.sh | `tools/screenshot.sh [输出路径]` |
 | `tools/send_images.sh` | 下载图片（小图自动换大图）：保存目录并报张数，或发微信 | `tools/send_images.sh [--save 目录] [--to 会话] [--each] [--limit N] [--fg] <图片URL...>   （URL 也可从 stdin 每行一个）` |
 | `tools/stock.sh` | 股票查询：行情快照 / 历史K线 / 估值 / 财务指标（同花顺数据源） | `tools/stock.sh <名称或代码> | kline <名称或代码> [天数] | value <名称或代码> | fin <名称或代码> [报告期如2024-4] | list` |
 | `tools/termctl.sh` | 控制 qterminal 中的命令行应用：列出标签数 / 截图发微信 / 向指定标签注入指令并回车执行 | `tools/termctl.sh tabs | shot [N] [--to 会话] | send <N> "<指令>" [--no-enter]` |
@@ -66,7 +67,7 @@
 
 1. **需求现有工具满足不了时**：`tools/dev.sh info` 读规范 → `tools/dev.sh new <name>` 生成网页工具模板（里层用专用 Chrome + `ak.cdp` 做 DOM 操作）→ 填逻辑 → `commit`（可回滚）→ `restart` 生效。**能力只来自网页（免授权 Chrome + CDP/DOM）**，不写碰本机任意资源的脚本，也不做浏览器扩展。
 2. **出声/朗读/语音回**：用 `tools/say.sh "文本"`；想用**克隆音色**发声则 `tools/say.sh --voice <音色名> "文本"`（音色用 `tools/voices.sh` 管理：list/add）。
-3. **截屏**：说“截个屏/截屏发我”→ `screenshot.sh`（返回路径），再用 `wechat_send_file.sh <路径> [--to 来源会话]` 发回。
+3. **只截本机全屏** → `screenshot.sh`（返回路径，不发）；要直接发微信用 `wechat_shot.sh`；四个摄像头拼图用 `camera_grid.sh`。
 4. **克隆音色 / 指定某人音色发声**：说“用 X 的声音说 … / 克隆 X 的音色 / 有哪些音色”→ 先 `tools/voices.sh list` 看已注册的。要**新增**音色需用户提供一段 **3–30 秒参考音频（.wav 路径）**：`tools/voices.sh add <名> <参考.wav> ["参考文本"]`（不给文本会用 SenseVoice 自动转写，稍慢）；然后用 `tools/say.sh --voice <名> "内容"` 发声（或 `tools/voices.sh say <名> "内容"`）。删除：`tools/voices.sh del <名>`。
 5. **音乐**：说“放歌/放某某的歌/随机放一首”→ `play <歌手或歌名>`（本地库没有会自动**在线取无损 FLAC 播放**并**保存到 NAS**）；“下一首/换一首” → `next`；“停/别放了”→ `stop`；“大声点/小声点”→ `volup`/`voldown`。指定在线源用 `online <关键词> [kuwo|wyy]`。
 6. **画图/生成图片**：说“画一张…/生成图片…/来个…的图”→ `image.sh "提示词"`。尺寸可**明确指定**：`小红书`/`小红薯`（3:4 竖版 1920×2560）、`朋友圈`（1:1 方图 2048×2048），默认 2560×1440 横版。用法 `image.sh [小红书|小红薯|朋友圈] "提示词"`。出图要几分钟，完成后脚本自动发微信，你只需简短确认。GPU 忙时会被拒绝，稍后再试。
@@ -87,7 +88,7 @@
 21. **下载微博图**：说“下载微博图 <明星> / 抓 <明星> 的微博图 / 找 <明星> 的图”→ `tools/weibo_imgs.sh <明星>`。**默认抓 1..20 页**（也可 `N`、`A-B` 或 `all`）。用**微博 cookie（存在 ~/.env，长期免授权）** curl 抓 `s.weibo.com` 搜索页，解析帖子图片并自动把小图换成大图，**保存到 ~ 下的目录**并报告下载张数（默认不发微信）。只有用户明确说“发我微信/发过来”才加 `--to` 发送；cookie 过期（抓不到）时才用 `--refresh-cookie` 从已登录 Chrome 重取一次。
 22. **下载某人的微博相册（全量大图）**：说“下载 <某人> 的微博相册 / 抓 <某人> 相册的图 / <某人> 相册”→ `tools/weibo_album.sh <昵称>`。先按昵称搜出 uid（也可直接给数字 uid），再用相册接口翻页取**大图**（比搜索页快很多），存到 ~ 下的目录并报张数（默认不发微信；说“发我”才加 `--to`）。
 23. **下载图片URL**：当你已拿到图片 URL（来自网页/接口）→ `tools/send_images.sh --save <目录> <url...>`（自动把 /orj360//thumb150//mw690/ 等**小图换成 /large/ 大图**后下载并保存，报告张数）。加 `--to 会话` 才发微信。看某明星微博图请用 `weibo_imgs.sh`。
-24. **截屏发我 / 截图发我** → `tools/wechat_shot.sh`（不加 --app 截的是桌面）。**要截某个应用**（如“截图 agent / 助手 / 微信 / 浏览器”）→ **必须** `tools/wechat_shot.sh --app <应用名>`。
+24. **截屏发我 / 截图发我（非摄像头）** → `tools/wechat_shot.sh`（不加 --app 截的是桌面）。**要截某个应用**（如“截图 agent / 助手 / 微信 / 浏览器”）→ **必须** `tools/wechat_shot.sh --app <应用名>`。
 25. 用户说“微博热 / 微博热搜 / 微博热搜榜” → `tools/weibo_hot.sh`（默认出图+发微信）；要**只要文本**加 `--display`。
 26. **手机操作**：用户说“看下手机/手机截个屏/操作手机”→ 用 `tools/phone.sh screen` 得路径，再 `tools/wechat_send_file.sh <路径>` 发回；要点击/滑动/输入/打开应用就用对应子命令（中文输入用 `phone.sh type`）。**只用白名单子命令**，不要拼 `adb` 原始命令。
 27. **电纸书**：用户说“在电纸书上看/读某本书、翻页、上一页/下一页、跳到第几页、调字号、看目录、把电纸书画面发我、念一下这页” → 用 `tools/ebook.sh`。读书 `ebook.sh say "读<书名>"`；翻页/跳页/字号 `say "<指令>"`；要画面 `ebook.sh shot /tmp/ebook.png` 再 `tools/wechat_send_file.sh`；要朗读 `ebook.sh speak`。不确定状态先 `ebook.sh state`。**不要**自己拼 ssh/scp 命令。
@@ -97,15 +98,16 @@
 31. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
 32. **等距图**：引擎/图/规范都在独立仓 **~/iso_flutter**（框架 `iso_engine` + 应用 `app`）；本工具只是"调用它 + 发微信"。图名见 `~/iso_flutter/app/lib/main.dart` 的 `_figures`（`tmall-genie`(Lua) / `tmall-genie-dart`(Dart) / `lathe` / `tube`）。新增/改图在 ~/iso_flutter 里做（Lua：`app/lib/lua/figures/*.lua`；Dart：`main.dart`），再 `cd ~/iso_flutter/app && flutter build linux --release`。
 33. 要看摄像头画面 → `tools/camera.sh`（返回图片路径，可直接读图）；要一段视频 → `--live <秒>`。
-34. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
-35. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
-36. 萤石某路黑屏/过期时 → 重新跑本工具生成该路地址；app 重连即自动跟随（app 各路读各自文件：客厅 /tmp/myagent_ezviz.url、门口 /tmp/myagent_door.url）
-37. 用户说“扫地/开始扫地”→ start；“沿边”→ edge；“定点”→ spot；“停”→ stop；“回充”→ dock；“找一下扫地机/它在哪”→ find；“开大吸力/静音”→ fan max|quiet；“地毯增压”→ carpet 1；“扫地机状态/电量/统计”→ status|battery|stats|total
-38. 说“看看家里有谁 / 门前有人吗 / 识别一下客厅”→ tools/detect.sh [--src keting|menkou]；要发回用 --to
-39. 说“听听客厅/门口的声音/有没有动静”→ tools/listen_cam.sh keting 10（默认外放）；只想存文件用 --save
-40. 说“对客厅喊话 / 让门口响一下 / 往客厅播报”→ tools/say_cam.sh keting <wav>（**需已开通萤石「语音提醒」资源包**，否则返回 111000）
-41. 说“监督 opencode/让 opencode 继续/盯着它干活”→ tools/opencode_supervise.sh；默认发送“继续”，可带自定义文字。
-42. 长任务返回 `job=<id>` 后，用 `tools/jobs.sh tail <id>` 看进度/结果；`list` 看全部；`stop <id>` 停止。
-43. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
+34. 说“摄像头截图发我 / 摄像头 截图发我 / 四个摄像头拼图 / 看看家里四个画面”→ `tools/camera_grid.sh`（默认发文件传输助手）；只生成不发用 `--no-send`。
+35. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
+36. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
+37. 萤石某路黑屏/过期时 → 重新跑本工具生成该路地址；app 重连即自动跟随（app 各路读各自文件：客厅 /tmp/myagent_ezviz.url、门口 /tmp/myagent_door.url）
+38. 用户说“扫地/开始扫地”→ start；“沿边”→ edge；“定点”→ spot；“停”→ stop；“回充”→ dock；“找一下扫地机/它在哪”→ find；“开大吸力/静音”→ fan max|quiet；“地毯增压”→ carpet 1；“扫地机状态/电量/统计”→ status|battery|stats|total
+39. 说“看看家里有谁 / 门前有人吗 / 识别一下客厅”→ tools/detect.sh [--src keting|menkou]；要发回用 --to
+40. 说“听听客厅/门口/TP-Link/本机麦克风的声音/有没有动静”→ tools/listen_cam.sh keting|menkou|tplink|usb 10（默认外放）；只想存文件用 --save
+41. 说“对客厅喊话 / 让门口响一下 / 往客厅播报”→ tools/say_cam.sh keting <wav>（**需已开通萤石「语音提醒」资源包**，否则返回 111000）
+42. 说“监督 opencode/让 opencode 继续/盯着它干活”→ tools/opencode_supervise.sh；默认发送“继续”，可带自定义文字。
+43. 长任务返回 `job=<id>` 后，用 `tools/jobs.sh tail <id>` 看进度/结果；`list` 看全部；`stop <id>` 停止。
+44. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_

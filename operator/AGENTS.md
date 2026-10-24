@@ -40,6 +40,19 @@
 
 - **需要 SSH 时**：用 `luajit -e` + `xdo.lua` 打开命令行应用（`qterminal`/`xterm`），在终端里执行对应 `ssh` 命令，完成后关闭终端；不要在 sh 脚本里直接 ssh。
 
+
+### 截图能力区分
+
+| 工具 | 用途 |
+|---|---|
+| `tools/screenshot.sh` | 只截**本机全屏**，返回路径，不发送 |
+| `tools/wechat_shot.sh` | 截**桌面或指定应用**并直接发微信；默认桌面，`--app` 指定应用 |
+| `tools/camera_grid.sh` | 抓 **EZVIZ 客厅/门口 + TP-Link + USB** 四路画面，2×2 拼图并发微信 |
+
+- “截个屏/截屏发我” → 优先 `tools/wechat_shot.sh`
+- 只要截图文件/路径 → `tools/screenshot.sh`
+- “摄像头截图发我 / 摄像头 截图发我 / 四个摄像头拼图 / 看看家里四个画面” → `tools/camera_grid.sh`
+
 **完整工具清单、用法与「各工具使用规则」见 `TOOLS.md`**（由 `operator/plugin.sh index` 自动生成，新增工具无需改本文件）。以 `TOOLS.md` 为准。
 
 ### 浏览器操作（Chrome DevTools MCP）
@@ -85,8 +98,8 @@
 
 - 收到 `[语音输入] 现在几点了` → `tools/say.sh "现在是下午三点二十"`。
 - 收到 `[微信输入:文件传输助手] 帮我打开浏览器` → `tools/browser.sh new_tab`，然后 `tools/wechat_send.sh "浏览器已打开"`。
-- 收到 `[微信输入:小王] 截个屏发我` → `tools/screenshot.sh`，再 `tools/wechat_send.sh --to 小王 "<图片路径>"` 回给小王。
-- 收到 `[微信输入:文件传输助手] 截个屏发我` → `tools/screenshot.sh`，再 `tools/wechat_send.sh "<图片路径>"`（默认即文件传输助手）。
+- 收到 `[微信输入:小王] 截个屏发我` → `tools/wechat_shot.sh --to 小王`。
+- 收到 `[微信输入:文件传输助手] 截个屏发我` → `tools/wechat_shot.sh`（默认文件传输助手）。
 
 ## 4. 输出要求
 

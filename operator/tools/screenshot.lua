@@ -2,7 +2,6 @@ local DIR = (arg[0] or ""):match("^(.*)/") or "."
 package.path = DIR .. "/?.lua;" .. package.path
 local Xdo = require("xdo")
 
-
 local home = os.getenv("HOME") or "/root"
 local conf_path = home .. "/.config/screengrab/screengrab.conf"
 local save_dir = home .. "/Pictures"

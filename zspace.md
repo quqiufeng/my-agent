@@ -139,6 +139,18 @@ tools/camera.sh --rtsp <rtsp-url>
 
 录像/后台：加 `--live <秒>`，或 `--bg` 后用 `tools/jobs.sh tail <id>` 看日志。
 
+## 音频来源
+
+| 来源 | 设备/地址 | 访问方式 | 凭据/说明 |
+|---|---|---|---|
+| EZVIZ 客厅 | `/tmp/myagent_ezviz.url`（HLS） | `tools/listen_cam.sh keting 10` | `~/.env`：`EZVIZ_APPKEY`/`EZVIZ_APPSECRET`/`EZVIZ_CODE_802657358`；过期跑 `ezviz_url.sh` |
+| EZVIZ 门口 | `/tmp/myagent_door.url`（HLS） | `tools/listen_cam.sh menkou 10` | `EZVIZ_CODE_815311181`；过期跑 `ezviz_url.sh 815311181 /tmp/myagent_door.url` |
+| TP-Link 摄像头 | `TPLINK_RTSP`（RTSP 554，AAC） | `tools/listen_cam.sh tplink 10` | `~/.env`：`TPLINK_USER`/`TPLINK_PASS`/`TPLINK_RTSP` |
+| 本机 USB 摄像头麦克风 | ALSA `plughw:2,0`（可用 `VOICE_MIC_DEV` 覆盖） | `tools/listen_cam.sh usb 10` | 无账号；`arecord -l` 查看设备 |
+| 小机箱麦克风 | 小机箱本地 Comica USB | 未纳入 `listen_cam` 统一入口 | 需要时 agent 可经 SSH/终端到小机箱处理 |
+
+录音后台：加 `--bg`，用 `tools/jobs.sh tail <id>` 看日志；默认外放，`--save <wav>` 只保存。
+
 ## 容器 / 应用生态（极丰富）
 
 - **Docker + Portainer + appstore**（`/var/appstore/pkg`、`/data_s00*/appstore/pkg`）

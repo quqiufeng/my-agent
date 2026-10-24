@@ -33,7 +33,7 @@
 | 摄像头 EZVIZ | 云服务 | 客厅/门口两路；能看到 Sony 电视画面，用于确认电视开关/画面 | 清晰度一般，读小字/UI 不可靠 |
 | 摄像头 TP-Link | `192.168.1.111`，RTSP `554`、ONVIF `2020` | `camera.sh --tplink` 抓帧；2880×1620 HEVC + AAC | 账号 `admin`，凭据在 `~/.env` 的 `TPLINK_USER`/`TPLINK_PASS`/`TPLINK_RTSP`；位置待确认 |
 
-> 摄像头视频流地址、失效刷新与凭据位置见 [`zspace.md`](zspace.md#摄像头视频流)。
+> 摄像头视频流/音频来源、失效刷新与凭据位置见 [`zspace.md`](zspace.md#摄像头视频流) 和 [`zspace.md`](zspace.md#音频来源)。
 | 光猫 / AP | `192.168.1.1` / `192.168.1.52` | 同一 `192.168.1.0/24`；AP 桥接不 NAT | 光猫 LAN 口不足 |
 
 **端口与音视频**
@@ -91,6 +91,9 @@
 ```bash
 # 大脑
 operator/start.sh [--bg]                 # 启停 tmux + opencode(4097)
+operator/tools/screenshot.sh           # 只截本机全屏，返回路径
+operator/tools/wechat_shot.sh          # 截桌面/指定应用并直接发微信
+operator/tools/camera_grid.sh          # 四路摄像头拼图发微信
 operator/tools/chrome_debug.sh           # 启动专用 Chrome（固定端口，供 MCP 免授权、带登录）
 
 # 语音（纯 C/C++）
