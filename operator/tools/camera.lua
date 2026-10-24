@@ -1,3 +1,7 @@
+local DIR = (arg[0] or ""):match("^(.*)/") or "."
+package.path = DIR .. "/?.lua;" .. package.path
+local bg = require("bgjob")
+
 local function q(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
 end
@@ -11,6 +15,7 @@ local function size(path)
 end
 
 local usb = os.getenv("CAM_USB_INDEX") or "0"
+local bgflag = false
 local rtsp = os.getenv("RTSP_URL") or ""
 local out, live = nil, 0
 
@@ -21,7 +26,15 @@ while i <= #arg do
     elseif a == "--rtsp" then rtsp = arg[i + 1] or ""; i = i + 2
     elseif a == "--out" then out = arg[i + 1]; i = i + 2
     elseif a == "--live" then live = tonumber(arg[i + 1]) or 5; i = i + 2
+    elseif a == "--bg" then bgflag = true; i = i + 1
     else i = i + 1 end
+end
+
+if bgflag and os.getenv("BG_WORKER") ~= "1" then
+    local j = bg.spawn_self(arg, "camera")
+    print("已后台采集摄像头 job=" .. j.id)
+    print("查看进度: tools/jobs.sh tail " .. j.id)
+    os.exit(0)
 end
 
 if os.execute("command -v ffmpeg >/dev/null 2>&1") ~= 0 then

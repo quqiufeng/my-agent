@@ -1,4 +1,6 @@
 local DIR = (arg[0] or ""):match("^(.*)/") or "."
+package.path = DIR .. "/?.lua;" .. package.path
+local bg = require("bgjob")
 
 local function q(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
@@ -11,11 +13,13 @@ local function exists(path)
 end
 
 local to, prompt, w, h, force, preset = "", "", nil, nil, false, ""
+local fg = false
 local i = 1
 while i <= #arg do
     local a = arg[i]
     if a == "--to" then to = arg[i + 1] or ""; i = i + 2
     elseif a == "--force" then force = true; i = i + 1
+    elseif a == "--fg" then fg = true; i = i + 1
     elseif a == "小红书" or a == "小红薯" or a == "xhs" or a == "xiaohongshu" or a == "竖版" then
         preset = "xhs"; i = i + 1
     elseif a == "朋友圈" or a == "pyq" or a == "moments" or a == "方图" or a == "方版" then
@@ -55,6 +59,13 @@ if os.execute("command -v nvidia-smi >/dev/null 2>&1") == 0 then
             " MiB），出图可能 OOM/极慢。稍后再试或加 --force。\n")
         os.exit(3)
     end
+end
+
+if not fg and os.getenv("BG_WORKER") ~= "1" then
+    local j = bg.spawn_self(arg, "image")
+    print("已后台出图 job=" .. j.id)
+    print("查看进度: tools/jobs.sh tail " .. j.id)
+    os.exit(0)
 end
 
 local stamp = os.date("%Y%m%d_%H%M%S")

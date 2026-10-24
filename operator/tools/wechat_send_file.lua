@@ -2,6 +2,7 @@
 -- 默认联系人「文件传输助手」，可用 WECHAT_TO 覆盖。
 local DIR = (arg[0] or ""):match("^(.*)/") or "."
 package.path = DIR .. "/?.lua;" .. package.path
+local bg = require("bgjob")
 
 local function q(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
@@ -11,6 +12,14 @@ local file = arg[1] or ""
 if file == "" then
     io.stderr:write("用法: wechat_send_file.sh <文件路径|URL> [--to 联系人]\n")
     os.exit(2)
+end
+
+if file:match("^https?://") and os.getenv("BG_WORKER") ~= "1"
+    and os.getenv("WECHAT_SEND_FILE_FG") ~= "1" then
+    local j = bg.spawn_self(arg, "wechat_send_file")
+    print("已后台下载并发送 job=" .. j.id)
+    print("查看进度: tools/jobs.sh tail " .. j.id)
+    os.exit(0)
 end
 
 if file:match("^https?://") then

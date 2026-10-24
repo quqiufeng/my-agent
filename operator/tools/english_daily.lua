@@ -2,6 +2,7 @@ local DIR = (arg[0] or ""):match("^(.*)/") or "."
 package.path = DIR .. "/?.lua;" .. package.path
 
 local cjson = require("cjson")
+local bg = require("bgjob")
 local REPORT = "/opt/my-agent/operator/report"
 local CORE_CDP = "/opt/my-agent/agentkit/tools/cdp.js"
 
@@ -37,6 +38,7 @@ end
 
 local topic, url, words, level = "", "", 180, "B1-B2"
 local display, to, send = false, "文件传输助手", true
+local fg = false
 local i = 1
 while i <= #arg do
     local a = arg[i]
@@ -46,10 +48,18 @@ while i <= #arg do
     elseif a == "--display" then display = true; send = false; i = i + 1
     elseif a == "--to" then to = arg[i + 1] or "文件传输助手"; i = i + 2
     elseif a == "--no-send" then send = false; i = i + 1
+    elseif a == "--fg" then fg = true; i = i + 1
     else
         if topic == "" then topic = a end
         i = i + 1
     end
+end
+
+if not display and not fg and os.getenv("BG_WORKER") ~= "1" then
+    local j = bg.spawn_self(arg, "english_daily")
+    print("已后台生成每日英语 job=" .. j.id)
+    print("查看进度: tools/jobs.sh tail " .. j.id)
+    os.exit(0)
 end
 
 local function ensure_chrome()

@@ -1,8 +1,13 @@
+local DIR = (arg[0] or ""):match("^(.*)/") or "."
+package.path = DIR .. "/?.lua;" .. package.path
+local bg = require("bgjob")
+
 local function q(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
 end
 
 local src, secs, save, play = "keting", 10, nil, true
+local bgflag = false
 for _, a in ipairs(arg) do
     if a == "keting" or a == "客厅" or a == "menkou" or a == "门口" or a == "usb" then
         src = a
@@ -14,6 +19,7 @@ local i = 1
 while i <= #arg do
     if arg[i] == "--save" then save = arg[i + 1]; play = false; i = i + 2
     elseif arg[i] == "--play" then play = true; i = i + 1
+    elseif arg[i] == "--bg" then bgflag = true; i = i + 1
     else i = i + 1 end
 end
 
@@ -22,6 +28,13 @@ if src == "menkou" or src == "门口" then
     urlfile = "/tmp/myagent_door.url"
 else
     urlfile = "/tmp/myagent_ezviz.url"
+end
+
+if bgflag and os.getenv("BG_WORKER") ~= "1" then
+    local j = bg.spawn_self(arg, "listen_cam")
+    print("已后台录音 job=" .. j.id)
+    print("查看进度: tools/jobs.sh tail " .. j.id)
+    os.exit(0)
 end
 
 local f = io.open(urlfile, "r")

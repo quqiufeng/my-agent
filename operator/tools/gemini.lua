@@ -1,4 +1,6 @@
 local DIR = (arg[0] or ""):match("^(.*)/") or "."
+package.path = DIR .. "/?.lua;" .. package.path
+local bg = require("bgjob")
 
 local function q(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
@@ -13,6 +15,7 @@ local function size(path)
 end
 
 local question, to, img, send, display = nil, "文件传输助手", true, true, false
+local fg = false
 local i = 1
 while i <= #arg do
     local a = arg[i]
@@ -20,6 +23,7 @@ while i <= #arg do
     elseif a == "--to" then to = arg[i + 1] or "文件传输助手"; i = i + 2
     elseif a == "--no-image" then img = false; i = i + 1
     elseif a == "--no-send" then send = false; i = i + 1
+    elseif a == "--fg" then fg = true; i = i + 1
     else
         if not question then question = a end
         i = i + 1
@@ -29,6 +33,13 @@ end
 if not question or question == "" then
     io.stderr:write("用法: gemini.sh <问题> [--display] [--to 会话]\n")
     os.exit(2)
+end
+
+if not display and not fg and os.getenv("BG_WORKER") ~= "1" then
+    local j = bg.spawn_self(arg, "gemini")
+    print("已后台问 Gemini job=" .. j.id)
+    print("查看进度: tools/jobs.sh tail " .. j.id)
+    os.exit(0)
 end
 
 if os.execute("ss -ltn 2>/dev/null | grep -q ':9222 '") ~= 0 then

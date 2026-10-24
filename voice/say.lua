@@ -1,4 +1,6 @@
 local DIR = (arg[0] or ""):match("^(.*)/") or "."
+package.path = "/opt/my-agent/operator/tools/?.lua;" .. package.path
+local bg = require("bgjob")
 package.path = DIR .. "/?.lua;" .. package.path
 local cfg = require("config")
 local audio = require("audio")
@@ -13,11 +15,13 @@ local function finish(code)
 end
 
 local voice_override, text = "", ""
+local bgflag = false
 local i = 1
 while i <= #arg do
     local a = arg[i]
     if a == "--voice" then voice_override = arg[i + 1] or ""; i = i + 2
     elseif a == "--kokoro" then voice_override = "__kokoro__"; i = i + 1
+    elseif a == "--bg" then bgflag = true; i = i + 1
     else
         text = text .. (text ~= "" and " " or "") .. a
         i = i + 1
@@ -27,6 +31,13 @@ end
 if text == "" then
     io.stderr:write("用法: say.sh [--voice 音色名] <文本>\n")
     os.exit(2)
+end
+
+if bgflag and os.getenv("BG_WORKER") ~= "1" then
+    local j = bg.spawn_self(arg, "say")
+    print("已后台合成语音 job=" .. j.id)
+    print("查看进度: tools/jobs.sh tail " .. j.id)
+    os.exit(0)
 end
 
 if io.open("/tmp/myagent_english_mode", "r") then

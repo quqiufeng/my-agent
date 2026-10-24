@@ -1,4 +1,6 @@
 local DIR = (arg[0] or ""):match("^(.*)/") or "."
+package.path = DIR .. "/?.lua;" .. package.path
+local bg = require("bgjob")
 
 local function q(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
@@ -17,6 +19,7 @@ local function tidy(u)
 end
 
 local to, save, each, limit = "", nil, false, 0
+local fg, input_file = false, nil
 local urls = {}
 local i = 1
 while i <= #arg do
@@ -25,19 +28,58 @@ while i <= #arg do
     elseif a == "--save" then save = arg[i + 1]; i = i + 2
     elseif a == "--each" then each = true; i = i + 1
     elseif a == "--limit" then limit = tonumber(arg[i + 1]) or 0; i = i + 2
+    elseif a == "--input-file" then input_file = arg[i + 1]; i = i + 2
+    elseif a == "--fg" then fg = true; i = i + 1
     else urls[#urls + 1] = a; i = i + 1 end
 end
 
-if os.execute("test -t 0") ~= 0 then
+local from_stdin = false
+if input_file then
+    local f = io.open(input_file, "r")
+    if f then
+        for line in f:lines() do
+            line = line:gsub("^%s+", ""):gsub("%s+$", "")
+            if line ~= "" then urls[#urls + 1] = line end
+        end
+        f:close()
+    end
+    os.remove(input_file)
+elseif os.execute("test -t 0") ~= 0 then
+    from_stdin = true
     for line in io.lines() do
         line = line:gsub("^%s+", ""):gsub("%s+$", "")
         if line ~= "" then urls[#urls + 1] = line end
     end
 end
 
+do
+    local seen, uniq = {}, {}
+    for _, u in ipairs(urls) do
+        if not seen[u] then seen[u] = true; uniq[#uniq + 1] = u end
+    end
+    urls = uniq
+end
+
 if #urls == 0 then
     io.stderr:write("用法: send_images.sh [--save 目录] [--to 会话] [--each] [--limit N] <图片URL...>\n")
     os.exit(2)
+end
+
+if not fg and os.getenv("BG_WORKER") ~= "1" then
+    local args = {}
+    for _, a in ipairs(arg) do args[#args + 1] = a end
+    if from_stdin then
+        local tmp = "/tmp/send_images_input_" .. tostring(os.time()) .. ".txt"
+        local f = assert(io.open(tmp, "w"))
+        for _, u in ipairs(urls) do f:write(u, "\n") end
+        f:close()
+        args[#args + 1] = "--input-file"
+        args[#args + 1] = tmp
+    end
+    local j = bg.spawn_self(args, "send_images")
+    print("已后台下载图片 job=" .. j.id)
+    print("查看进度: tools/jobs.sh tail " .. j.id)
+    os.exit(0)
 end
 
 local d = "/tmp/myagent_imgs_" .. tostring(os.time())

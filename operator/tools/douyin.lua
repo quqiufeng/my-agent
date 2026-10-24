@@ -2,6 +2,7 @@ local DIR = (arg[0] or ""):match("^(.*)/") or "."
 package.path = DIR .. "/?.lua;" .. package.path
 
 local cjson = require("cjson")
+local bg = require("bgjob")
 
 local function q(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
@@ -32,6 +33,7 @@ local start = 1
 if arg[1] == "list" or arg[1] == "get" then cmd = arg[1]; start = 2 end
 
 local n, minlike, sec = 18, 30, ""
+local fg = false
 local i = start
 while i <= #arg do
     local a = arg[i]
@@ -41,6 +43,13 @@ while i <= #arg do
     elseif a:match("^https?://") then sec = extract_sec(a) or ""; i = i + 1
     elseif a:match("^%d+$") then n = tonumber(a) or n; i = i + 1
     else i = i + 1 end
+end
+
+if cmd == "get" and not fg and os.getenv("BG_WORKER") ~= "1" then
+    local j = bg.spawn_self(arg, "douyin")
+    print("已后台抓取抖音作品 job=" .. j.id)
+    print("查看进度: tools/jobs.sh tail " .. j.id)
+    os.exit(0)
 end
 
 local rc = os.execute("node " .. q(DIR .. "/douyin_fetch.js") .. " " ..
