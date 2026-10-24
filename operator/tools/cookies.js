@@ -1,18 +1,23 @@
 // operator/tools/cookies.js — 从已登录 Chrome(CDP) 取某域名的 cookie，输出 "k=v; k=v; ..."
 // 用法: node cookies.js <域名子串>     例: node cookies.js weibo.com
-// 连接顺序: $HOME/.config/google-chrome/DevToolsActivePort → 127.0.0.1:9222
+// 连接顺序: 127.0.0.1:9222 → $HOME/.config/google-chrome/DevToolsActivePort
 const fs = require('fs');
 const needle = (process.argv[2] || '').trim();
 
 async function wsUrl() {
+  try {
+    const r = await fetch('http://127.0.0.1:9222/json/version');
+    if (r.ok) {
+      const j = await r.json();
+      if (j.webSocketDebuggerUrl) return j.webSocketDebuggerUrl;
+    }
+  } catch (e) {}
   const pf = process.env.HOME + '/.config/google-chrome/DevToolsActivePort';
   if (fs.existsSync(pf)) {
     const [port, bpath] = fs.readFileSync(pf, 'utf8').trim().split('\n');
     return 'ws://127.0.0.1:' + port + bpath;
   }
-  const r = await fetch('http://127.0.0.1:9222/json/version');
-  const j = await r.json();
-  return j.webSocketDebuggerUrl;
+  throw new Error('找不到可用的 Chrome CDP（9222 / DevToolsActivePort）');
 }
 
 (async () => {

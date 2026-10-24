@@ -2,15 +2,26 @@
 // 用法: node douyin_fetch.js <N>  → 写 /tmp/douyin_cookies.txt、/tmp/douyin_list.json，打印 sec_uid/count
 const fs = require('fs');
 const home = process.env.HOME;
-const [port, bpath] = fs.readFileSync(home + '/.config/google-chrome/DevToolsActivePort', 'utf8').trim().split('\n');
-const ws = new WebSocket('ws://127.0.0.1:' + port + bpath);
+async function wsUrl() {
+  try {
+    const r = await fetch('http://127.0.0.1:9222/json/version');
+    if (r.ok) {
+      const j = await r.json();
+      if (j.webSocketDebuggerUrl) return j.webSocketDebuggerUrl;
+    }
+  } catch (e) {}
+  const [port, bpath] = fs.readFileSync(home + '/.config/google-chrome/DevToolsActivePort', 'utf8').trim().split('\n');
+  return 'ws://127.0.0.1:' + port + bpath;
+}
+let ws;
 let id = 0, pend = {};
 const send = (m, p, s) => new Promise((res, rej) => { const i = ++id; pend[i] = { res, rej }; ws.send(JSON.stringify({ id: i, method: m, params: p, sessionId: s })); });
-ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pend[m.id]) { m.error ? pend[m.id].rej(m.error) : pend[m.id].res(m.result); delete pend[m.id]; } };
 const COUNT = Math.max(1, parseInt(process.argv[2] || '18', 10));
 const SEC_ARG = (process.argv[3] || '').trim();  // 指定用户 sec_uid（留空=自己）
 
 (async () => {
+  ws = new WebSocket(await wsUrl());
+  ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pend[m.id]) { m.error ? pend[m.id].rej(m.error) : pend[m.id].res(m.result); delete pend[m.id]; } };
   await new Promise(r => ws.onopen = r);
   const t = await send('Target.createTarget', { url: 'about:blank' });
   const sid = (await send('Target.attachToTarget', { targetId: t.targetId, flatten: true })).sessionId;
@@ -51,5 +62,6 @@ const SEC_ARG = (process.argv[3] || '').trim();  // 指定用户 sec_uid（留�
   fs.writeFileSync('/tmp/douyin_list.json', JSON.stringify(all));
   fs.writeFileSync('/tmp/douyin_sec.txt', sec);
   console.log('sec_uid=' + sec + ' count=' + all.length + ' cookies=' + cookies.length);
+  try { await send('Target.closeTarget', { targetId: t.targetId }); } catch (e) {}
   ws.close(); process.exit(0);
 })().catch(e => { console.error('ERR', (e && e.message) || e); process.exit(1); });

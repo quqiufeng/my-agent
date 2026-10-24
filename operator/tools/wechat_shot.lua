@@ -30,6 +30,13 @@ local function capture()
 end
 
 local function capture_desktop()
+    if os.execute("wmctrl -k on 2>/dev/null") == 0 then
+        sleep_ms(800)
+        local ok = capture()
+        os.execute("wmctrl -k off 2>/dev/null")
+        return ok
+    end
+
     local hidden = {}
     for _, w in ipairs(wins) do
         local n = (w.name or ""):lower()
