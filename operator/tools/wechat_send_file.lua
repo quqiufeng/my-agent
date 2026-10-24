@@ -63,10 +63,15 @@ os.execute("sleep 1")
 
 local ext = file:lower():match("%.([%w]+)$") or ""
 local is_img = (ext == "png" or ext == "jpg" or ext == "jpeg" or ext == "webp" or ext == "bmp")
+local sent
 if is_img then
-    robot.send_image(file)
+    sent = robot.send_image(file)
 else
-    robot.send_file(file)
+    sent = robot.send_file(file)
 end
 robot.destroy()
+if sent == false then
+    io.stderr:write("发送失败 -> " .. to .. "\n")
+    os.exit(1)
+end
 print("已发送 -> " .. to)

@@ -16,6 +16,11 @@ os.execute("sleep 3")
 local items, panel
 if mode == "news" then items = g.news_results(15) else items = g.results(15); panel = g.panel() end
 
+if #items == 0 and (not panel or panel == "") then
+    io.stderr:write("未取到搜索结果\n")
+    os.exit(1)
+end
+
 local function esc(s) return (tostring(s or ""):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")) end
 local title_cn = (mode == "news") and "Google 新闻" or "Google 搜索"
 

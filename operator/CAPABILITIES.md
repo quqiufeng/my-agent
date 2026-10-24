@@ -1,66 +1,76 @@
-# 项目能力清单（Capabilities）— 供大脑上下文
+# 项目能力清单（Capabilities）
 
-> 大脑决策前先看这里：**有哪些现成能力**；没有的才用 `tools/dev.sh` 开发
-> （**新能力=走专用 Chrome（免授权登录）+ CDP/DOM 的网页工具**，能力只来自网页，安全）。
-> 与 `TOOLS.md`（白名单工具表）配合使用。
+> 当前白名单共 **35 个工具**；完整参数与逐条规则以 `operator/TOOLS.md` 为准。
+> 本文按场景汇总，供大脑快速判断“有没有现成能力”。
+> 更新时间：2026-10-24
 
-## 一、网页 / 浏览器
-- **专用 Chrome（固定端口 9222、免授权、带登录）**：`tools/chrome_debug.sh`（用 Chrome 前必须）
-- **CDP/DOM 精准控制**：`ak.cdp`（Lua）或大脑的 `chrome-devtools` MCP
-  `title/url/eval/text/html/query/click/goto/cookies/gemini`
-- **谷歌搜索/新闻（结构化）**：`tools/google_search.sh "<关键词>" [--news]`
-- **Google AI（Gemini）问答**：`tools/gemini.sh "<问题>"[--display]`；Lua：`ak.cdp.gemini/ask`
-- **GitHub 热门**：`tools/git_trending.sh [--lang lua]`
-- **登录态抓取（免浏览器）**：`tools/cookie.sh`（取 cookie 落 `.env`）+ `tools/fetch.sh <url> --cookie KEY`
-- **自我开发新能力**：`tools/dev.sh new <name>`（生成走专用 Chrome + `ak.cdp` 的网页工具）
+## 一、通讯 / 回程
+- `wechat_send.sh`：发微信文本
+- `wechat_send_file.sh`：发文件/图片，支持本地路径或 WebDAV URL
+- `wechat_shot.sh`：截桌面/指定应用并直接发微信
+- `screenshot.sh`：只截本机全屏，返回路径，不发送
+- `say.sh`：USB 音响 TTS；支持 `--voice` 克隆音色
+- `voices.sh`：克隆音色列表/注册/删除/发声
 
-## 二、本机界面自动化（agentkit，LuaJIT+FFI）
-```lua
-package.path="/opt/my-agent/?.lua;/opt/my-agent/?/init.lua;"..package.path
-local ak=require("agentkit")
-ak.x11.window(title); win:ocr()/find_text/click_text/ocr_bands   -- 窗口+OCR+点击
-ak.map("wechat"/"chrome"/"google"/"gemini"/"github")             -- 控件映射
-ak.app("wordcard"/"wechat"/"chrome"/"gemini"/"google"/"github")  -- 应用适配器
-ak.voice.tts/asr/record    ak.batch.run(app,kind,items)   ak.record(app)  -- 语音/批量/录制
-```
-- 映射：`agentkit/maps/*.lua`；多分辨率：`agentkit/tools/scale_maps.lua`
+## 二、摄像头 / 音频 / 识别
+- `camera.sh`：USB / EZVIZ 客厅 / EZVIZ 门口 / TP-Link / HLS / RTSP 抓一帧或录像
+  - EZVIZ 地址缺失或失效时自动刷新，不再需要独立刷新脚本
+- `camera_grid.sh`：四路抓帧 → 2×2 拼图 → 发微信
+- `detect.sh`：YOLOv8n 原生 C++ 检测
+  - `--src keting|menkou|usb|<图片>`
+  - `--grid`：四路分别检测，按摄像头汇总人数，并输出带绿框拼图
+  - 限制：遮挡、躺卧、远景可能漏检
+- `listen_cam.sh`：监听/录制摄像头音频
+  - `keting` / `menkou` / `tplink` / `usb`
+  - 小机箱 USB 麦克风尚未接入
 
-## 三、出图 / 排版（Kami）
-- `operator/report/render.sh in.html out.png|.pdf`
-- 样式 `operator/report/kami.css`；规范 `operator/report/TYPOGRAPHY.md`
-- 现成生成器：`report/{github_trending,google_report,gemini_report}.lua`、`daily-report.html`
+## 三、微博 / 图片收集
+- `weibo.sh`：打开微博搜索页并截图
+- `weibo_hot.sh`：微博实时热搜 → 排版图 + 文字
+- `weibo_imgs.sh`：按关键词抓微博图，自动小图换大图，保存到 `~/微博图/<关键词>/`
+- `weibo_album.sh`：按昵称/uid 下载微博相册大图
+- `send_images.sh`：通用图片 URL 下载器；可保存、发微信
 
-## 四、出入口
-- **微信**：`tools/wechat_send.sh`（文本）、`tools/wechat_send_file.sh`（图/文件）
-- **微博抓图**：`tools/weibo_imgs.sh`（搜索）、`tools/weibo_album.sh`（相册大图）
-- **语音**：`ak.voice` 或 `voice/voice.sh say|listen`（SenseVoice / sherpa+Kokoro）
+## 四、搜索 / 问答 / 资讯
+- `google_search.sh`：Chrome CDP/DOM 谷歌搜索/新闻 → 排版图 + 文字
+- `gemini.sh`：Google Gemini 问答；默认图文发微信，`--display` 只输出文本
+- `git_trending.sh`：GitHub Trending → 排版图 + 文字
+- `english_daily.sh`：随机科技媒体文章 → 中英对照 + 生词 → 图文发微信
 
-## 五、内容管道 / 系统 / 媒体
-- 解析/翻译/查词/OCR/TTS：`tools/*.py`；电子书：`tools/ebook_extract.py`
-- 屏幕/图像/视频：`screenshot.sh image.sh img_video.sh video_dub.sh`
-- 行情/大屏：`stock.sh quote_web.sh dash.sh`；音乐：`music.sh`
-- 手机：`phone.sh`；音频：`say.sh voices.sh`；其他见 `TOOLS.md` 全表
-- **电纸书（Kindle DXG）**：`tools/ebook.sh state|say|shot|dump|speak|books|test`
-  自研 LVGL 阅读器（书架/阅读/目录/进度/三档字号）；**文本指令**（`/tmp/ui_say`，语音/无障碍）、
-  **截图可被 AI 直接读**做视觉验证；闭环测试/工具链见 `agentkit/kindle/boot/test/README.md`
+## 五、图像 / 视频
+- `image.sh`：文生图（本机 SD/ComfyUI），默认 2560×1440，可出小红书/朋友圈尺寸
+- `img_video.sh`：提示词出图或复用图片目录 → 竖版 MP4
+- `video_dub.sh`：给已有视频配音 + 字幕，可克隆音色
+- `iso_native.sh`：等距图/动画（PNG/GIF/MP4）
+  - **不是文生图**：只能渲染 `~/iso_flutter` 中已写好的图脚本
+  - 新图需先写 Lua/Dart 脚本并重新构建
 
-## 六、自我扩展（网页能力，安全）
-- 目录/机制：新能力 = 一个 `tools/<name>.sh`，内部走**专用 Chrome（免授权登录）+ `ak.cdp` DOM 操作**；**能力只来自网页**，不碰本机任意文件/进程/网络权限。
-- 闭环：`tools/dev.sh info`（学规范）→ `new <name>`（生成网页工具骨架，自动 git commit）→ 填逻辑 → `commit`（可回滚）→ `index` + `restart` 生效 → 可选 `push`。
-- **不做浏览器扩展**，也不写执行任意系统命令的脚本。
-- 护栏：改动自动 `git commit`（`git revert` 可回滚）；`push` 同步远端。
+## 六、音乐 / 文件
+- `music.sh`：本地/WebDAV 搜索播放 + 在线 FLAC
+- `find_file.sh`：本机 + WebDAV 文件名搜索
 
-## 七、全自动化开发流程（无需人工干预）
-> 详见 `automation.md`（Fully-Automated Mode）。闭环：
-> **设计 → 构建 → 会话内运行 → 截图识别 → 驱动(libxdo/CDP) → 校验 → 迭代 → 提交**，全程无人工。
-- **运行**：一律在**图形会话内**起（`DISPLAY=:0` + 从 `pcmanfm-qt` 派生 `XAUTHORITY`）；GUI 勿用 systemd（缺 X/GL 起不了窗）。
-- **截图识别**：`agentkit/bin/shot.sh`（或 `tools/screenshot.sh`，GL 窗口 root 抓取+裁剪）→ `Read` 读图；`ak.ocr`（PP-OCR）/`win:ocr()`/`win:ocr_bands()`；模板匹配 `ak_match`、图像差分 `ak_diff`。
-- **驱动**：**libxdo**（`xdo.lua` / `ak.map` 控件映射）、**CDP**（`ak.cdp`）、XTest（libagentkit）。
-- **自动化测试/校验**：操作后**自检**——OCR 文本是否变化 / 图像差分阈值 / DOM 断言；失败**重试**。
-- **迭代**：定位差异 → 改代码 → 重建/运行 → 复验（提交前过 `bash -n` 等静态检查）。
-- **自我扩展**：新能力=网页工具（专用 Chrome + CDP/DOM），改动**自动 git commit**（可回滚）。
+## 七、桌面 / 终端 / 手机
+- `termctl.sh`：qterminal 标签数、截图、向指定 tab 注入指令
+- `term_progress.sh`：逐个 qterminal/opencode tab 截图，纵向拼图后发微信
+- `phone.sh`：ADB 手机控制：截屏、点击、滑动、按键、中文输入、应用管理
+- `chrome_debug.sh`：启动固定端口 9222 的专用调试 Chrome，供 MCP/CDP 使用
 
-## 关键环境
-- 显示：会话内 `DISPLAY=:0` + 从 `pcmanfm-qt` 派生 `XAUTHORITY`；无头需 Xvfb。
-- 专用 Chrome profile：`~/.chrome-debug-profile`（`chrome_debug.sh` 每次同步登录态）。
-- 密钥/凭据：`~/.env`（`WEIBO_COOKIE`、`FUYAO_API_KEY`、`WEBDAV_*` 等）。
+## 八、设备
+- `vacuum.sh`：科沃斯 DEEBOT 控制：清扫、回充、找机、吸力/水量、状态/电量
+- `ebook.sh`：Kindle DXG 阅读器：读书、翻页、跳页、字号、目录、截屏、朗读
+  - 当前无设备时 `state` 会明确报未连接
+
+## 九、财经 / 大屏
+- `dash.sh`：指数 + 自选股 + K 线点阵风大屏图
+  - 当前不提供独立股票文本查询工具
+
+## 十、后台 / 维护
+- `jobs.sh`：后台任务列表、日志、状态、停止
+- `dev.sh`：项目规范、能力列表、工具模板、索引、commit/push、重启
+
+## 关键约束
+- 运行时**不依赖 Python**；新能力用 Lua（本机/系统/音视频/终端）或 JS（浏览器/CDP）
+- 浏览器网页交互统一走 chrome-devtools MCP / `agentkit.cdp`
+- 已删除且不再提供：独立股票查询、单张 USB 拍照、`quote_web`、浏览器 `browser.sh`、英语陪练入口、记单词卡片、摄像头喇叭喊话
+- 摄像头四路拼图要发微信、看家里画面 → `camera_grid.sh`
+- 想知道“哪里有人” → `detect.sh --grid`；结果受 YOLO 模型限制

@@ -166,7 +166,7 @@ local prompt = 'You are an English-learning assistant. Given the English passage
 local pf = io.open(out .. ".prompt", "w")
 if pf then pf:write(prompt); pf:close() end
 
-os.execute("timeout 300 node /opt/my-agent/agentkit/tools/gemini.js " ..
+os.execute("GEMINI_NEW_TARGET=1 timeout 200 node /opt/my-agent/agentkit/tools/gemini.js " ..
     q(prompt) .. " > " .. q(out .. ".json") .. " 2>/dev/null")
 local js = read_file(out .. ".json") or ""
 js = js:gsub("^```[a-z]*\n?", ""):gsub("\n?```%s*$", "")

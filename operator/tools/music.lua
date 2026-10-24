@@ -88,7 +88,7 @@ end
 local function play_stream(url, label)
     if not url or url == "" then return false end
     stop()
-    local cmd = string.format("setsid cvlc --intf dummy --no-video %s </dev/null >%s 2>&1 & echo $!", shq(url), LOGF)
+    local cmd = string.format("setsid vlc --no-video %s </dev/null >%s 2>&1 & echo $!", shq(url), LOGF)
     local p = io.popen(cmd); local pid = p and p:read("*a"):match("%d+") or nil; if p then p:close() end
     if pid then write_file(PIDF, pid) end
     write_file("/tmp/myagent_music_now", label or "")
@@ -146,7 +146,7 @@ local function play_list(tracks)
         urls[#urls + 1] = shq("http://" .. cred .. "@" .. host .. t.href)
     end
     local cmd = string.format(
-        "setsid cvlc --intf dummy --no-video %s </dev/null >%s 2>&1 & echo $!",
+        "setsid vlc --no-video %s </dev/null >%s 2>&1 & echo $!",
         table.concat(urls, " "), LOGF)
     local p = io.popen(cmd)
     local pid = p and p:read("*a"):match("%d+") or nil

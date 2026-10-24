@@ -19,7 +19,7 @@ local function tidy(u)
 end
 
 local to, save, each, limit = "", nil, false, 0
-local fg, input_file = false, nil
+local fg, input_file, dir_shot = false, nil, false
 local urls = {}
 local i = 1
 while i <= #arg do
@@ -30,6 +30,7 @@ while i <= #arg do
     elseif a == "--limit" then limit = tonumber(arg[i + 1]) or 0; i = i + 2
     elseif a == "--input-file" then input_file = arg[i + 1]; i = i + 2
     elseif a == "--fg" then fg = true; i = i + 1
+    elseif a == "--dir-shot" then dir_shot = true; i = i + 1
     else urls[#urls + 1] = a; i = i + 1 end
 end
 
@@ -61,15 +62,23 @@ do
 end
 
 if #urls == 0 then
-    io.stderr:write("用法: send_images.sh [--save 目录] [--to 会话] [--each] [--limit N] <图片URL...>\n")
+    io.stderr:write("用法: send_images.sh [--save 目录] [--to 会话] [--each] [--dir-shot] [--limit N] <图片URL...>\n")
     os.exit(2)
 end
+if dir_shot and not save then
+    io.stderr:write("--dir-shot 需要 --save 目录\n")
+    os.exit(2)
+end
+
+local home = os.getenv("HOME") or "/tmp"
+local cache = home .. "/.cache/myagent"
+os.execute("mkdir -p " .. q(cache))
 
 if not fg and os.getenv("BG_WORKER") ~= "1" then
     local args = {}
     for _, a in ipairs(arg) do args[#args + 1] = a end
     if from_stdin then
-        local tmp = "/tmp/send_images_input_" .. tostring(os.time()) .. ".txt"
+        local tmp = cache .. "/send_images_input_" .. tostring(os.time()) .. ".txt"
         local f = assert(io.open(tmp, "w"))
         for _, u in ipairs(urls) do f:write(u, "\n") end
         f:close()
@@ -82,7 +91,7 @@ if not fg and os.getenv("BG_WORKER") ~= "1" then
     os.exit(0)
 end
 
-local d = "/tmp/myagent_imgs_" .. tostring(os.time())
+local d = cache .. "/imgs_" .. tostring(os.time())
 os.execute("mkdir -p " .. q(d))
 local uf = assert(io.open(d .. "/urls", "w"))
 local count = 0
@@ -125,18 +134,76 @@ if #files == 0 then
     os.exit(1)
 end
 
+print("下载 " .. #files .. " 张大图")
+
+local function send_dir_shot(dir, target)
+    if target == "" then return false end
+    local ok, Xdo = pcall(require, "xdo")
+    if not ok or not Xdo.new then return false end
+    local dpy = Xdo.new()
+    if not dpy then return false end
+    local before = {}
+    for _, w in ipairs(dpy:windows()) do before[tostring(w.id)] = true end
+    local base = dir:match("([^/]+)/*$") or dir
+    local pidfile = cache .. "/pcmanfm_dirshot.pid"
+    os.execute("pcmanfm-qt -n " .. q(dir) .. " >/dev/null 2>&1 & echo $! > " .. q(pidfile))
+    local wid
+    for _ = 1, 50 do
+        os.execute("sleep 0.15")
+        for _, w in ipairs(dpy:windows()) do
+            local id, name = tostring(w.id), (w.name or "")
+            if not before[id] and name ~= "" and name ~= "pcmanfm-desktop0" and name:find(base, 1, true) then
+                wid = w.id; break
+            end
+        end
+        if wid then break end
+    end
+    if not wid then
+        local pf = io.open(pidfile, "r")
+        local pid = pf and (pf:read("*a") or ""):gsub("%s+$", ""); if pf then pf:close() end
+        if pid and pid ~= "" then os.execute("kill " .. q(pid) .. " 2>/dev/null") end
+        os.remove(pidfile)
+        dpy:close()
+        return false
+    end
+    os.remove(pidfile)
+    local id = tostring(wid)
+    os.execute("wmctrl -i -r " .. id .. " -b add,maximized_vert,maximized_horz 2>/dev/null")
+    dpy:activate(wid); dpy:raise(wid)
+    os.execute("sleep 2")
+    local shot = cache .. "/dirshot_" .. tostring(os.time()) .. ".png"
+    os.execute("import -window root " .. q(shot) .. " 2>/dev/null")
+    local rc = size(shot) > 1000
+    if rc then
+        local cmd = q(DIR .. "/wechat_send_file.sh") .. " " .. q(shot)
+        cmd = cmd .. " --to " .. q(target)
+        rc = os.execute(cmd .. " >/dev/null 2>&1") == 0
+    end
+    os.remove(shot)
+    os.execute("wmctrl -i -c " .. id .. " 2>/dev/null")
+    os.execute("sleep 0.5")
+    dpy:close()
+    return rc
+end
+
 if save then
     os.execute("mkdir -p " .. q(save) .. " 2>/dev/null")
     local prefix = os.getenv("SAVE_PREFIX") or ""
     for n, f in ipairs(files) do
         os.execute("cp -f " .. q(f) .. " " .. q(string.format("%s/%s%03d.jpg", save, prefix, n)) .. " 2>/dev/null")
     end
-    os.execute("rm -rf " .. q(d))
     print("已保存 " .. #files .. " 张到 " .. save)
-    os.exit(0)
+    if to == "" then
+        os.execute("rm -rf " .. q(d))
+        os.exit(0)
+    end
+    if dir_shot then
+        local ok = send_dir_shot(save, to)
+        os.execute("rm -rf " .. q(d))
+        print(ok and ("已发文件管理器截图(" .. #files .. "张) -> " .. to) or "发送文件管理器截图失败")
+        os.exit(ok and 0 or 1)
+    end
 end
-
-print("下载 " .. #files .. " 张大图")
 
 local function send(path)
     local cmd = q(DIR .. "/wechat_send_file.sh") .. " " .. q(path)

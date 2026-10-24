@@ -68,22 +68,14 @@ operator/tools/<name>.sh <参数>        # 直接看 stdout / 效果，绕过大
 | 6 | wechat_send.sh | 发文本 | 直连 `wechat_send.sh "test"` | 文件传输助手收到 | ✓ | 2026-10-06 21:45 | 自动加 `ai助手` 前缀 |
 | 7 | wechat_send_file.sh | 发文件/图 | `wechat_send_file.sh /tmp/x.png` | 收到文件 | ✓ | 2026-10-06 21:20 | |
 | 8 | say.sh | TTS 出声 | `say.sh "你好"` / 语音入口 | USB 音响出声 | | | |
-| 9 | photo.sh | USB 摄像头拍照 | `ai 拍一张` | 照片到来源会话 | | | |
 | 10 | music.sh | 音乐 | `ai 放周杰伦` / `随机放一首` / `停` | VLC 播放/停止 | | | |
 | 12 | image.sh | 生成图片 | `ai 画一张猫` | 图片到来源会话 | | | |
 | 13 | find_file.sh | 搜文件 | `ai 找 xxx 文件` | 返回本机/WebDAV 匹配 | | | |
-| 15 | stock.sh | 股票 | `ai 茅台多少钱` / `kline 茅台` / `value` / `fin` / `list` | 行情/图表 | | | |
 | 16 | dash.sh | 点阵风自选股大屏 | `ai 自绘大屏` | 点阵风大屏图到来源会话 | ✓ | 2026-10-07 10:29 | TSV→HTML(Canvas)→headless Chrome 截图 |
-| 17 | quote_web.sh | 看盘网页截图 | `ai 看下大盘` | 搜狐行情截图 | | | |
 | 18 | weibo.sh | 微博搜索截图 | `ai 微博搜 周杰伦` | 搜索页截图 | | | |
 | 19 | weibo_imgs.sh | 下载微博图 | `ai 下载微博图 刘浩存` | 存 `~/微博图/刘浩存/` 并报张数 | ✓ | 2026-10-06 20:00 | 375 张/38s |
 | 20 | send_images.sh | 下载图片URL | `send_images.sh --save /tmp <url>` | 保存并报张数 | | | |
-| 21 | progress.sh | 开发进度 | `ai 看看开发进度` | 合并截图到来源会话 | | | |
-| 23 | browser.sh | 打开网页 | `ai 新开个标签页` | Chrome 新标签 | | | |
-| 24 | open_app.sh | 打开应用 | `ai 打开终端` | 对应应用启动 | | | |
-| 25 | english.sh | 英语陪练 | `english.sh start` / `stop` / `status` | 进入/退出陪练 | | | |
-| 26 | vocab.sh | 记单词 | `ai 开始背单词` / `add x y` / `list` | 弹卡/发音判定 | | | |
-| 27 | gemini_out.sh | 结果分发 | `gemini_out.sh wechat "…"` | 按目标转发 | | | |
+| 21 | term_progress.sh | 开发进度 | `ai 看看开发进度` | 合并截图到来源会话 | | | |
 | 28 | voice/app | 统一界面（点阵风） | `voice/voice.sh app`（需显示器） | 摄像头 + 点阵状态栏/电平条/点阵时钟 | ✓ | 2026-10-07 10:32 | C++ 编译 `make -C voice/app` |
 | 29 | say.sh / voices.sh | 克隆音色发声 | `voices.sh add <名> <ref.wav> "文本"` → `say.sh --voice <名> "内容"` | 用指定音色出声 | ✓ | 2026-10-08 09:20 | CosyVoice3(C++/GGUF)+LuaJIT FFI；`list/del` 管理 |
 | 30 | img_video.sh | 图片视频（出图→MP4） | `img_video.sh --imgdir /tmp/wb_imgs_test --seconds 1 --fg --out /tmp/imgvideo_test.mp4` | 生成竖版 MP4 | ✓ | 2026-10-24 16:14 | 复用图片验证合成；真出图需 SD（慢） |

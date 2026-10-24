@@ -4,6 +4,10 @@
 > 本目录已不持有代码/规范：原 anatomy 的 JS kit 与 `references/` 已移入 `~/iso_flutter/docs/`。
 
 对外工具：**`operator/tools/iso_native.sh`**（`render` / `anim` → 出图/动画 → 微信）。
+
+> **重要：不是文生图。** 只能渲染已经写好的图脚本；要新图/新动画，先在
+> `~/iso_flutter/app/lib/lua/figures/` 写 `.lua`（或改 `main.dart` 的 `_figures`），
+> 再 `cd ~/iso_flutter/app && flutter build linux --release`。
 它调用 `~/iso_flutter/bin/iso.sh` 生成文件，再由本仓 `wechat_send_file.sh` 发出——**本仓只做"调用 + 发微信"**。
 
 - 图名 / 加图 / 构建：见 `~/iso_flutter/README.md`

@@ -2,6 +2,7 @@ local DIR = (arg[0] or ""):match("^(.*)/") or "."
 package.path = DIR .. "/?.lua;" .. package.path
 local bg = require("bgjob")
 require("dotenv").load()
+local ezlib = require("ezviz")
 
 local function q(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
@@ -24,8 +25,8 @@ local out, live = nil, 0
 
 local HELP = [[摄像头视频流:
   USB          /dev/video0 (V4L2，无账号/不过期)
-  EZVIZ 客厅   /tmp/myagent_ezviz.url (HLS；失效后: tools/ezviz_url.sh 802657358)
-  EZVIZ 门口   /tmp/myagent_door.url (HLS；失效后: tools/ezviz_url.sh 815311181)
+  EZVIZ 客厅   /tmp/myagent_ezviz.url (HLS；过期自动刷新)
+  EZVIZ 门口   /tmp/myagent_door.url (HLS；过期自动刷新)
   TP-Link      rtsp://admin:<TPLINK_PASS>@192.168.1.111:554/stream1 (RTSP)
               凭据: ~/.env 的 TPLINK_USER / TPLINK_PASS / TPLINK_RTSP
 
@@ -37,7 +38,7 @@ local HELP = [[摄像头视频流:
   camera.sh --tplink
   camera.sh ... --out <path> --live <秒> --bg
 
-文档: zspace.md 的「摄像头视频流」；EZVIZ 刷新流程见 tools/ezviz_url.sh。]]
+文档: zspace.md 的「摄像头视频流」；EZVIZ 地址过期会自动刷新。]]
 
 local i = 1
 while i <= #arg do
@@ -82,17 +83,20 @@ if os.execute("command -v ffmpeg >/dev/null 2>&1") ~= 0 then
     os.exit(3)
 end
 
-local live_jpg, src
+local live_jpg, src, ez_serial, ez_file
 if ezviz ~= "" then
     local door = (ezviz == "menkou" or ezviz == "门口")
-    local file = door and "/tmp/myagent_door.url" or "/tmp/myagent_ezviz.url"
-    local f = io.open(file, "r")
+    local kind = door and "menkou" or "keting"
+    ez_serial, ez_file = ezlib.serial(kind)
+    local f = io.open(ez_file, "r")
     local u = f and (f:read("*l") or "") or ""
     if f then f:close() end
     u = u:gsub("^%s+", ""):gsub("%s+$", "")
     if u == "" then
-        io.stderr:write("无地址(" .. file .. ")；先 tools/ezviz_url.sh 生成\n")
-        os.exit(1)
+        local nu, err = ezlib.refresh(ez_serial, ez_file)
+        if not nu then io.stderr:write("刷新 EZVIZ 地址失败: " .. tostring(err) .. "\n"); os.exit(1) end
+        u = nu
+        io.stderr:write("已刷新 EZVIZ 地址: " .. ez_file .. "\n")
     end
     live_jpg = door and "/tmp/myagent_cam_door.jpg" or "/tmp/myagent_cam_stream.jpg"
     src = "-i " .. q(u)
@@ -121,11 +125,26 @@ end
 
 if live > 0 then
     out = out:gsub("%.[^%.]*$", "") .. ".mp4"
-    os.execute("ffmpeg -loglevel error -y " .. src .. " -t " .. tostring(live) ..
-        " -c:v libx264 -preset veryfast " .. q(out))
-else
-    os.execute("ffmpeg -loglevel error -y " .. src .. " -frames:v 1 " ..
-        q(out) .. " 2>/tmp/myagent_cam.err")
+end
+
+local function run_capture()
+    if live > 0 then
+        os.execute("ffmpeg -loglevel error -y " .. src .. " -t " .. tostring(live) ..
+            " -c:v libx264 -preset veryfast " .. q(out))
+    else
+        os.execute("ffmpeg -loglevel error -y " .. src .. " -frames:v 1 " ..
+            q(out) .. " 2>/tmp/myagent_cam.err")
+    end
+end
+
+run_capture()
+if size(out) == 0 and ez_serial then
+    local nu = ezlib.refresh(ez_serial, ez_file)
+    if nu then
+        io.stderr:write("地址失效，已自动刷新: " .. ez_file .. "\n")
+        src = "-i " .. q(nu)
+        run_capture()
+    end
 end
 
 if size(out) > 0 then print(out); os.exit(0) end

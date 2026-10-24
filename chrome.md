@@ -9,7 +9,7 @@
 | 方式 | 谁执行 | 能力 | 适用 |
 |------|--------|------|------|
 | **① Chrome DevTools MCP（推荐）** | opencode 大脑直接调用 MCP 工具 | 读页面、精确点击/填表/取文本 | 绝大部分网页任务 |
-| ② Lua + xdotool（兜底） | opencode 调 `operator/tools/browser.sh` | 只能开标签/搜索/截图，**读不到页面** | 粗动作 |
+| ② 粗动作 | 用 chrome-devtools MCP 新开标签/导航 | 读页面/交互仍走 MCP/DOM | 常规 |
 
 > 规则：**禁止用 OCR 识别网页**。要读网页内容一律走 MCP。
 
@@ -78,7 +78,7 @@ operator/tools/chrome_debug.sh            # 默认端口 9222（可传端口）
 ## 方式二：Lua + xdotool（兜底粗动作）
 
 纯 Lua 模块 `wechat_ocr.chrome`，经 xdotool 操作**现有** Chrome，不启动新进程。
-opencode 侧通过白名单脚本 `operator/tools/browser.sh` 调用它。
+`browser.sh` 已移除；常规由 chrome-devtools MCP 操作，`wechat_ocr.chrome` 仅保留给旧测试。
 
 ```lua
 local chrome = require("wechat_ocr.chrome")
@@ -89,14 +89,7 @@ chrome.ai_search("问题")       -- Google AI 模式（地址栏→Tab→回车�
 chrome.screenshot(path)       -- 截图
 ```
 
-对应 opencode 工具（`operator/tools/browser.sh`）：
-```bash
-tools/browser.sh new_tab
-tools/browser.sh open <url>
-tools/browser.sh search <关键词>
-tools/browser.sh ai_search <问题>
-tools/browser.sh screenshot [输出路径]
-```
+常规操作直接用 chrome-devtools MCP：新开标签页、导航、点击/填写、截图。
 依赖：`xdotool`、`xclip`、`ImageMagick`。
 
 ---
@@ -110,7 +103,7 @@ tools/browser.sh screenshot [输出路径]
 opencode 大脑（tmux 常驻 TUI，4097）
       │  读 operator/AGENTS.md 规则
       ├─ 浏览器 → 直接用 chrome-devtools MCP 工具（连固定端口实例）
-      └─ 本机动作 → 调 operator/tools/*.sh（白名单，如 browser.sh / screenshot.sh / say.sh / wechat_send.sh）
+      └─ 本机动作 → 调 operator/tools/*.sh（白名单，如 screenshot.sh / say.sh / wechat_send.sh）
 ```
 
 ---
@@ -119,7 +112,7 @@ opencode 大脑（tmux 常驻 TUI，4097）
 
 1. **只用 MCP 读网页** — 网页交互/内容读取走 `chrome-devtools_*` 工具；**禁止 OCR 识别浏览器页面**。
 2. **用 Chrome 前先启动专用实例** — `tools/chrome_debug.sh`（固定端口、免授权、带登录）；**不要让工具直连日常默认 Chrome**。
-3. **`browser.sh` 只做粗动作** — 开标签/搜索/截图；不要靠它读页面。
+3. **不要用旧 browser.sh** — 已删除；统一走 chrome-devtools MCP。
 4. **白名单** — opencode 侧只能调 `operator/tools/*.sh`，不得任意 shell。
 
 ---
@@ -133,5 +126,5 @@ opencode 大脑（tmux 常驻 TUI，4097）
 
 ---
 
-*相关：`operator/AGENTS.md`（运行时契约）、`operator/tools/chrome_debug.sh`、`operator/tools/browser.sh`、`agentkit/tools/gemini.js`*
+*相关：`operator/AGENTS.md`（运行时契约）、`operator/tools/chrome_debug.sh`、`agentkit/tools/gemini.js`*
 *文档版本: 3.0 · 更新日期: 2026-10-12*

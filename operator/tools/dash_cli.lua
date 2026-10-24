@@ -164,6 +164,9 @@ if show then os.execute("display -window root " .. q(out) .. " >/dev/null 2>&1 &
 if send then
     local sendcmd = q(DIR .. "/wechat_send_file.sh") .. " " .. q(out)
     if to ~= "" then sendcmd = sendcmd .. " --to " .. q(to) end
-    os.execute(sendcmd)
+    if os.execute(sendcmd) ~= 0 then
+        io.stderr:write("发送微信失败\n")
+        os.exit(1)
+    end
     print(to ~= "" and ("已发到微信「" .. to .. "」") or "已发到微信文件传输助手")
 end

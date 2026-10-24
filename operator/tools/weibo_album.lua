@@ -158,22 +158,20 @@ end
 print("相册共 " .. #urls .. " 张大图（页 1.." .. page .. "）")
 if #urls == 0 then os.exit(1) end
 
-local listfile = "/tmp/wb_album_urls_" .. tostring(os.time()) .. ".txt"
+local cache = home .. "/.cache/myagent"
+os.execute("mkdir -p " .. q(cache))
+local listfile = cache .. "/wb_album_urls_" .. tostring(os.time()) .. ".txt"
 local lf = assert(io.open(listfile, "w"))
 lf:write(table.concat(urls, "\n"), "\n")
 lf:close()
 
 local args = { q(DIR .. "/send_images.sh") }
 if limit and limit ~= "" then args[#args + 1] = "--limit"; args[#args + 1] = q(limit) end
+local outdir = save or (home .. "/微博图/" .. name)
+args[#args + 1] = "--save"; args[#args + 1] = q(outdir)
 if to ~= "" then
     args[#args + 1] = "--to"; args[#args + 1] = q(to)
-else
-    local outdir = save or (home .. "/微博图/" .. name)
-    args[#args + 1] = "--save"; args[#args + 1] = q(outdir)
-    os.execute("SAVE_PREFIX=" .. q(os.date("%m%d_%H%M%S") .. "_") .. " " ..
-        table.concat(args, " ") .. " < " .. q(listfile))
-    os.remove(listfile)
-    os.exit(0)
 end
-os.execute(table.concat(args, " ") .. " < " .. q(listfile))
+os.execute("SAVE_PREFIX=" .. q(os.date("%m%d_%H%M%S") .. "_") .. " " ..
+    table.concat(args, " ") .. " < " .. q(listfile))
 os.remove(listfile)

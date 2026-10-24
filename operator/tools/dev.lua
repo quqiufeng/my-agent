@@ -54,7 +54,7 @@ operator/report/         Kami 排版 HTML→PNG/PDF（render.sh）
 4. `tools/dev.sh index` → `tools/dev.sh restart`
 
 ## 常用积木
-- 网页：固定端口 Chrome（chrome_debug.sh）+ `ak.cdp`；cookie+curl：cookie.sh/fetch.sh
+- 网页：固定端口 Chrome（chrome_debug.sh）+ `ak.cdp`
 - 出图：operator/report/render.sh in.html out.png（Kami）
 - 发微信：tools/wechat_send.sh / wechat_send_file.sh
 - 语音：ak.voice（tts/asr）

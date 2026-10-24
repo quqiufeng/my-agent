@@ -2,6 +2,7 @@ local DIR = (arg[0] or ""):match("^(.*)/") or "."
 package.path = DIR .. "/?.lua;" .. package.path
 local bg = require("bgjob")
 require("dotenv").load()
+local ezlib = require("ezviz")
 
 local function q(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
@@ -57,15 +58,16 @@ elseif src == "usb" then
     local dev = os.getenv("VOICE_MIC_DEV") or os.getenv("USB_MIC_DEV") or "plughw:2,0"
     input = "-f alsa -i " .. q(dev)
 else
-    local urlfile = (src == "menkou" or src == "门口")
-        and "/tmp/myagent_door.url" or "/tmp/myagent_ezviz.url"
+    local door = (src == "menkou" or src == "门口")
+    local serial, urlfile = ezlib.serial(door and "menkou" or "keting")
     local f = io.open(urlfile, "r")
     local url = f and (f:read("*l") or "") or ""
     if f then f:close() end
     url = url:gsub("^%s+", ""):gsub("%s+$", "")
     if url == "" then
-        io.stderr:write("无地址(" .. urlfile .. ")；先 tools/ezviz_url.sh 生成\n")
-        os.exit(1)
+        local nu, err = ezlib.refresh(serial, urlfile)
+        if not nu then io.stderr:write("刷新 EZVIZ 地址失败: " .. tostring(err) .. "\n"); os.exit(1) end
+        url = nu
     end
     input = "-i " .. q(url)
 end

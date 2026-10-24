@@ -84,6 +84,10 @@ local function flush(s)
     io.write(s or ""); io.flush()
 end
 
+local function sh_ok(cmd)
+    return os.execute(cmd) == 0
+end
+
 local function shell_escape(s)
     return s:gsub("'", "'\\''")
 end
@@ -164,20 +168,23 @@ function M.activate(force)
     _last_activate = now
 
     local wid = find_wechat_window()
-    if wid then
-        -- 先取消最小化再激活，确保微信真正到前台
-        os.execute("xdotool windowmap " .. wid .. " 2>/dev/null")
-        os.execute("xdotool windowraise " .. wid .. " 2>/dev/null")
-        os.execute("xdotool windowfocus " .. wid .. " 2>/dev/null")
-        os.execute("xdotool windowactivate " .. wid .. " 2>/dev/null")
-    end
+    if not wid then return false end
+    -- 先取消最小化再激活，确保微信真正到前台
+    local ok = sh_ok("xdotool windowmap " .. wid .. " 2>/dev/null")
+    ok = sh_ok("xdotool windowraise " .. wid .. " 2>/dev/null") and ok
+    ok = sh_ok("xdotool windowfocus " .. wid .. " 2>/dev/null") and ok
+    ok = sh_ok("xdotool windowactivate " .. wid .. " 2>/dev/null") and ok
     M.ensure_maximized()   -- 自动化前先确保窗口最大化
     sleep(800000)
     -- 点一下标题栏确保真正获取焦点
     local win = M.get_window_rect()
     if win then
-        os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", win.x + 100, win.y + 20))
+        ok = sh_ok(string.format("xdotool mousemove %d %d click 1 2>/dev/null", win.x + 100, win.y + 20)) and ok
         sleep(300000)
+    end
+    if not ok then
+        io.stderr:write("[wechat_robot] activate failed (X error?)\n")
+        return false
     end
     return M
 end
@@ -380,19 +387,23 @@ end
 -- 通过剪贴板直接粘贴图片发送（比文件对话框稳；png/jpg 等）
 function M.send_image(path)
     path = path or ""
-    if path == "" then return M end
-    M.activate(true)   -- 强制激活（避免被 activate 的 2 秒去重跳过）
+    if path == "" then return false end
+    if not M.activate(true) then return false end   -- 强制激活（避免被 activate 的 2 秒去重跳过）
 
     -- 统一转成 png 放剪贴板（微信按图片消息粘贴）；nohup setsid 保证 xclip 常驻持有选区
     local png = path
     if not path:lower():match("%.png$") then
         png = tmp("clip.png")
-        os.execute(string.format("convert '%s' '%s' 2>/dev/null", path, png))
+        if not sh_ok(string.format("convert '%s' '%s' 2>/dev/null", path, png)) then return false end
     end
     os.execute("pkill -x xclip 2>/dev/null")
     sleep(400000)
-    os.execute(string.format("nohup setsid xclip -selection clipboard -t image/png -i '%s' </dev/null >/dev/null 2>&1 &", png))
+    if not sh_ok(string.format("nohup setsid xclip -selection clipboard -t image/png -i '%s' </dev/null >/dev/null 2>&1 &", png)) then return false end
     sleep(900000)
+    if not sh_ok("xclip -selection clipboard -o >/dev/null 2>&1") then
+        io.stderr:write("[wechat_robot] clipboard image unavailable\n")
+        return false
+    end
 
     -- 点击输入框获取焦点（窗口相对坐标，实测稳）
     local win = M.get_window_rect()
@@ -404,14 +415,14 @@ function M.send_image(path)
         local box = ocr.input_box()
         if box then cx = box.x + box.w / 2; cy = box.y + box.h / 2 end
     end
-    if not cx then return M end
-    os.execute(string.format("xdotool mousemove %d %d click 1 2>/dev/null", math.floor(cx), math.floor(cy)))
+    if not cx then return false end
+    local ok = sh_ok(string.format("xdotool mousemove %d %d click 1 2>/dev/null", math.floor(cx), math.floor(cy)))
     sleep(500000)
-    os.execute("xdotool key --clearmodifiers ctrl+v 2>/dev/null")
+    ok = sh_ok("xdotool key --clearmodifiers ctrl+v 2>/dev/null") and ok
     sleep(1200000)
-    os.execute("xdotool key Return 2>/dev/null")
+    ok = sh_ok("xdotool key Return 2>/dev/null") and ok
     sleep(800000)
-    return M
+    return ok
 end
 
 -- 在当前聊天中发送文件（支持图片/视频/任意文件）

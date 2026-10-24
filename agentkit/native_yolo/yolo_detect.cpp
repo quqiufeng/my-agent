@@ -53,10 +53,11 @@ int main(int argc,char**argv){
     for(auto&d:keep){
       int x1=int(d.x-d.w/2), y1=int(d.y-d.h/2), x2=int(d.x+d.w/2), y2=int(d.y+d.h/2);
       x1=std::max(0,x1); y1=std::max(0,y1); x2=std::min(W-1,x2); y2=std::min(H-1,y2);
-      cv::rectangle(bgr,{x1,y1},{x2,y2},cv::Scalar(0,0,255),2);
       const char* nm=(d.cls>=0&&d.cls<80)?names[d.cls]:"obj";
+      cv::Scalar color = (d.cls==0) ? cv::Scalar(0,255,0) : cv::Scalar(0,0,255);
+      cv::rectangle(bgr,{x1,y1},{x2,y2},color,2);
       char lb[64]; snprintf(lb,sizeof lb,"%s %.2f",nm,d.conf);
-      cv::putText(bgr,lb,{x1,std::max(14,y1-6)},cv::FONT_HERSHEY_SIMPLEX,0.6,cv::Scalar(0,0,255),2);
+      cv::putText(bgr,lb,{x1,std::max(14,y1-6)},cv::FONT_HERSHEY_SIMPLEX,0.6,color,2);
       printf("%s %.3f %d %d %d %d\n", nm, d.conf, x1,y1,x2,y2);
     }
     printf("TOTAL %zu\n", keep.size());

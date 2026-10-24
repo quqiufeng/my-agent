@@ -194,7 +194,7 @@ ffmpeg -y -i "https://open.ys7.com/v3/openlive/802657358_1_1.m3u8?expire=...&t=.
 |------|------|
 | `gui/flutter/linux/runner/camera_texture.cc` | 支持**双纹理源**：路1 `agent/camera`（USB 或 `RTSP_URL`）；路2 `agent/camera2`（URL 流，默认读 `/tmp/myagent_ezviz.url`，**每次重连重读**，可跟随刷新）。新增方法 `streamTextureId` / `snapshot2`。 |
 | `gui/flutter/lib/app.dart` | 取第二路纹理 `streamTextureId`；有两路时 `Row` 分屏显示（`Center+AspectRatio(16:9)+Texture`）。 |
-| `operator/tools/ezviz_url.sh` | 刷新地址：走专用 Chrome+CDP 打开控制台→点「生成/重新生成直播地址」→ 抽 HLS 地址写 `/tmp/myagent_ezviz.url`。 |
+| `operator/tools/ezviz.lua` | 刷新地址：纯 API 换 token → 取 HLS 地址 → 写 `/tmp/myagent_ezviz.url`；`camera.sh --ezviz` 过期时自动调用。 |
 | `agentkit/tools/ezviz_refresh.js` | 上面的 node 助手（CDP 单次操作）。 |
 
 **启用各路流的开关**（原生侧）：
@@ -205,10 +205,10 @@ ffmpeg -y -i "https://open.ys7.com/v3/openlive/802657358_1_1.m3u8?expire=...&t=.
 **日常使用**
 ```bash
 operator/tools/chrome_debug.sh                     # 起带登录态的专用 Chrome（首次/登录过期时）
-operator/tools/ezviz_url.sh 802657358 /tmp/myagent_ezviz.url   # 客厅（生成/刷新地址）
-operator/tools/ezviz_url.sh 815311181 /tmp/myagent_door.url    # 门口（设备需在线）
+operator/tools/camera.sh --ezviz keting --out /tmp/keting.jpg   # 客厅（地址过期自动刷新）
+operator/tools/camera.sh --ezviz menkou --out /tmp/door.jpg    # 门口（设备需在线）
 # 重启 app：桌面「agent」图标，或 bash gui/flutter/launch.sh
-# 左 USB + 客厅 + 门口 分格；某路过期时重跑对应 ezviz_url.sh（流重连即自动换新地址）
+# 左 USB + 客厅 + 门口 分格；某路过期时重跑对应 camera.sh --ezviz（流重连即自动换新地址）
 ```
 
 > **踩坑（已解决）**：Flutter Linux 里第二路纹理用 `FittedBox+SizedBox(1280×720)+clipBehavior` 会导致
@@ -258,7 +258,7 @@ operator/tools/ezviz_url.sh 815311181 /tmp/myagent_door.url    # 门口（设备
 
 - `chrome.md` — 专用 Chrome + CDP/MCP 的完整用法（控制台自动化看这份）。
 - `operator/CAPABILITIES.md` §一 — 浏览器/CDP 能力清单。
-- `operator/TOOLS.md` — `camera.sh`（USB/RTSP 抓帧）、`fetch.sh`（带 cookie 抓接口）。
+- `operator/TOOLS.md` — `camera.sh`（USB/RTSP/HLS 抓帧）；登录态抓取走 CDP/对应工具。
 - `operator/AGENTS.md` — 运行时契约（回程、白名单）。
 
 ---

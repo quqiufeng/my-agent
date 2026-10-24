@@ -121,8 +121,8 @@ Host zspace nas
 | 摄像头 | 视频流地址 | 账号/凭据保存位置 | 失效后 |
 |---|---|---|---|
 | USB | `/dev/video0`（V4L2） | 无 | 无需刷新；换设备用 `--usb N` |
-| EZVIZ 客厅 | `/tmp/myagent_ezviz.url`（HLS） | `~/.env`：`EZVIZ_APPKEY`、`EZVIZ_APPSECRET`、`EZVIZ_CODE_802657358` | `tools/ezviz_url.sh 802657358 /tmp/myagent_ezviz.url` |
-| EZVIZ 门口 | `/tmp/myagent_door.url`（HLS） | `~/.env`：`EZVIZ_APPKEY`、`EZVIZ_APPSECRET`、`EZVIZ_CODE_815311181` | `tools/ezviz_url.sh 815311181 /tmp/myagent_door.url` |
+| EZVIZ 客厅 | `/tmp/myagent_ezviz.url`（HLS） | `~/.env`：`EZVIZ_APPKEY`、`EZVIZ_APPSECRET`、`EZVIZ_CODE_802657358` | 运行 `tools/camera.sh --ezviz keting`（自动刷新） |
+| EZVIZ 门口 | `/tmp/myagent_door.url`（HLS） | `~/.env`：`EZVIZ_APPKEY`、`EZVIZ_APPSECRET`、`EZVIZ_CODE_815311181` | 运行 `tools/camera.sh --ezviz menkou`（自动刷新） |
 | TP-Link | `rtsp://admin:<TPLINK_PASS>@192.168.1.111:554/stream1` | `~/.env`：`TPLINK_USER`、`TPLINK_PASS`、`TPLINK_RTSP` | 一般不过期；IP 变了改 `TPLINK_RTSP` |
 
 命令：
@@ -143,8 +143,8 @@ tools/camera.sh --rtsp <rtsp-url>
 
 | 来源 | 设备/地址 | 访问方式 | 凭据/说明 |
 |---|---|---|---|
-| EZVIZ 客厅 | `/tmp/myagent_ezviz.url`（HLS） | `tools/listen_cam.sh keting 10` | `~/.env`：`EZVIZ_APPKEY`/`EZVIZ_APPSECRET`/`EZVIZ_CODE_802657358`；过期跑 `ezviz_url.sh` |
-| EZVIZ 门口 | `/tmp/myagent_door.url`（HLS） | `tools/listen_cam.sh menkou 10` | `EZVIZ_CODE_815311181`；过期跑 `ezviz_url.sh 815311181 /tmp/myagent_door.url` |
+| EZVIZ 客厅 | `/tmp/myagent_ezviz.url`（HLS） | `tools/listen_cam.sh keting 10` | `~/.env`：`EZVIZ_APPKEY`/`EZVIZ_APPSECRET`/`EZVIZ_CODE_802657358`；过期用 `camera.sh --ezviz keting` 自动刷新 |
+| EZVIZ 门口 | `/tmp/myagent_door.url`（HLS） | `tools/listen_cam.sh menkou 10` | `EZVIZ_CODE_815311181`；过期用 `camera.sh --ezviz menkou` 自动刷新 |
 | TP-Link 摄像头 | `TPLINK_RTSP`（RTSP 554，AAC） | `tools/listen_cam.sh tplink 10` | `~/.env`：`TPLINK_USER`/`TPLINK_PASS`/`TPLINK_RTSP` |
 | 本机 USB 摄像头麦克风 | ALSA `plughw:2,0`（可用 `VOICE_MIC_DEV` 覆盖） | `tools/listen_cam.sh usb 10` | 无账号；`arecord -l` 查看设备 |
 | 小机箱麦克风 | 小机箱本地 Comica USB | 未纳入 `listen_cam` 统一入口 | 需要时 agent 可经 SSH/终端到小机箱处理 |

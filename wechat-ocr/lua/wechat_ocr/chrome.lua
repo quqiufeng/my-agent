@@ -1,4 +1,4 @@
--- Chrome 浏览器控制（xdotool，跟操作微信一样）
+-- Chrome 浏览器控制（LuaJIT + libxdo）
 -- 用法:
 --   local chrome = require("wechat_ocr.chrome")
 --   chrome.new_tab()
@@ -9,30 +9,38 @@
 package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
 local ffi = require("ffi")
 require("xdo_shim").install()
+local Xdo = require("xdo")
+local xd
 ffi.cdef[[int usleep(unsigned int); int getpid(void);]]
 
 local PID = ffi.C.getpid()
 local TXT_TMP = string.format("/tmp/_chrome_txt_%d.txt", PID)
 
 -- 获取 Chrome 窗口 ID
-local function wid()
-    local f = io.popen("xdotool search --name Chrome 2>/dev/null")
-    local ids = f:read("*a"); f:close()
-    for id in ids:gmatch("%d+") do
-        local gf = io.popen("xdotool getwindowgeometry " .. id .. " 2>/dev/null")
-        local g = gf:read("*a"); gf:close()
-        if g then
-            local w = tonumber(g:match("Geometry: (%d+)"))
-            if w and w > 500 then return tonumber(id) end
-        end
-    end
-    return nil
+local function display()
+    if not xd then xd = Xdo.new() end
+    return xd
 end
 
--- 按键
+local function wid()
+    local best, area = nil, 0
+    for _, w in ipairs(display():find("Chrome")) do
+        local g = w.geom
+        if g and g.w * g.h > area then best, area = tonumber(w.id), g.w * g.h end
+    end
+    return best
+end
+
+-- 激活 Chrome 后发送按键（不要用 XSendEvent 直发后台窗口）
 local function key(keys)
     local id = wid()
-    if id then os.execute("xdotool key --window " .. id .. " " .. keys .. " &>/dev/null &") end
+    if id then
+        display():activate(id)
+        display():raise(id)
+        ffi.C.usleep(150000)
+        display():key(0, keys)
+        ffi.C.usleep(150000)
+    end
 end
 
 local M = {}

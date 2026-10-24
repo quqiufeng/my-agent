@@ -112,6 +112,7 @@ cmake --build build_lib -j"$(nproc)" --target wechat_ocr_core
 luajit bridge.lua                        # 微信监控→转发
 
 # 等距图 / 动画（native：Dart+Lua 引擎，无浏览器/node）
+# 只能渲染已写好的图；新图先写 ~/iso_flutter 的 Lua/Dart 图脚本并重新构建
 operator/tools/iso_native.sh render tmall-genie --to 文件传输助手  # 出图→发微信
 operator/tools/iso_native.sh anim   tmall-genie --motion --to 文件传输助手  # 出 GIF/MP4
 ```

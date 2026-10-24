@@ -1,3 +1,10 @@
+for _, a in ipairs(arg) do
+    if a == "--help" or a == "-h" then
+        print("用法: term_progress.sh [--to 会话]")
+        os.exit(0)
+    end
+end
+
 local DIR = (arg[0] or ""):match("^(.*)/") or "."
 package.path = DIR .. "/?.lua;" .. package.path
 local Xdo = require("xdo")
@@ -15,6 +22,7 @@ local function size(path)
 end
 
 local to = os.getenv("WECHAT_TO") or ""
+local dry = os.getenv("PROGRESS_DRY") == "1"
 local i = 1
 while i <= #arg do
     if arg[i] == "--to" then to = arg[i + 1] or ""; i = i + 2
@@ -22,7 +30,7 @@ while i <= #arg do
 end
 
 local d, err = Xdo.new()
-if not d then io.stderr:write("progress: " .. err .. "\n"); os.exit(1) end
+if not d then io.stderr:write("term_progress: " .. err .. "\n"); os.exit(1) end
 
 local class = os.getenv("PROGRESS_CLASS") or "qterminal"
 local wins = d:find_class(class)
@@ -31,10 +39,21 @@ if #wins == 0 then
     d:close()
     os.exit(1)
 end
-local qid = wins[1].id
+local qwin
+local pattern = os.getenv("PROGRESS_WINDOW_PATTERN") or "^OC |"
+for _, w in ipairs(wins) do
+    if (w.name or ""):match(pattern) then qwin = w; break end
+end
+qwin = qwin or wins[1]
+local qid = qwin.id
 
 d:activate(qid)
-os.execute("sleep 0.9")
+d:raise(qid)
+os.execute("sleep 0.5")
+-- 先点标签栏，确保从第一个 tab 开始
+d:click(qid, tonumber(os.getenv("PROGRESS_TAB_X")) or 50,
+              tonumber(os.getenv("PROGRESS_TAB_Y")) or 39)
+os.execute("sleep 0.5")
 
 local stamp = os.date("%Y%m%d_%H%M%S")
 local tmpd = "/tmp/myagent_progress_" .. tostring(os.time())
@@ -42,8 +61,7 @@ os.execute("mkdir -p " .. q(tmpd))
 
 local first, pics = nil, {}
 for n = 1, 12 do
-    local active = d:active()
-    local title = active and d:name(active) or ""
+    local title = d:name(qid) or ""
     if first ~= nil and title == first then break end
     if first == nil then first = title end
 
@@ -57,7 +75,8 @@ for n = 1, 12 do
         os.remove(f)
     end
 
-    d:key(0, "ctrl+Next")
+    d:activate(qid)
+    d:key(0, "ctrl+Page_Down")
     os.execute("sleep 0.7")
 end
 d:close()
@@ -79,7 +98,9 @@ else
 end
 os.execute("rm -rf " .. q(tmpd))
 
-if to ~= "" then
+if dry then
+    print("图片: " .. out .. "（dry-run，未发送）")
+elseif to ~= "" then
     os.execute(q(DIR .. "/wechat_send_file.sh") .. " " .. q(out) .. " --to " .. q(to))
     print("已发送开发进度（" .. #pics .. " 个 tab）-> " .. to)
 else

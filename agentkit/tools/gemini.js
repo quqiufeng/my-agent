@@ -36,11 +36,17 @@ const RESP = '.model-response-text, message-content, .response-container-content
   await new Promise(r => ws.onopen = r);
 
   const TARGET_FILE = '/tmp/myagent_gemini_target';
+  const fresh = process.env.GEMINI_NEW_TARGET === '1';
   let page;
-  if (fs.existsSync(TARGET_FILE)) {
+  if (!fresh && fs.existsSync(TARGET_FILE)) {
     const tid = fs.readFileSync(TARGET_FILE, 'utf8').trim();
     const { targetInfos } = await send('Target.getTargets');
     page = (targetInfos || []).find(t => t.targetId === tid && t.type === 'page');
+  }
+  if (fresh && fs.existsSync(TARGET_FILE)) {
+    const old = fs.readFileSync(TARGET_FILE, 'utf8').trim();
+    try { await send('Target.closeTarget', { targetId: old }); } catch (e) {}
+    fs.unlinkSync(TARGET_FILE);
   }
   if (!page) {
     const t = await send('Target.createTarget', { url: 'about:blank' });
@@ -95,5 +101,9 @@ const RESP = '.model-response-text, message-content, .response-container-content
     if (cur && cur === last) { stable++; if (stable >= 5) break; } else { stable = 0; last = cur; }
   }
   process.stdout.write(last || '');
+  if (fresh) {
+    try { await send('Target.closeTarget', { targetId: page.targetId }); } catch (e) {}
+    try { fs.unlinkSync(TARGET_FILE); } catch (e) {}
+  }
   ws.close(); process.exit(0);
 })().catch(e => { process.stderr.write(String(e) + '\n'); process.exit(1); });

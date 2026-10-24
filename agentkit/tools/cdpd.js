@@ -144,7 +144,15 @@ net.createServer(sock => {
     try {
       const { cmd, args } = JSON.parse(line);
       if (!sendFn) await connectChrome();
-      const out = await handle(cmd, args);
+      let out;
+      try {
+        out = await handle(cmd, args);
+      } catch (e) {
+        // 目标页/连接失效：重连一次，再重试
+        sendFn = null; sessionId = null;
+        await connectChrome();
+        out = await handle(cmd, args);
+      }
       sock.write(JSON.stringify({ ok: true, out }) + '\n');
     } catch (e) { sock.write(JSON.stringify({ ok: false, err: String(e) }) + '\n'); }
     sock.end();

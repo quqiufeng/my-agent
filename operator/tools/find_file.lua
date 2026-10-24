@@ -44,17 +44,29 @@ end
 local dav = {}
 local base_url = (os.getenv("WEBDAV_URL") or ""):gsub("/+$", "")
 local search = os.getenv("WEBDAV_SEARCH") or os.getenv("WEBDAV_MUSIC") or ""
-if base_url ~= "" and search ~= "" then
-    for root in search:gmatch("[^:]+") do
+local roots, seen_root = {}, {}
+for root in search:gmatch("[^:]+") do
+    if root ~= "" and not seen_root[root] then seen_root[root] = true; roots[#roots + 1] = root end
+end
+local music_root = os.getenv("WEBDAV_MUSIC") or ""
+if music_root ~= "" and not seen_root[music_root] then roots[#roots + 1] = music_root end
+local function enc_path(s)
+    return (s:gsub("[^%w%-%._~/]", function(c)
+        return string.format("%%%02X", string.byte(c))
+    end))
+end
+if base_url ~= "" and #roots > 0 then
+    for _, root in ipairs(roots) do
         if root ~= "" then
-            local url = base_url .. root .. "/"
+            local encroot = enc_path(root)
+            local url = base_url .. encroot .. "/"
             local prop = io.popen("curl -sS -m 25 --netrc-file " ..
                 q(home .. "/.webdav_netrc") .. " -X PROPFIND -H 'Depth: 1' " ..
                 q(url) .. " 2>/dev/null")
             local xml = prop and prop:read("*a") or ""
             if prop then prop:close() end
             for href in xml:gmatch("<[Dd]:href>([^<]+)</[Dd]:href>") do
-                if href ~= root .. "/" then
+                if href ~= encroot .. "/" then
                     local base = href:gsub("/$", "")
                     local raw = base:match("([^/]+)$") or ""
                     local dec = raw:gsub("%%(%x%x)", function(h)

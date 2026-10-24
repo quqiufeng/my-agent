@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # tools/wechat_send_file.sh — 发送文件/图片到微信（LuaJIT 实现）
 # 用法: wechat_send_file.sh <本地路径|http(s)://URL> [--to 联系人]
+# 注意: 图片走剪贴板；普通文件走工具栏 Folder，依赖 ~/.wechat_icons.json 坐标缓存；布局变化需重新校准。
 #   URL（如 WebDAV 歌曲）会先用 curl 下载到 /tmp 再发送（用 ~/.env 的 WEBDAV 凭据）。
 set -uo pipefail
 

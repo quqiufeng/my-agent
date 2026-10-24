@@ -18,21 +18,30 @@ local function size(path)
     return n
 end
 
-local TAB_X = tonumber(os.getenv("TERMCTL_TAB_X")) or 60
-local TAB_Y = tonumber(os.getenv("TERMCTL_TAB_Y")) or 18
-local INPUT_X = tonumber(os.getenv("TERMCTL_INPUT_X")) or 80
-local INPUT_Y = tonumber(os.getenv("TERMCTL_INPUT_Y")) or 778
+-- 与 ~/opencode_retry.sh 对齐：标签栏 50,39；输入框按窗口宽高算
+local TAB_X = tonumber(os.getenv("TERMCTL_TAB_X")) or 50
+local TAB_Y = tonumber(os.getenv("TERMCTL_TAB_Y")) or 39
 local MAX_TABS = tonumber(os.getenv("TERMCTL_MAX_TABS")) or 12
+local PATTERN = os.getenv("TERMCTL_WINDOW_PATTERN") or "^OC |"
 
 local d = Xdo.new()
 if not d then io.stderr:write("找不到 X display\n"); os.exit(1) end
-local wins = d:find_class("qterminal")
-if #wins == 0 then
-    io.stderr:write("找不到 qterminal 窗口\n")
+
+local function find_term()
+    local wins = d:find_class("qterminal")
+    for _, w in ipairs(wins) do
+        if (w.name or ""):match(PATTERN) then return w end
+    end
+    return wins[1]
+end
+
+local win = find_term()
+if not win then
+    io.stderr:write("找不到 qterminal/opencode 窗口\n")
     d:close()
     os.exit(1)
 end
-local wid = wins[1].id
+local wid = win.id
 
 local function focus()
     d:activate(wid)
@@ -41,6 +50,7 @@ local function focus()
 end
 
 local function goto_tab(n)
+    n = tonumber(n) or 1
     focus()
     d:click(wid, TAB_X, TAB_Y)
     sleep_s(0.5)
@@ -100,10 +110,31 @@ local function cmd_shot(args)
     print(out)
 end
 
+local function read_clip()
+    local p = io.popen("timeout 1 xclip -o -selection clipboard 2>/dev/null")
+    local s = p and (p:read("*a") or "") or ""
+    if p then p:close() end
+    return s
+end
+
+local function set_clip(text)
+    local f = io.open("/tmp/termctl_clip.txt", "w")
+    if not f then return false end
+    f:write(text or ""); f:close()
+    local ok = os.execute("xclip -selection clipboard -l 1 < /tmp/termctl_clip.txt >/dev/null 2>&1") == 0
+    os.remove("/tmp/termctl_clip.txt")
+    return ok
+end
+
 local function cmd_send(args)
     local n = tonumber(args[1])
-    local text = args[2] or ""
-    local enter = args[3] ~= "--no-enter"
+    local enter = true
+    local parts = {}
+    for i = 2, #args do
+        if args[i] == "--no-enter" then enter = false
+        else parts[#parts + 1] = args[i] end
+    end
+    local text = table.concat(parts, " ")
     if not n or text == "" then
         io.stderr:write("用法: termctl.sh send <N> \"<指令>\" [--no-enter]\n")
         d:close()
@@ -111,16 +142,25 @@ local function cmd_send(args)
     end
     text = text:gsub("\n", " ")
     goto_tab(n)
-    d:click(wid, INPUT_X, INPUT_Y)
+    local g = d:geometry(wid) or {}
+    local ix = tonumber(os.getenv("TERMCTL_INPUT_X")) or math.floor((g.w or 0) / 5)
+    local iy = tonumber(os.getenv("TERMCTL_INPUT_Y")) or math.max(0, (g.h or 0) - 120)
+    d:click(wid, ix, iy)
     sleep_s(0.4)
-    os.execute("printf '%s' " .. q(text) .. " | xclip -selection clipboard -l 1 >/dev/null 2>&1")
+    local old = read_clip()
+    set_clip(text)
     d:key(0, "ctrl+shift+v")
     sleep_s(0.4)
+    if old ~= "" then set_clip(old) end
     if enter then
         d:key(0, "Return")
         print("已发送到 tab" .. n .. ": " .. text)
     else
         print("已注入(未回车)到 tab" .. n .. ": " .. text)
+    end
+    if os.getenv("TERMCTL_MINIMIZE") == "1" then
+        sleep_s(0.5)
+        d:minimize(wid)
     end
 end
 
