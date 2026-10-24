@@ -44,19 +44,6 @@
 static bool detect_panel(cv::Mat &out_panel, int &out_x, int &out_y,
                           ocr_engine_t *engine);
 
-// Run a shell command and capture output (used for xdotool desktop switching)
-static std::string exec_cmd(const char *cmd) {
-    std::string result;
-    auto pipe_close = [](FILE *f) { if (f) pclose(f); };
-    std::unique_ptr<FILE, decltype(pipe_close)> pipe(popen(cmd, "r"), pipe_close);
-    if (!pipe) return result;
-    char buf[128];
-    while (fgets(buf, sizeof(buf), pipe.get()) != nullptr) {
-        result += buf;
-    }
-    return result;
-}
-
 struct ocr_engine_t {
     std::unique_ptr<OCR> ocr;
     std::string last_error;
@@ -233,7 +220,7 @@ char* ocr_capture(ocr_engine_t* engine) {
 // Returns (panel image, panel_abs_x, panel_abs_y) or (empty, 0, 0) on failure
 static bool detect_panel(cv::Mat &out_panel, int &out_x, int &out_y,
                           ocr_engine_t *engine) {
-    // Always use xdotool first for consistent full-window capture
+    // Prefer the X11 window scan for consistent full-window capture
     {
         WindowRect wr = find_wechat_window();
         if (wr.valid) {
@@ -258,10 +245,7 @@ static bool detect_panel(cv::Mat &out_panel, int &out_x, int &out_y,
     {
         unsigned long xid = find_wechat_xid();
         if (xid) {
-            std::string cur = exec_cmd("xdotool get_desktop 2>/dev/null");
-            cur.erase(cur.find_last_not_of(" \n\r\t") + 1);
-            exec_cmd(("xdotool set_desktop_for_window "
-                + std::to_string(xid) + " " + cur + " 2>/dev/null").c_str());
+            move_window_to_current_desktop(xid);
             usleep(200000);
             WindowRect wr = find_wechat_window();
             if (wr.valid) {

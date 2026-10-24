@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- ============================================================
 -- 第一列图标 → LLM 识别（libjoycaption.so）
 -- ============================================================

@@ -129,9 +129,7 @@ opencode 大脑（tmux 常驻 TUI，4097）
 - `chrome://inspect` 的 `--autoConnect`：暴露的是你**已登录的日常实例** → 出于安全，**每来一个客户端都要点“允许”**。
 - `--remote-debugging-port`（本方案）：**启动即授权**（flag 就是 opt-in）＋**专用隔离 profile** ＋ **仅绑 127.0.0.1** → 无需每次点。
 
-> 旧的「视觉点授权」方式（`tools/chrome_auth.sh`：`enable/consent/watch/daemon/status`，
-> 识别复选框与「要允许/充许」弹窗、识别「自动测试软件正在控制 Chrome」控制条）**仅作备选/兜底保留**，
-> 常规一律用上面的**固定端口实例**。
+> 旧的「视觉点授权」方式已移除；统一用固定端口 + CDP。
 
 ---
 

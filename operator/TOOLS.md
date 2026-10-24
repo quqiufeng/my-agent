@@ -8,7 +8,6 @@
 |------|------|------|
 | `tools/browser.sh` | 操作本机 Chrome（不新开浏览器，LuaJIT 实现） | `browser.sh new_tab` |
 | `tools/camera.sh` | 读摄像头(USB/RTSP)一帧给 Agent 读图：优先用常驻界面(Flutter)产出的实时帧，其次自抓；也可录像 | `tools/camera.sh [--usb N | --rtsp URL] [--out 路径] [--live 秒]` |
-| `tools/chrome_auth.sh` | 开启 Chrome「允许远程调试」并点掉授权弹窗（视觉）；`status` 查看是否受控 | `tools/chrome_auth.sh [enable|consent|watch <秒>|daemon|status]` |
 | `tools/chrome_debug.sh` | 每次启动前同步 profile，再用固定调试端口起专用 Chrome，供 chrome-devtools MCP(--browser-url) 连接（免反复授权） | `tools/chrome_debug.sh [端口]        # 默认 9222` |
 | `tools/cookie.sh` | 把某站点 cookie 从已登录 Chrome(CDP) 取出并存入 ~/.env，或直接读写 | `tools/cookie.sh save <域名> <ENVKEY> | set <ENVKEY> <值> | get <ENVKEY> | list` |
 | `tools/dash.sh` | 股票大屏（点阵风·暗色：指数环+自选股+小K线） | `tools/dash.sh [--to 会话] [--show] [--no-send]` |
@@ -45,13 +44,12 @@
 | `tools/send_images.sh` | 下载图片（小图自动换大图）：保存目录并报张数，或发微信 | `tools/send_images.sh [--save 目录] [--to 会话] [--each] [--limit N] <图片URL...>   （URL 也可从 stdin 每行一个）` |
 | `tools/stock.sh` | 股票查询：行情快照 / 历史K线 / 估值 / 财务指标（同花顺数据源） | `tools/stock.sh <名称或代码> | kline <名称或代码> [天数] | value <名称或代码> | fin <名称或代码> [报告期如2024-4] | list` |
 | `tools/termctl.sh` | 控制 qterminal 中的命令行应用：列出标签数 / 截图发微信 / 向指定标签注入指令并回车执行 | `tools/termctl.sh tabs | shot [N] [--to 会话] | send <N> "<指令>" [--no-enter]` |
-| `tools/tv.sh` | 在客厅 Sony 电视上播放 NAS 里的电影/美剧（自写 tvplay，系统硬解；4K/高码率优先无损重封装 MP4：视频原样 copy、音频 AC3，边播边缓存） | `tools/tv.sh play [--remux|--direct|--transcode] [--ss 秒] <片名|文件路径|URL> | transcode [--ss 秒] <片名|路径|URL> | pause | stop | status | shot [输出路径] | diag | install` |
 | `tools/vacuum.sh` | 控制科沃斯扫地机 DEEBOT（**原生 C 内核**，无 Python）：清扫/回充/找机/吸力/水量/音量/次数/续扫/AI/地毯/高级模式；并读电量/故障/网络/统计 | `tools/vacuum.sh <cmd> [arg]` |
 | `tools/video_dub.sh` | 给已有视频配音+字幕（可克隆音色）；先用 --probe 生成配音比对时长，确保不超视频，再合成 | `tools/video_dub.sh <视频> "文案1|文案2|…" [--probe] [--speed 0.85] [--fit] [--ref 参考.wav] [--voice 名] [--out out.mp4] [--to 会话] [--send] [--keep-audio] [--fg]` |
 | `tools/vocab.sh` | 记单词（弹卡片→读单词判发音→✓下一个 / ✗弹释义卡帮助记忆） | `tools/vocab.sh start|stop|status | add <英文> <中文> | list` |
 | `tools/voices.sh` | 克隆音色：列出/注册/删除音色，或用指定音色发声（LuaJIT 编排） | `tools/voices.sh list | add <名> <参考.wav> ["参考文本"] | del <名> | say <名> "文本" [语速]` |
 | `tools/wechat_send_file.sh` | 发送文件/图片到微信（LuaJIT 实现） | `wechat_send_file.sh <本地路径|http(s)://URL> [--to 联系人]` |
-| `tools/wechat_send.sh` | 发送微信文本 | `wechat_send.sh "内容"                  # 默认发到当前会话（文件传输助手）` |
+| `tools/wechat_send.sh` | 发送微信文本（LuaJIT + xdo/xclip 实现） | `wechat_send.sh "内容"                  # 默认发到当前会话（文件传输助手）` |
 | `tools/wechat_shot.sh` | 截屏发微信：说「截图/截屏 <应用名>」则截该应用；不给应用则截桌面。发送到指定会话/文件传输助手 | `tools/wechat_shot.sh [--to 会话] [--app 应用名]` |
 | `tools/weibo_album.sh` | 微博相册大图下载（搜昵称定 uid → 相册接口翻页取大图 → 存 ~ 报张数） | `tools/weibo_album.sh <昵称|uid> [页数 | all，默认 20] [--save 目录] [--to 会话] [--limit N]` |
 | `tools/weibo_hot.sh` | 抓微博实时热搜榜，生成排版图并（可选）发文字到微信（默认文件传输助手） | `tools/weibo_hot.sh [--to 会话] [--limit N（默认15）] [--display] [--no-send]` |
@@ -88,30 +86,28 @@
 19. **做图片视频/动画短片**：说“用<提示词/故事>生成图片视频 / 做动画短片 / 把这几张图做成视频”→ `tools/img_video.sh --scenes "<提示词1|提示词2>"`；已有图片用 `--imgdir <目录>`。默认后台跑，完成后文件在 `~/image/`；要发微信加 `--send [--to 会话]`。
 20. **自绘数据大屏**：说“自绘大屏 / 汇总我的自选股 / 把指数和自选股汇总成一张图”→ `tools/dash.sh`。若只是“看行情/看盘”→ 用 `quote_web.sh` 开浏览器截图。
 21. **看行情/看盘/大盘**：说“看下<股票>行情 / 大盘怎么样 / 看盘 / 行情截图”→ `tools/quote_web.sh [名称或代码]`（不传=上证指数）。它会用浏览器打开搜狐行情页并全屏截图发来源会话。
-22. 浏览器 MCP(chrome-devtools) 连不上/提示授权 → 先 `tools/chrome_auth.sh enable`；仍弹“同意”框用 `consent`，或后台常驻 `daemon`（持续点掉授权）；查状态用 `status`。
-23. **打开微博搜索页(截图)**：说“打开微博 / 微博搜 <关键词>，要网页截图”→ `tools/weibo.sh <关键词>`（打开搜索页并全屏截图）。**要找/发某明星的图片** → 用 `weibo_imgs.sh`。
-24. **下载微博图**：说“下载微博图 <明星> / 抓 <明星> 的微博图 / 找 <明星> 的图”→ `tools/weibo_imgs.sh <明星>`。**默认抓 1..20 页**（也可 `N`、`A-B` 或 `all`）。用**微博 cookie（存在 ~/.env，长期免授权）** curl 抓 `s.weibo.com` 搜索页，解析帖子图片并自动把小图换成大图，**保存到 ~ 下的目录**并报告下载张数（默认不发微信）。只有用户明确说“发我微信/发过来”才加 `--to` 发送；cookie 过期（抓不到）时才用 `--refresh-cookie` 从已登录 Chrome 重取一次。
-25. **下载某人的微博相册（全量大图）**：说“下载 <某人> 的微博相册 / 抓 <某人> 相册的图 / <某人> 相册”→ `tools/weibo_album.sh <昵称>`。先按昵称搜出 uid（也可直接给数字 uid），再用相册接口翻页取**大图**（比搜索页快很多），存到 ~ 下的目录并报张数（默认不发微信；说“发我”才加 `--to`）。
-26. **下载图片URL**：当你已拿到图片 URL（来自网页/接口）→ `tools/send_images.sh --save <目录> <url...>`（自动把 /orj360//thumb150//mw690/ 等**小图换成 /large/ 大图**后下载并保存，报告张数）。加 `--to 会话` 才发微信。看某明星微博图请用 `weibo_imgs.sh`。
-27. **截屏发我 / 截图发我** → `tools/wechat_shot.sh`（不加 --app 截的是桌面）。**要截某个应用**（如“截图 agent / 助手 / 微信 / 浏览器”）→ **必须** `tools/wechat_shot.sh --app <应用名>`。
-28. 用户说“微博热 / 微博热搜 / 微博热搜榜” → `tools/weibo_hot.sh`（默认出图+发微信）；要**只要文本**加 `--display`。
-29. **手机操作**：用户说“看下手机/手机截个屏/操作手机”→ 用 `tools/phone.sh screen` 得路径，再 `tools/wechat_send_file.sh <路径>` 发回；要点击/滑动/输入/打开应用就用对应子命令（中文输入用 `phone.sh type`）。**只用白名单子命令**，不要拼 `adb` 原始命令。
-30. **电纸书**：用户说“在电纸书上看/读某本书、翻页、上一页/下一页、跳到第几页、调字号、看目录、把电纸书画面发我、念一下这页” → 用 `tools/ebook.sh`。读书 `ebook.sh say "读<书名>"`；翻页/跳页/字号 `say "<指令>"`；要画面 `ebook.sh shot /tmp/ebook.png` 再 `tools/wechat_send_file.sh`；要朗读 `ebook.sh speak`。不确定状态先 `ebook.sh state`。**不要**自己拼 ssh/scp 命令。
-31. 用户说“每日英语 / 英语短文 / 学英语 / 来篇英语文章” → `tools/english_daily.sh`（默认随机科技媒体，出图+发微信）；只要文本加 `--display`。
-32. 用户说“问 Google AI / 问 Gemini / 让 AI 回答 <问题> 并发我微信” → `tools/gemini.sh "<问题>"`；要**只要文本**供程序用 → 加 `--display`。
-33. 用户说“帮我 google 搜索/查一下 <关键词> 并发我微信” → `tools/google_search.sh "<关键词>"`（默认发图+文字）；查新闻加 `--news`。
-34. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
-35. **等距图**：引擎/图/规范都在独立仓 **~/iso_flutter**（框架 `iso_engine` + 应用 `app`）；本工具只是"调用它 + 发微信"。图名见 `~/iso_flutter/app/lib/main.dart` 的 `_figures`（`tmall-genie`(Lua) / `tmall-genie-dart`(Dart) / `lathe` / `tube`）。新增/改图在 ~/iso_flutter 里做（Lua：`app/lib/lua/figures/*.lua`；Dart：`main.dart`），再 `cd ~/iso_flutter/app && flutter build linux --release`。
-36. 要看摄像头画面 → `tools/camera.sh`（返回图片路径，可直接读图）；要一段视频 → `--live <秒>`。
-37. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
-38. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
-39. 萤石某路黑屏/过期时 → 重新跑本工具生成该路地址；app 重连即自动跟随（app 各路读各自文件：客厅 /tmp/myagent_ezviz.url、门口 /tmp/myagent_door.url）
-40. 用户说“扫地/开始扫地”→ start；“沿边”→ edge；“定点”→ spot；“停”→ stop；“回充”→ dock；“找一下扫地机/它在哪”→ find；“开大吸力/静音”→ fan max|quiet；“地毯增压”→ carpet 1；“扫地机状态/电量/统计”→ status|battery|stats|total
-41. 说“看看家里有谁 / 门前有人吗 / 识别一下客厅”→ tools/detect.sh [--src keting|menkou]；要发回用 --to
-42. 说“电视播放/放个电影/看某剧”→ tools/tv.sh play <名字>；4K/高码率自动无损重封装（视频不转码，只把 DTS/TrueHD 音轨转 AC3），边播边缓存；--direct=原始 MKV；--transcode 才是降 1080p（手动兜底）；暂停→pause；关掉→stop；状态→status/diag
-43. 说“听听客厅/门口的声音/有没有动静”→ tools/listen_cam.sh keting 10（默认外放）；只想存文件用 --save
-44. 说“对客厅喊话 / 让门口响一下 / 往客厅播报”→ tools/say_cam.sh keting <wav>（**需已开通萤石「语音提醒」资源包**，否则返回 111000）
-45. 说“监督 opencode/让 opencode 继续/盯着它干活”→ tools/opencode_supervise.sh；默认发送“继续”，可带自定义文字。
-46. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
+22. **打开微博搜索页(截图)**：说“打开微博 / 微博搜 <关键词>，要网页截图”→ `tools/weibo.sh <关键词>`（打开搜索页并全屏截图）。**要找/发某明星的图片** → 用 `weibo_imgs.sh`。
+23. **下载微博图**：说“下载微博图 <明星> / 抓 <明星> 的微博图 / 找 <明星> 的图”→ `tools/weibo_imgs.sh <明星>`。**默认抓 1..20 页**（也可 `N`、`A-B` 或 `all`）。用**微博 cookie（存在 ~/.env，长期免授权）** curl 抓 `s.weibo.com` 搜索页，解析帖子图片并自动把小图换成大图，**保存到 ~ 下的目录**并报告下载张数（默认不发微信）。只有用户明确说“发我微信/发过来”才加 `--to` 发送；cookie 过期（抓不到）时才用 `--refresh-cookie` 从已登录 Chrome 重取一次。
+24. **下载某人的微博相册（全量大图）**：说“下载 <某人> 的微博相册 / 抓 <某人> 相册的图 / <某人> 相册”→ `tools/weibo_album.sh <昵称>`。先按昵称搜出 uid（也可直接给数字 uid），再用相册接口翻页取**大图**（比搜索页快很多），存到 ~ 下的目录并报张数（默认不发微信；说“发我”才加 `--to`）。
+25. **下载图片URL**：当你已拿到图片 URL（来自网页/接口）→ `tools/send_images.sh --save <目录> <url...>`（自动把 /orj360//thumb150//mw690/ 等**小图换成 /large/ 大图**后下载并保存，报告张数）。加 `--to 会话` 才发微信。看某明星微博图请用 `weibo_imgs.sh`。
+26. **截屏发我 / 截图发我** → `tools/wechat_shot.sh`（不加 --app 截的是桌面）。**要截某个应用**（如“截图 agent / 助手 / 微信 / 浏览器”）→ **必须** `tools/wechat_shot.sh --app <应用名>`。
+27. 用户说“微博热 / 微博热搜 / 微博热搜榜” → `tools/weibo_hot.sh`（默认出图+发微信）；要**只要文本**加 `--display`。
+28. **手机操作**：用户说“看下手机/手机截个屏/操作手机”→ 用 `tools/phone.sh screen` 得路径，再 `tools/wechat_send_file.sh <路径>` 发回；要点击/滑动/输入/打开应用就用对应子命令（中文输入用 `phone.sh type`）。**只用白名单子命令**，不要拼 `adb` 原始命令。
+29. **电纸书**：用户说“在电纸书上看/读某本书、翻页、上一页/下一页、跳到第几页、调字号、看目录、把电纸书画面发我、念一下这页” → 用 `tools/ebook.sh`。读书 `ebook.sh say "读<书名>"`；翻页/跳页/字号 `say "<指令>"`；要画面 `ebook.sh shot /tmp/ebook.png` 再 `tools/wechat_send_file.sh`；要朗读 `ebook.sh speak`。不确定状态先 `ebook.sh state`。**不要**自己拼 ssh/scp 命令。
+30. 用户说“每日英语 / 英语短文 / 学英语 / 来篇英语文章” → `tools/english_daily.sh`（默认随机科技媒体，出图+发微信）；只要文本加 `--display`。
+31. 用户说“问 Google AI / 问 Gemini / 让 AI 回答 <问题> 并发我微信” → `tools/gemini.sh "<问题>"`；要**只要文本**供程序用 → 加 `--display`。
+32. 用户说“帮我 google 搜索/查一下 <关键词> 并发我微信” → `tools/google_search.sh "<关键词>"`（默认发图+文字）；查新闻加 `--news`。
+33. 用户说“今日github热门 / GitHub 今日热门 / 最近什么项目火” → 用 `tools/git_trending.sh`（默认出图并发微信）；不要动用浏览器。
+34. **等距图**：引擎/图/规范都在独立仓 **~/iso_flutter**（框架 `iso_engine` + 应用 `app`）；本工具只是"调用它 + 发微信"。图名见 `~/iso_flutter/app/lib/main.dart` 的 `_figures`（`tmall-genie`(Lua) / `tmall-genie-dart`(Dart) / `lathe` / `tube`）。新增/改图在 ~/iso_flutter 里做（Lua：`app/lib/lua/figures/*.lua`；Dart：`main.dart`），再 `cd ~/iso_flutter/app && flutter build linux --release`。
+35. 要看摄像头画面 → `tools/camera.sh`（返回图片路径，可直接读图）；要一段视频 → `--live <秒>`。
+36. 需要**登录态抓取**时：先 `tools/cookie.sh save <域名> <ENVKEY>`（从已登录 Chrome 取 cookie 落到 ~/.env），再用 `tools/fetch.sh <url> --cookie <ENVKEY>`；不要为此开浏览器。
+37. **登录态抓取**（微博/知乎/某站资料）→ `tools/fetch.sh <url> --cookie <ENVKEY>`（cookie 先用 `cookie.sh save` 落盘）；**不要**为此开浏览器或 OCR 网页。
+38. 萤石某路黑屏/过期时 → 重新跑本工具生成该路地址；app 重连即自动跟随（app 各路读各自文件：客厅 /tmp/myagent_ezviz.url、门口 /tmp/myagent_door.url）
+39. 用户说“扫地/开始扫地”→ start；“沿边”→ edge；“定点”→ spot；“停”→ stop；“回充”→ dock；“找一下扫地机/它在哪”→ find；“开大吸力/静音”→ fan max|quiet；“地毯增压”→ carpet 1；“扫地机状态/电量/统计”→ status|battery|stats|total
+40. 说“看看家里有谁 / 门前有人吗 / 识别一下客厅”→ tools/detect.sh [--src keting|menkou]；要发回用 --to
+41. 说“听听客厅/门口的声音/有没有动静”→ tools/listen_cam.sh keting 10（默认外放）；只想存文件用 --save
+42. 说“对客厅喊话 / 让门口响一下 / 往客厅播报”→ tools/say_cam.sh keting <wav>（**需已开通萤石「语音提醒」资源包**，否则返回 111000）
+43. 说“监督 opencode/让 opencode 继续/盯着它干活”→ tools/opencode_supervise.sh；默认发送“继续”，可带自定义文字。
+44. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_

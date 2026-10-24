@@ -10,6 +10,7 @@ package.path = "/opt/my-agent/wechat-ocr/?.lua;/opt/my-agent/wechat-ocr/lua/?.lu
 package.cpath = "/opt/my-agent/wechat-ocr/lib/?.so;/usr/local/lualib/?.so;;" .. (package.cpath or "")
 
 local ffi = require("ffi")
+require("xdo_shim").install()
 local cjson = require("cjson")
 local D = "/opt/my-agent/wechat-ocr"
 local AGENT_URL = os.getenv("AGENT_URL") or "http://localhost:4097"

@@ -1,3 +1,5 @@
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- debug: hover first icon → dump all OCR text
 package.path = "/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;./lua/?.lua;./?.lua;" .. (package.path or "")
 package.cpath = "/usr/local/lualib/?.so;" .. (package.cpath or "")

@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- 第二列聊天列表标注：VLM 识别 + CC 定位头像 → 标注图
 -- 用法: luajit tests/test_col2_annotate.lua
 

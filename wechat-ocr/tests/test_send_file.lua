@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- WeChat OCR - 发送文件测试（聊天已打开状态，直接点工具栏发送文件）
 -- 用法: luajit tests/test_send_file.lua [文件路径]
 

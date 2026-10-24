@@ -20,9 +20,6 @@ function M.ensure()
     _started = false
     os.execute(("setsid node %s >/dev/null 2>&1 < /dev/null &"):format(CDPD))
     for _ = 1, 20 do if up() then _started = true; break end; os.execute("sleep 0.5") end
-    -- 万一这一次弹了授权，只点一次（不循环）
-    local ch = require("agentkit.adapters.chrome")
-    if ch.consent_present() then ch.accept_consent() end
     return up()
 end
 

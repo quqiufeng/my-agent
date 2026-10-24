@@ -18,65 +18,119 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
-// Run a shell command and capture output
-static std::string exec_cmd(const char *cmd) {
-    std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-    if (!pipe) return result;
-    char buf[128];
-    while (fgets(buf, sizeof(buf), pipe.get()) != nullptr) {
-        result += buf;
+static std::string window_name(Display *d, Window w) {
+    Atom net = XInternAtom(d, "_NET_WM_NAME", False);
+    Atom utf8 = XInternAtom(d, "UTF8_STRING", False);
+    Atom type; int fmt; unsigned long n, after; unsigned char *data = nullptr;
+    if (XGetWindowProperty(d, w, net, 0, 1024, False, utf8, &type, &fmt,
+                           &n, &after, &data) == Success && data) {
+        std::string s(reinterpret_cast<char *>(data), n);
+        XFree(data);
+        if (!s.empty()) return s;
     }
-    return result;
+    char *name = nullptr;
+    if (XFetchName(d, w, &name) && name) {
+        std::string s(name);
+        XFree(name);
+        return s;
+    }
+    return "";
+}
+
+static std::string window_class(Display *d, Window w) {
+    XClassHint hint{};
+    if (!XGetClassHint(d, w, &hint)) return "";
+    std::string s;
+    if (hint.res_name) s += hint.res_name;
+    if (hint.res_class) { if (!s.empty()) s += " "; s += hint.res_class; }
+    if (hint.res_name) XFree(hint.res_name);
+    if (hint.res_class) XFree(hint.res_class);
+    return s;
+}
+
+static std::string lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
+static bool is_wechat(Display *d, Window w) {
+    std::string n = window_name(d, w);
+    std::string c = lower(window_class(d, w));
+    if (n.find("微信") != std::string::npos) return true;
+    return c.find("wechat") != std::string::npos;
+}
+
+static void walk_windows(Display *d, Window w, Window &best, long &best_area) {
+    if (is_wechat(d, w)) {
+        XWindowAttributes wa{};
+        if (XGetWindowAttributes(d, w, &wa)) {
+            long area = static_cast<long>(wa.width) * wa.height;
+            if (area > best_area) { best_area = area; best = w; }
+        }
+    }
+    Window root, parent, *children = nullptr;
+    unsigned int n = 0;
+    if (XQueryTree(d, w, &root, &parent, &children, &n)) {
+        for (unsigned int i = 0; i < n; ++i) walk_windows(d, children[i], best, best_area);
+        if (children) XFree(children);
+    }
+}
+
+unsigned long find_wechat_xid() {
+    Display *d = XOpenDisplay(nullptr);
+    if (!d) return 0;
+    Window best = 0;
+    long area = 0;
+    walk_windows(d, DefaultRootWindow(d), best, area);
+    XCloseDisplay(d);
+    return best;
 }
 
 WindowRect find_wechat_window() {
     WindowRect rect;
-
-    // Try xdotool to find WeChat window
-    std::string output = exec_cmd("xdotool search --name '微信' 2>/dev/null | head -1");
-    if (output.empty()) {
-        output = exec_cmd("xdotool search --class 'WeChatAppEx' 2>/dev/null | head -1");
+    unsigned long wid = find_wechat_xid();
+    if (!wid) return rect;
+    Display *d = XOpenDisplay(nullptr);
+    if (!d) return rect;
+    XWindowAttributes wa{};
+    if (XGetWindowAttributes(d, wid, &wa)) {
+        Window child;
+        int rx = 0, ry = 0;
+        XTranslateCoordinates(d, wid, DefaultRootWindow(d), 0, 0, &rx, &ry, &child);
+        rect.x = rx; rect.y = ry;
+        rect.width = wa.width; rect.height = wa.height;
+        rect.valid = rect.width > 0 && rect.height > 0;
     }
-    if (output.empty()) {
-        output = exec_cmd("xdotool search --class 'wechat' 2>/dev/null | head -1");
-    }
-    if (output.empty()) {
-        output = exec_cmd("xdotool search --class 'WeChat' 2>/dev/null | head -1");
-    }
-    // Try wmctrl as fallback
-    if (output.empty()) {
-        output = exec_cmd("wmctrl -l 2>/dev/null | grep -i '微信\\|wechat' | head -1 | awk '{print $1}'");
-    }
-
-    // Trim whitespace
-    output.erase(0, output.find_first_not_of(" \n\r\t"));
-    output.erase(output.find_last_not_of(" \n\r\t") + 1);
-
-    if (output.empty()) return rect;
-
-    // Get window geometry
-    std::string cmd = "xdotool getwindowgeometry " + output + " 2>/dev/null";
-    std::string geo = exec_cmd(cmd.c_str());
-
-    // Parse "Position: x,y" and "Geometry: wxh"
-    std::smatch match;
-    std::regex pos_re(R"(Position:\s*(\d+),(\d+))");
-    std::regex size_re(R"(Geometry:\s*(\d+)x(\d+))");
-
-    if (std::regex_search(geo, match, pos_re) && match.size() >= 3) {
-        rect.x = std::stoi(match[1].str());
-        rect.y = std::stoi(match[2].str());
-    }
-    if (std::regex_search(geo, match, size_re) && match.size() >= 3) {
-        rect.width = std::stoi(match[1].str());
-        rect.height = std::stoi(match[2].str());
-    }
-
-    if (rect.width > 0 && rect.height > 0) {
-        rect.valid = true;
-    }
+    XCloseDisplay(d);
     return rect;
+}
+
+bool move_window_to_current_desktop(unsigned long wid) {
+    if (!wid) return false;
+    Display *d = XOpenDisplay(nullptr);
+    if (!d) return false;
+    Window root = DefaultRootWindow(d);
+    Atom cur_atom = XInternAtom(d, "_NET_CURRENT_DESKTOP", False);
+    Atom desk_atom = XInternAtom(d, "_NET_WM_DESKTOP", False);
+    Atom type; int fmt; unsigned long n, after; unsigned char *data = nullptr;
+    long desk = 0;
+    if (XGetWindowProperty(d, root, cur_atom, 0, 1, False, XA_CARDINAL,
+                           &type, &fmt, &n, &after, &data) == Success && data) {
+        desk = *reinterpret_cast<long *>(data);
+        XFree(data);
+    }
+    XEvent ev{};
+    ev.xclient.type = ClientMessage;
+    ev.xclient.window = wid;
+    ev.xclient.message_type = desk_atom;
+    ev.xclient.format = 32;
+    ev.xclient.data.l[0] = desk;
+    ev.xclient.data.l[1] = 2;
+    XSendEvent(d, root, False, SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+    XFlush(d);
+    XCloseDisplay(d);
+    return true;
 }
 
 cv::Mat capture_screen(const WindowRect &rect) {
@@ -139,19 +193,6 @@ cv::Mat capture_screen(const WindowRect &rect) {
 
     XCloseDisplay(display);
     return cv::Mat();
-}
-
-// Find WeChat window XID via xdotool (works across virtual desktops)
-unsigned long find_wechat_xid() {
-    std::string output = exec_cmd("xdotool search --name '微信' 2>/dev/null | head -1");
-    if (output.empty()) output = exec_cmd("xdotool search --class 'WeChatAppEx' 2>/dev/null | head -1");
-    if (output.empty()) output = exec_cmd("xdotool search --class 'wechat' 2>/dev/null | head -1");
-    if (output.empty()) output = exec_cmd("xdotool search --class 'WeChat' 2>/dev/null | head -1");
-    if (output.empty()) {
-        output = exec_cmd("wmctrl -l 2>/dev/null | grep -i '微信\\|wechat' | head -1 | awk '{print $1}'");
-    }
-    if (output.empty()) return 0;
-    try { return std::stoul(output); } catch (...) { return 0; }
 }
 
 // Capture window content using XComposite (works even if window is on another desktop)

@@ -1,3 +1,5 @@
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 local ffi = require("ffi")
 ffi.cdef[[void usleep(unsigned int);]]
 local ocr = require("wechat_ocr")

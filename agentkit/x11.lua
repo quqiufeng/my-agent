@@ -1,6 +1,10 @@
--- agentkit/x11.lua — 窗口定位（xdotool）/ 截屏与输入（libagentkit.so FFI）
--- 依赖：xdotool、libagentkit.so（agentkit/cpp 编译）
+-- agentkit/x11.lua — 窗口定位（libxdo FFI）/ 截屏与输入（libagentkit.so FFI）
+-- 依赖：libxdo3（operator/tools/xdo.lua）、libagentkit.so（agentkit/cpp 编译）
+package.path = "/opt/my-agent/operator/tools/?.lua;" .. package.path
 local ffi = require("ffi")
+local Xdo = require("xdo")
+local _xd
+local function xd() if not _xd then _xd = Xdo.new() end return _xd end
 
 ffi.cdef[[
 int    ak_capture(int x,int y,int w,int h,const char* out_png);
@@ -68,7 +72,7 @@ function M.paste(text)
     -- 后台持有选区（重定向掉 stdout，避免 io.popen 挂起），随即 Ctrl+V
     os.execute(("xclip -selection clipboard < %s >/dev/null 2>&1 &"):format(shq(tmp)))
     os.execute("sleep 0.15")
-    return sh("xdotool key --clearmodifiers ctrl+v")
+    return xd():key(0, "ctrl+v")
 end
 
 -- ── 保证 DISPLAY / XAUTHORITY（从图形会话进程继承）─────
@@ -88,27 +92,17 @@ function M.ensure_display()
     if xa ~= "" then ffi.C.setenv("XAUTHORITY", xa, 1) end
 end
 
--- ── xdotool 窗口检索（稳定）───────────────────────────
+-- ── libxdo 窗口检索（稳定）────────────────────────────
 -- opts = { class=, exact=, all= }
 function M.search(name, opts)
     M.ensure_display()
     opts = opts or {}
-    local cmd = "xdotool search"
-    if opts.class then
-        cmd = cmd .. " --class " .. shq(opts.class)
-    else
-        cmd = cmd .. " --name " .. shq(name)
-    end
+    local wins = opts.class and xd():find_class(opts.class) or xd():find(name)
     local ids = {}
-    for id in sh(cmd):gmatch("%d+") do ids[#ids + 1] = tonumber(id) end
-    -- 精确标题过滤（避免子串命中多窗口，如浏览器标签）
-    if opts.exact and not opts.class then
-        local ex = {}
-        for _, id in ipairs(ids) do
-            local nm = sh(("xdotool getwindowname %d"):format(id)):gsub("\n$", "")
-            if nm == name then ex[#ex + 1] = id end
+    for _, w in ipairs(wins) do
+        if not opts.exact or opts.class or w.name == name then
+            ids[#ids + 1] = tonumber(w.id)
         end
-        if #ex > 0 then ids = ex end
     end
     return ids
 end
@@ -122,24 +116,21 @@ end
 
 function M.geometry(id)
     M.ensure_display()
-    local g = {}
-    for k, v in sh(("xdotool getwindowgeometry --shell %d"):format(id)):gmatch("(%a+)=(%-?%d+)") do
-        g[k:lower()] = tonumber(v)
-    end
-    if g.width == nil then return nil end
-    return g
+    local g = xd():geometry(id)
+    if not g then return nil end
+    return { x = g.x, y = g.y, width = g.w, height = g.h }
 end
 
 function M.activate(id)
     M.ensure_display()
-    sh(("xdotool windowactivate --sync %d"):format(id))
-    sh(("xdotool windowraise %d"):format(id))
+    xd():activate(id)
+    xd():raise(id)
 end
 
 -- 窗口标题（Chrome 的活动标签页名就在其中）
 function M.win_name(id)
     M.ensure_display()
-    return (sh(("xdotool getwindowname %d"):format(id)):gsub("\n$", ""))
+    return xd():name(id) or ""
 end
 
 -- ── Window ────────────────────────────────────────────
@@ -191,7 +182,7 @@ function Window:scroll(clicks, up)
     os.execute("sleep 0.05")
     local btn = up and 4 or 5
     for _ = 1, (clicks or 3) do
-        sh(("xdotool click %d"):format(btn))
+        xd():click_current(btn)
         os.execute("sleep 0.05")
     end
     return self

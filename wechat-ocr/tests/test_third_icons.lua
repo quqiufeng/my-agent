@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- ============================================================
 -- WeChat OCR - 第三列小图标检测（基于三列分割 + OCR文本过滤）
 -- ============================================================

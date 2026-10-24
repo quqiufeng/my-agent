@@ -27,7 +27,7 @@ cp "$DIR/ppocr_keys_v1.txt" "$OUT/"
 # 4. 部署说明
 cat > "$OUT/README.txt" << 'EOF'
 部署步骤:
-1. sudo apt install luajit xdotool xclip ffmpeg vlc
+1. sudo apt install luajit libxdo3 xclip ffmpeg vlc
 2. 将 onnxruntime-linux-x64-gpu-1.26.0 拷贝到 /data/venv/
    或修改 run.sh 中的 LD_LIBRARY_PATH
 3. sudo cp -r lualib/wechat_ocr /usr/local/lualib/

@@ -1,3 +1,5 @@
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- Google AI Mode 问答流程
 -- 1. 新空白标签 → 2. 输入问题 → 3. 搜索 → 4. 等回答 → 5. 获取内容
 

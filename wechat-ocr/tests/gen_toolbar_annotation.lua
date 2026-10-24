@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- 第三栏小工具图标 VLM 识别 → 标注图
 
 package.path = "/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;/opt/my-agent/wechat-ocr/lua/?.lua;" .. (package.path or "")

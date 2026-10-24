@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- news_execute.lua — 文件传输助手新消息 → 读取 → 回复
 -- 检测未读 → 点进去 → 读最新消息 → 回复"收到！马上处理"+引用原文
 

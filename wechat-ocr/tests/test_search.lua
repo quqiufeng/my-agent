@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- WeChat OCR - 搜索联系人→回车开聊天→输入消息→回车发送
 -- 用法:
 --   luajit tests/test_search.lua                        搜索"丰"+发送"今天天气真好"

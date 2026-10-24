@@ -6,7 +6,9 @@
 --   ocr():           对截图跑 PP-OCRv4
 --   find_row():      在第二列按会话名找行（容忍 OCR 错字）
 --   read_preview():  读该行下方预览文字（=最新一条消息）
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
 local ffi = require("ffi")
+require("xdo_shim").install()
 local cjson = require("cjson")
 
 ffi.cdef[[

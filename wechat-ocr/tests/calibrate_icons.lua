@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- 一次性图标校准脚本
 -- VLM 扫描侧边栏 + 工具栏所有图标，保存相对窗口(0,0)的坐标到 ~/.wechat_icons.json
 -- 之后所有操作只需 getwindowgeometry + 查表

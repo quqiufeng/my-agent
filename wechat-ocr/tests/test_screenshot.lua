@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- 搜索 → 截图发送（使用缓存坐标）
 -- 流程: 搜索"丰" → 打开聊天 → 截图 → 发送
 -- 用法: luajit tests/test_screenshot.lua [关键词]

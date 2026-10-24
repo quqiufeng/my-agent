@@ -1,7 +1,7 @@
 # rangeserve — 带 Range 的只读 HTTP 文件服务
 
-给电视播放器（tvplay/VLC）点播 NAS 上的大文件用；支持 `Range`（拖动/续播）与 HTTP/1.1 keep-alive。
-本机也用它托管 tvplay 的实时转码 HLS（`ROOT=/tmp/tvplay_hls PORT=8097`）。
+给 VLC 等播放器点播 NAS 上的大文件用；支持 `Range`（拖动/续播）与 HTTP/1.1 keep-alive。
+也可用于托管 HLS 分片等静态流媒体目录。
 
 ```bash
 ROOT=/path/to/media PORT=8099 python3 rangeserve.py

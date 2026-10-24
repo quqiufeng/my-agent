@@ -31,6 +31,10 @@ int XMapWindow(Display *display, Window w);
 int XUnmapWindow(Display *display, Window w);
 int XGetClassHint(Display *display, Window w, XClassHint *class_hints);
 int XSync(Display *display, Bool discard);
+int XFlush(Display *display);
+int XDisplayWidth(Display *display, int screen);
+int XDisplayHeight(Display *display, int screen);
+int XTestFakeButtonEvent(Display *display, unsigned int button, Bool is_press, unsigned long delay);
 
 xdo_t *xdo_new(const char *display);
 void xdo_free(xdo_t *xdo);
@@ -51,6 +55,7 @@ int xdo_enter_text_window(const xdo_t *xdo, Window window,
 ]]
 
 local X11 = ffi.load("X11")
+local Xtst = ffi.load("Xtst")
 local lib
 for _, name in ipairs({ "xdo", "libxdo.so.3", "libxdo.so" }) do
     local ok, handle = pcall(ffi.load, name)
@@ -188,9 +193,37 @@ function Xdo:move(win, x, y)
     return lib.xdo_move_mouse_relative_to_window(self.handle, win, x, y) == 0
 end
 function Xdo:move_abs(x, y) return lib.xdo_move_mouse(self.handle, x, y, 0) == 0 end
+function Xdo:mouse_down(button)
+    Xtst.XTestFakeButtonEvent(self.dpy, button or 1, 1, 0)
+    X11.XFlush(self.dpy)
+    return true
+end
+function Xdo:mouse_up(button)
+    Xtst.XTestFakeButtonEvent(self.dpy, button or 1, 0, 0)
+    X11.XFlush(self.dpy)
+    return true
+end
+function Xdo:click_current(button, repeat_count, delay_ms)
+    repeat_count = repeat_count or 1
+    for i = 1, repeat_count do
+        self:mouse_down(button)
+        self:mouse_up(button)
+        if i < repeat_count and delay_ms and delay_ms > 0 then
+            os.execute("sleep " .. string.format("%.3f", delay_ms / 1000))
+        end
+    end
+    return true
+end
+function Xdo:click_abs(x, y, button, repeat_count, delay_ms)
+    if not self:move_abs(x, y) then return false end
+    return self:click_current(button, repeat_count, delay_ms)
+end
 function Xdo:click(win, x, y, button)
     if not self:move(win, x, y) then return false end
-    return lib.xdo_click_window(self.handle, win, button or 1) == 0
+    return self:click_current(button)
+end
+function Xdo:display_size()
+    return tonumber(X11.XDisplayWidth(self.dpy, 0)), tonumber(X11.XDisplayHeight(self.dpy, 0))
 end
 function Xdo:key(win, seq, delay)
     return lib.xdo_send_keysequence_window(self.handle, win, seq, delay or 12000) == 0

@@ -24,7 +24,7 @@ operator/tools/phone.sh tap <发送X> <发送Y>
 
 # 核对（读两端）
 operator/tools/phone.sh screen /tmp/phone.png           # 手机端回程
-import -window "$(xdotool search --name 微信 | head -1)" /tmp/pc.png   # PC 端
+tools/screenshot.sh /tmp/pc.png   # PC 端
 ```
 
 ### B. 直连单工具（快速定位 bug）
@@ -72,7 +72,6 @@ operator/tools/<name>.sh <参数>        # 直接看 stdout / 效果，绕过大
 | 8 | say.sh | TTS 出声 | `say.sh "你好"` / 语音入口 | USB 音响出声 | | | |
 | 9 | photo.sh | USB 摄像头拍照 | `ai 拍一张` | 照片到来源会话 | | | |
 | 10 | music.sh | 音乐 | `ai 放周杰伦` / `随机放一首` / `停` | VLC 播放/停止 | | | |
-| 11 | tv.sh | 美剧/电影 | `ai 看老友记` / `下一集` / `停` | VLC 播放 | | | |
 | 12 | image.sh | 生成图片 | `ai 画一张猫` | 图片到来源会话 | | | |
 | 13 | find_file.sh | 搜文件 | `ai 找 xxx 文件` | 返回本机/WebDAV 匹配 | | | |
 | 14 | note.sh | 备忘 | `ai 记一下…` / `有什么待办` | 增/列 | | | |

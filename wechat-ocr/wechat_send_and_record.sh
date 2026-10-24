@@ -24,7 +24,7 @@ OUTPUT="$HOME/wechat_record.mp4"
 
 # 环境变量
 export LD_LIBRARY_PATH="$DIR/lib:/data/venv/onnxruntime-linux-x64-gpu-1.26.0/lib"
-export LUA_PATH="/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;;"
+export LUA_PATH="$DIR/lua/?.lua;$DIR/?.lua;/usr/local/lualib/?.lua;/usr/local/lualib/?/init.lua;;"
 export LUA_CPATH="/usr/local/lualib/?.so;;"
 
 echo "=========================================="
@@ -38,7 +38,7 @@ echo ""
 
 # 检查依赖
 command -v ffmpeg >/dev/null 2>&1 || { echo "请安装 ffmpeg"; exit 1; }
-command -v xdotool >/dev/null 2>&1 || { echo "请安装 xdotool"; exit 1; }
+command -v luajit >/dev/null 2>&1 || { echo "请安装 luajit"; exit 1; }
 command -v xclip >/dev/null 2>&1 || { echo "请安装 xclip"; exit 1; }
 
 # ====== 第1步: 开始录屏 ======
@@ -69,7 +69,7 @@ print("2. 输入: " .. msg)
 ocr.send(msg)
 ffi.C.usleep(2000000)
 -- 读取验证
-os.execute("xdotool search --name 微信 windowactivate 2>/dev/null")
+-- 窗口激活已由 xdo_shim 接管
 ffi.C.usleep(500000)
 print("3. 聊天内容:")
 local text = ocr.capture()

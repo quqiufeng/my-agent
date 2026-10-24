@@ -1,7 +1,9 @@
 -- badge_detect.lua — 微信第二列红点检测公共模块
 -- 被 test_avatar_badges.lua 和 news_execute.lua 复用
 
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
 local ffi = require("ffi")
+require("xdo_shim").install()
 local cjson = require("cjson")
 ffi.cdef[[int usleep(unsigned int); int getpid(void);]]
 

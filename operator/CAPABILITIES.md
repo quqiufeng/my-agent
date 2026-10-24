@@ -38,7 +38,7 @@ ak.voice.tts/asr/record    ak.batch.run(app,kind,items)   ak.record(app)  -- 语
 ## 五、内容管道 / 系统 / 媒体
 - 解析/翻译/查词/OCR/TTS：`tools/*.py`；电子书：`tools/ebook_extract.py`
 - 屏幕/图像/视频：`screenshot.sh image.sh img_video.sh video_dub.sh`
-- 行情/大屏：`stock.sh quote_web.sh dash.sh`；音乐/电视：`music.sh tv.sh`
+- 行情/大屏：`stock.sh quote_web.sh dash.sh`；音乐：`music.sh`
 - 手机：`phone.sh`；音频：`say.sh voices.sh`；其他见 `TOOLS.md` 全表
 - **电纸书（Kindle DXG）**：`tools/ebook.sh state|say|shot|dump|speak|books|test`
   自研 LVGL 阅读器（书架/阅读/目录/进度/三档字号）；**文本指令**（`/tmp/ui_say`，语音/无障碍）、
@@ -52,10 +52,10 @@ ak.voice.tts/asr/record    ak.batch.run(app,kind,items)   ak.record(app)  -- 语
 
 ## 七、全自动化开发流程（无需人工干预）
 > 详见 `automation.md`（Fully-Automated Mode）。闭环：
-> **设计 → 构建 → 会话内运行 → 截图识别 → 驱动(xdotool/CDP) → 校验 → 迭代 → 提交**，全程无人工。
+> **设计 → 构建 → 会话内运行 → 截图识别 → 驱动(libxdo/CDP) → 校验 → 迭代 → 提交**，全程无人工。
 - **运行**：一律在**图形会话内**起（`DISPLAY=:0` + 从 `pcmanfm-qt` 派生 `XAUTHORITY`）；GUI 勿用 systemd（缺 X/GL 起不了窗）。
 - **截图识别**：`agentkit/bin/shot.sh`（或 `tools/screenshot.sh`，GL 窗口 root 抓取+裁剪）→ `Read` 读图；`ak.ocr`（PP-OCR）/`win:ocr()`/`win:ocr_bands()`；模板匹配 `ak_match`、图像差分 `ak_diff`。
-- **驱动**：**xdotool**（`ak.x11` / `ak.map` 控件映射）、**CDP**（`ak.cdp`）、XTest（libagentkit）。
+- **驱动**：**libxdo**（`xdo.lua` / `ak.map` 控件映射）、**CDP**（`ak.cdp`）、XTest（libagentkit）。
 - **自动化测试/校验**：操作后**自检**——OCR 文本是否变化 / 图像差分阈值 / DOM 断言；失败**重试**。
 - **迭代**：定位差异 → 改代码 → 重建/运行 → 复验（提交前过 `bash -n` 等静态检查）。
 - **自我扩展**：新能力=网页工具（专用 Chrome + CDP/DOM），改动**自动 git commit**（可回滚）。

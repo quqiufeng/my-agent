@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- 生成带标记的 WeChat 窗口截图
 
 package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. (package.path or "")

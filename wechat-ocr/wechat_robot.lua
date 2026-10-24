@@ -20,6 +20,7 @@ local dir = "/opt/my-agent/wechat-ocr"
 
 -- 优先加载仓库内的模块与动态库，保证运行版本与源码一致
 package.path = dir .. "/lua/?.lua;" .. dir .. "/lua/?/init.lua;" .. (package.path or "")
+require("xdo_shim").install()
 package.cpath = dir .. "/lib/?.so;" .. (package.cpath or "")
 
 local ocr = require("wechat_ocr")

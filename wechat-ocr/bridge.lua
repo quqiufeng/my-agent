@@ -13,6 +13,7 @@ package.path = "/opt/my-agent/wechat-ocr/?.lua;/opt/my-agent/wechat-ocr/lua/?.lu
 package.cpath = "/opt/my-agent/wechat-ocr/lib/?.so;/usr/local/lualib/?.so;;" .. (package.cpath or "")
 
 local cjson = require("cjson")
+require("xdo_shim").install()
 local watcher = require("wechat_ocr.watcher")
 
 local DIR       = os.getenv("WECHAT_DIR") or "/opt/my-agent/wechat-ocr"

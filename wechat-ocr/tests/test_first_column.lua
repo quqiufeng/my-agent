@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- WeChat OCR - 第一列图标依次点击
 -- 从顶部开始，依次点击左侧图标栏的每个图标
 -- 用法: luajit tests/test_first_column.lua

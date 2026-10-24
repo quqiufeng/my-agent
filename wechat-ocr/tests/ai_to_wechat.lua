@@ -1,3 +1,5 @@
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- AI 搜索 → 结果发微信文件传输助手
 -- 1. 激活 Chrome → AI搜索
 -- 2. OCR 读结果

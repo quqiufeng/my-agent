@@ -72,13 +72,14 @@ end
 local function is_ascii(s) return not s:find("[\128-\255]") end
 function Map:type(name, s, win, opts)
     opts = opts or {}
+    win = win or self:window()
     self:click(name, win)
     os.execute("sleep 0.25")
-    local lang = opts.lang or (is_ascii(s) and "en" or "zh")
-    if lang == "en" then x11.ime_en() else x11.ime_zh() end
-    os.execute("sleep 0.15")
-    os.execute(("xdotool type --delay 40 %q"):format(s))
-    x11.ime_restore()
+    if is_ascii(s) then
+        win:type(s)
+    else
+        x11.paste(s)
+    end
 end
 
 -- 记录/更新一个控件（探索时调用），可 chain: map:learn("x",1,2,3,4):save()

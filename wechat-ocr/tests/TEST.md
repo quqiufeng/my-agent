@@ -55,7 +55,7 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 
 **前置条件**：
 - 桌面已登录「小龙虾」微信客户端
-- 已安装 `luajit`、`xdotool`、`xclip`、`ffmpeg`、`imagemagick`
+- 已安装 `luajit`、`libxdo3`、`xclip`、`ffmpeg`、`imagemagick`
 - 已编译 `lib/libwechat_ocr_core.so`
 - 已放置 OCR 模型：`models/ch_PP-OCRv4_det_infer.onnx`、`models/ch_PP-OCRv4_rec_infer.onnx`
 - 推荐屏幕分辨率 2560×1440，窗口缩放 100%
@@ -110,7 +110,6 @@ export LUA_CPATH="/usr/local/lualib/?.so;;"
 |------|------|------|------|
 | `monitor.lua` | Lua 版未读红点监控 | ⚠️ 未验证 | `luajit tests/monitor.lua` / `luajit tests/monitor.lua --once` |
 | `news_execute.lua` | 文件传输助手未读 → 读取 → 自动回复 | ⚠️ 未验证 | `luajit tests/news_execute.lua` |
-| `monitor.c` | C 版未读红点监控守护进程 | ⚠️ 未验证 | `gcc -O2 -o monitor monitor.c && ./monitor --once` |
 
 ---
 
@@ -174,7 +173,6 @@ tests/
 ├── ai_to_wechat.lua            # AI → 微信发送
 ├── monitor.lua                 # 未读监控（Lua版）
 ├── news_execute.lua            # 文件传输助手自动回复
-└── monitor.c                   # 未读监控 C 源码
 ```
 
 ---

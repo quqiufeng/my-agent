@@ -6,7 +6,9 @@
 --   chrome.key("ctrl+v")     -- 按键
 --   chrome.ai_search("问题")  -- AI模式搜索
 
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
 local ffi = require("ffi")
+require("xdo_shim").install()
 ffi.cdef[[int usleep(unsigned int); int getpid(void);]]
 
 local PID = ffi.C.getpid()

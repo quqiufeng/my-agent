@@ -51,7 +51,7 @@ Agent 设计 → 构建 → 在真实会话里运行 → 用 API/FFI 模拟人�
 2. **运行**：一律**在图形会话内**启动（继承 `DISPLAY`/`XAUTHORITY`）。*勿用 systemd 服务启动 UI*。
 3. **操作（驱动）**：
    - `agentkit`（LuaJIT + FFI）：窗口定位、区域 OCR、区域锚定点击、剪贴板输入、模板匹配；
-   - 应用适配器：`ak.app("wechat")` / `ak.app("chrome")` / `ak.app("wordcard")`；
+   - 应用适配器：`ak.app("wechat")` / `ak.app("wordcard")`；浏览器用 `ak.cdp`（JS/CDP）；
    - 白名单工具：`operator/tools/*.sh`（大脑可执行的能力边界）。
 4. **看见（视觉自检）**：`agentkit/bin/shot.sh`（GL 窗口 root 抓取+裁剪）→ **`Read` 读图** +
    `agentkit.ocr`（PP-OCRv4）取文字与坐标。
@@ -66,7 +66,7 @@ Agent 设计 → 构建 → 在真实会话里运行 → 用 API/FFI 模拟人�
 
 | 环节 | 技术 | 位置 |
 |------|------|------|
-| 窗口/输入 | xdotool + libagentkit.so（XTest, C++） | `agentkit/{x11.lua,cpp/}` |
+| 窗口/输入 | LuaJIT libxdo (`xdo.lua`) + libagentkit.so（XTest, C++） | `agentkit/{x11.lua,cpp/}` |
 | 截屏 | ImageMagick（root 抓取 + 裁剪） | `agentkit/bin/shot.sh` |
 | OCR | PP-OCRv4（C++ 库，LuaJIT FFI） | `agentkit/ocr.lua` → `libocr_simple.so` |
 | 模板匹配/差分 | OpenCV | `agentkit/cpp/agentkit.cpp` |
@@ -74,7 +74,7 @@ Agent 设计 → 构建 → 在真实会话里运行 → 用 API/FFI 模拟人�
 | 语音合成 TTS | sherpa-onnx + Kokoro | `agentkit/voice.lua` → `voice/say.sh` |
 | 输入法切换 | IBus（`ibus engine`） | `agentkit/x11.lua` `ime_en/ime_zh` |
 | 微信 | wechat_robot.lua + 映射 | `agentkit/adapters/wechat.lua`、`wechat-ocr/` |
-| Chrome | xdotool + 映射 | `agentkit/adapters/chrome.lua` |
+| Chrome | JS/CDP | `agentkit/tools/cdp.js`、`cdpd.js`、`gemini.js` |
 | 大脑能力 | 白名单工具 | `operator/tools/*.sh` |
 
 ---
@@ -98,7 +98,7 @@ m:click("rail_chat"); m:type("input_box", "你好"); m:ocr("message_area")
 
 -- 应用适配器
 local wx = ak.app("wechat"); wx.open_chat("文件传输助手"); wx.send("你好")
-local ch = ak.app("chrome"); ch.goto("example.com"); print(ch.title())
+ak.cdp.goto("https://example.com"); print(ak.cdp.title())
 
 -- 语音
 local wav = ak.voice.tts("你好，我是星期五"); print(ak.voice.asr(wav))
@@ -135,7 +135,7 @@ luajit -e 'package.path="/opt/my-agent/?.lua;/opt/my-agent/?/init.lua;"..package
 ## 七、已实证案例（本仓库）
 
 一次全自动自测（无人参与）：
-1. 用 `agentkit` 定位微信窗口（xdotool），`shot.sh` 截图 + `Read` 读图，PP-OCR 取控件文本。
+1. 用 `agentkit` 定位微信窗口（libxdo / xdo.lua），`shot.sh` 截图 + `Read` 读图，PP-OCR 取控件文本。
 2. 探索左侧功能栏：**像素行暗度分析**定位图标中心 → 逐个点击 + OCR 结果页标题**判定功能名**
    （聊天/通讯录/收藏/朋友圈/视频号/搜一搜/小程序），写入 `maps/wechat.lua`。
 3. `wx.open_chat("文件传输助手")` + `wx.send("agentkit v1 已就绪 OK")` → 绿气泡出现、会话预览同步。
@@ -255,7 +255,7 @@ OpenAI 的 CUA/Operator、Anthropic 的 computer-use（`computer` 工具），�
 
 ### 5) 探索流程（一次性前置）
 
-1. **定位窗口**：xdotool 按精确标题 / WM_CLASS 找到窗口并取几何。
+1. **定位窗口**：libxdo / X11 按精确标题 / WM_CLASS 找到窗口并取几何。
 2. **视觉识别**：截图 + 读图 / OCR，识别界面结构；图标用像素行暗度分析或模板匹配。
 3. **交互验证**：点击候选控件 → OCR 结果页标题**判定功能** → 记录其窗口相对区域。
 4. **固化**：写入 `maps/<app>.lua`；把走通的步骤写成流程脚本（动态代码）。

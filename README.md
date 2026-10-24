@@ -29,7 +29,7 @@
                                             语音→ say.sh 出声   微信→ wechat_send.sh 回发
 ```
 
-> **白名单工具现有 51 个**：说话/发微信（`say`/`wechat_send`/`wechat_send_file`）、截屏、音乐、美剧/电影、USB 摄像头拍照、找文件（本机+NAS）、出图、股票行情/估值/财务、行情大屏、开发进度、备忘、英语口语陪练、记单词、开应用/浏览器、结果分发、时间、**电纸书（Kindle 阅读/翻页/字号/截图/朗读）**。
+> **白名单工具现有 49 个**：说话/发微信（`say`/`wechat_send`/`wechat_send_file`）、截屏、音乐、USB 摄像头拍照、找文件（本机+NAS）、出图、股票行情/估值/财务、行情大屏、开发进度、备忘、英语口语陪练、记单词、开应用/浏览器、结果分发、时间、**电纸书（Kindle 阅读/翻页/字号/截图/朗读）**。
 > 清单与各工具规则由 `operator/plugin.sh index` **自动生成**到 `operator/TOOLS.md`（大脑经 `instructions` 加载），**新增工具无需手改契约**。
 
 三条设计原则：
@@ -55,7 +55,7 @@ my-agent/
 │   ├── opencode.json         #   权限：默认全拒，仅放行 tools/*；instructions 加载 TOOLS.md
 │   ├── .opencode/plugin/guard.js  # 兜底：拦截拼接命令
 │   ├── start.sh              #   启动 tmux + opencode serve(4097)/attach
-│   ├── tools/                #   51 个白名单工具（每个自带 @desc/@usage/@rule）
+│   ├── tools/                #   49 个白名单工具（每个自带 @desc/@usage/@rule）
 │   └── README.md
 │
 ├── voice/                    # 【语音入口 + 输出】纯 C/C++，无 Python
@@ -124,7 +124,7 @@ operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → �
 
 1. **权限**（`operator/opencode.json`）：`bash` 默认 `deny`、只放行 `tools/*`；`read/edit/webfetch/task` 全部 `deny`。
 2. **兜底插件**（`operator/.opencode/plugin/guard.js`）：执行前正则校验，禁止 `&&`、`;`、`|`、重定向等拼接绕过。
-3. **契约**（`operator/AGENTS.md` + `operator/TOOLS.md`）：告诉大脑“只能调用白名单里的 51 个工具，不认识的请求就拒绝”。
+3. **契约**（`operator/AGENTS.md` + `operator/TOOLS.md`）：告诉大脑“只能调用白名单里的 49 个工具，不认识的请求就拒绝”。
 
 回程规则：`[语音输入]` → `say.sh` / `wechat_send.sh`；`[微信输入:<会话名>]` → `wechat_send.sh --to <会话名>`（默认「文件传输助手」）；`[英语口语]` → `say.sh` 英文音色。
 
@@ -141,8 +141,8 @@ operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → �
 | SDL2 + OpenCV + ALSA | 统一界面 / 摄像头 / 采集 | voice |
 | LuaJIT + ONNX Runtime GPU | 微信 OCR | wechat-ocr |
 | PaddleOCR PP-OCRv4 | 聊天文字识别 | wechat-ocr |
-| xdotool / xclip / ImageMagick | 桌面窗口操作 / 大屏渲染 | wechat-ocr / operator |
-| VLC (`cvlc`/`vlc`) + `jq` | 音乐/美剧播放、行情解析 | operator |
+| LuaJIT libxdo (xdo.lua) / xclip / ImageMagick | 桌面窗口操作 / 大屏渲染 | wechat-ocr / operator |
+| VLC (`cvlc`/`vlc`) + `jq` | 音乐播放、行情解析 | operator |
 | WordCard `libtxt2png.so` + 霞鹜文楷 | 单词卡/大屏渲染（纯 C ABI） | operator |
 | PipeWire (`pw-play`) / aplay / espeak-ng | 音频播放与兜底 | voice |
 | 同花顺 fuyao REST（需 API Key） | 股票行情/财务/大屏 | operator |
@@ -160,9 +160,9 @@ operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → �
 - ✅ **图片视频**（`img_video.sh`）：按提示词出图 → 合成竖版 MP4；已有图片可直接 `--imgdir` 复用；默认不发微信
 - ✅ 摄像头窗口 / 人脸门控 / 统一界面
 - ✅ 微信 OCR 机器人（搜索/发送/截图/监控）
-- ✅ 单脑 + **插件式白名单**（`plugin.sh` 生成 `TOOLS.md`，51 工具）
+- ✅ 单脑 + **插件式白名单**（`plugin.sh` 生成 `TOOLS.md`，49 工具）
 - ✅ 微信入口：白名单会话；后台**不抢焦点**读预览，带 `ai助手` 标签触发 → `[微信输入:<会话>]` 转发 → 回复带 `ai助手` 前缀回来源
-- ✅ 能力：音乐 / 美剧·电影(VLC) / USB 拍照 / 截屏 / 找文件(本机+NAS) / 出图 / 股票行情·估值·财务 / 行情大屏 / 开发进度 / 备忘 / **英语口语陪练** / **记单词(发音判定)** / 开应用·浏览器 / 结果分发
+- ✅ 能力：音乐 / USB 拍照 / 截屏 / 找文件(本机+NAS) / 出图 / 股票行情·估值·财务 / 行情大屏 / 开发进度 / 备忘 / **英语口语陪练** / **记单词(发音判定)** / 开应用·浏览器 / 结果分发
 - ✅ 股票数据源：同花顺 fuyao（REST，API Key 在 `~/.env`）
 - ✅ **点阵风 UI**：行情大屏（`dash.sh`：TSV→HTML(Canvas)→headless Chrome 截图）与统一界面（`voice/app` 状态栏）采用暗色点阵风；组件来自 [karminski-design-skills](https://github.com/karminski/karminski-design-skills)（CC BY-NC-SA 4.0，署名见 `operator/tools/dotkit/NOTICE.md`）
 - ✅ **手机控制**（`phone.sh`，ADB：截屏/点击/滑动/中文输入/开应用）+ **手机微信自主测试闭环**（手机发指令 → 大脑执行 → 回程到手机）

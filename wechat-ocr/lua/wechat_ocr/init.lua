@@ -22,8 +22,10 @@
 --  └──────┴─────────────────────┴──────────────────────────┘
 -- ============================================================
 
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
 local ffi = require("ffi")
 local cjson = require("cjson")
+require("xdo_shim").install()
 
 -- ======== C API bindings ========
 ffi.cdef[[

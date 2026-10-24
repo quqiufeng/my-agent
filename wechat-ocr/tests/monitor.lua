@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- WeChat 消息监控守护进程
 -- 每 5 分钟检测第二列是否有红点（未读消息）
 -- 用法: luajit monitor.lua &          # 后台运行

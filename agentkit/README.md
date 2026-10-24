@@ -8,7 +8,7 @@
 
 | 能力 | 实现 | 入口 |
 |------|------|------|
-| 窗口定位/激活 | **xdotool**（稳定） | `ak.x11.window(title)` |
+| 窗口定位/激活 | **LuaJIT libxdo (`xdo.lua`)**（稳定） | `ak.x11.window(title)` |
 | 截屏（含 GL 窗口） | `bin/shot.sh`（root 抓取+裁剪） | `win:capture()` |
 | 鼠标/键盘输入 | `libagentkit.so`（XTest） | `win:click()/key()/type()` |
 | 文字识别 OCR | `libocr_simple.so`（PP-OCRv4, C++） | `ak.ocr.run(img)` / `win:ocr()` |
@@ -79,15 +79,13 @@ m:learn("send_btn", 2415, 1362, 115, 38):save()
 local wx = ak.app("wechat")
 wx.open_chat("文件传输助手"); wx.send("你好"); local lines = wx.read()
 
--- Chrome
-local ch = ak.app("chrome")
-ch.goto("example.com"); print(ch.title()); for _,l in ipairs(ch.read()) do print(l) end
-ch.new_tab("github.com"); ch.back(); ch.reload()
+-- Chrome（JS/CDP）
+ak.cdp.goto("https://example.com"); print(ak.cdp.title())
 ```
 
 ## 输入法（IBus）
 
-新打开的应用默认中文，直接 `xdotool type` 英文会被 IME 转换。agentkit 在打字前自动切换：
+新打开的应用默认中文，直接输入英文会被 IME 转换。agentkit 在打字前自动切换：
 
 ```lua
 ak.x11.ime_en()   -- ibus engine xkb:us::eng（默认英文引擎）
@@ -102,7 +100,7 @@ ak.x11.ime_zh()   -- ibus engine libpinyin（默认中文引擎）
 ```
 agentkit/
 ├── init.lua            -- 统一门面：Window:ocr/find_text/click_text/locate_text、app()
-├── x11.lua             -- 窗口(xdotool) + 截屏(sh) + 输入/匹配(FFI libagentkit.so)
+├── x11.lua             -- 窗口(libxdo) + 截屏(sh) + 输入/匹配(FFI libagentkit.so)
 ├── ocr.lua             -- PP-OCRv4（FFI libocr_simple.so + onnxruntime）
 ├── voice.lua           -- ASR/TTS/录音（复用 SenseVoice / sherpa-onnx / Kokoro）
 ├── adapters/

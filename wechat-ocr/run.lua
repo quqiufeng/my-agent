@@ -1,3 +1,5 @@
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- WeChat OCR - 启动入口
 -- 环境要求:
 --   luajit + libwechat_ocr_core.so + ONNX Runtime GPU

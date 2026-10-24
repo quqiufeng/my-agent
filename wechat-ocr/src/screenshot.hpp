@@ -27,8 +27,11 @@ cv::Mat capture_full_screen();
 // WeChat has a distinctive white/light-gray rectangular area
 WindowRect find_white_window(const cv::Mat &full_screen);
 
-// Find WeChat window XID via xdotool (works across virtual desktops)
+// Find WeChat window XID (X11 tree scan, works across virtual desktops)
 unsigned long find_wechat_xid();
+
+// Move a window to the current desktop via EWMH
+bool move_window_to_current_desktop(unsigned long wid);
 
 // Capture window content using XComposite (works even if window on another desktop)
 cv::Mat capture_window_xcomposite(unsigned long wid);

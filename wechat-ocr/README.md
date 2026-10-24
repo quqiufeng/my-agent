@@ -69,7 +69,7 @@
 
 | 功能 | 实现 | 说明 |
 |------|------|------|
-| 窗口定位 | ✅ | xdotool + 白面板检测，跨桌面支持 |
+| 窗口定位 | ✅ | LuaJIT libxdo + 白面板检测，跨桌面支持 |
 | 三列结构识别 | ✅ | 时间戳动态定位第三列，自适应窗口大小 |
 | 聊天文字识别 | ✅ | PaddleOCR PP-OCRv4，GPU 加速 |
 | 区域裁剪 | ✅ | 只识别第三列内容区，排除侧边栏噪音 |
@@ -126,7 +126,7 @@
      "top": []
    }
    ```
-3. **动态计算**：运行时通过 `xdotool getwindowgeometry` 拿到窗口左上角 `(wx, wy)`，目标图标绝对坐标 = `(wx + rel_x, wy + rel_y)`。
+3. **动态计算**：运行时通过 `xdo.lua` / libxdo 窗口几何 拿到窗口左上角 `(wx, wy)`，目标图标绝对坐标 = `(wx + rel_x, wy + rel_y)`。
 4. **稳定复用**：第一列宽度固定、图标相对窗口布局稳定，因此缓存长期有效；窗口移动、切换桌面都不影响。
 5. **窗口最大化前置**：所有基于坐标的自动化（`activate()`）执行前会调用 `ensure_maximized()`——
    若窗口未最大化则用 `wmctrl` 最大化（依赖 `wmctrl`，未装则静默跳过），保证缓存所基于的布局一致。
@@ -155,7 +155,7 @@
 
 ```bash
 # 依赖
-sudo apt install luajit xdotool xclip ffmpeg imagemagick
+sudo apt install luajit libxdo3 xclip ffmpeg imagemagick
 # 已安装：ONNX Runtime GPU、OpenCV、CUDA 12.x
 # 已放置模型：models/ch_PP-OCRv4_det_infer.onnx、models/ch_PP-OCRv4_rec_infer.onnx
 # 已放置字典：ppocr_keys_v1.txt
@@ -366,7 +366,7 @@ wechat-ocr/
 | LuaJIT | 脚本语言 |
 | ONNX Runtime GPU | 深度学习推理 |
 | OpenCV | 图像处理 |
-| xdotool | 窗口/鼠标/键盘控制 |
+| LuaJIT + libxdo (`xdo.lua`) | 窗口/鼠标/键盘控制 |
 | wmctrl | 窗口最大化（EWMH，`ensure_maximized` 用） |
 | xclip | 剪贴板操作 |
 | ffmpeg | 录屏 |

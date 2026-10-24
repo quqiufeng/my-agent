@@ -1,7 +1,9 @@
 -- wechat-ocr/lua/wechat_ocr/reader.lua
 -- 读取微信第三列「最下面一条消息」，用 ocr_capture_all（不依赖时间戳）。
 -- 供 once.lua / bridge.lua 共用。
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
 local ffi = require("ffi")
+require("xdo_shim").install()
 local cjson = require("cjson")
 ffi.cdef[[
 typedef struct ocr_engine_t ocr_engine_t;

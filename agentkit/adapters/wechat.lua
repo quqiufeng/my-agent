@@ -12,7 +12,6 @@ local m = map.load("wechat")
 M.map = m
 
 local function sleep(s) os.execute("sleep " .. tostring(s or 0.3)) end
-local function xdo(cmd) os.execute("export DISPLAY=${DISPLAY:-:0}; " .. cmd) end
 
 function M.window() return m:window() end
 function M.click(name) return m:click(name) end
@@ -24,9 +23,9 @@ function M.open_chat(name)
     if not w then return false, "no window" end
     w:activate(); sleep(0.3)
     m:click("search_box", w); sleep(0.3)
-    xdo("xdotool key --clearmodifiers ctrl+a; xdotool key BackSpace"); sleep(0.2)
+    w:key("ctrl+a"); w:key("BackSpace"); sleep(0.2)
     x11.paste(name); sleep(0.7)
-    xdo("xdotool key --clearmodifiers Return"); sleep(0.9)
+    w:key("Return"); sleep(0.9)
     return true
 end
 
@@ -35,9 +34,9 @@ function M.send(text)
     local w = m:window()
     if not w then return false, "no window" end
     m:click("input_box", w); sleep(0.25)
-    xdo("xdotool key --clearmodifiers ctrl+a; xdotool key BackSpace"); sleep(0.1)
+    w:key("ctrl+a"); w:key("BackSpace"); sleep(0.1)
     x11.paste(text); sleep(0.3)
-    xdo("xdotool key --clearmodifiers Return"); sleep(0.3)
+    w:key("Return"); sleep(0.3)
     return true
 end
 

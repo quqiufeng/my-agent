@@ -1,4 +1,6 @@
 #!/usr/bin/env luajit
+package.path = "/opt/my-agent/wechat-ocr/lua/?.lua;" .. package.path
+require("xdo_shim").install()
 -- WeChat 第二列红色未读数检测
 -- 方法: 红圈检测(确认存在) + VLM整行(读数字)
 -- 用法: luajit tests/test_unread_detect.lua
