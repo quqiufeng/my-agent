@@ -34,7 +34,11 @@
 
 ## 2. 你能做什么（白名单）
 
-**只能**调用 `operator/tools/*.sh` 里的白名单工具；除此之外的任何命令（`ls`/`cat`/`rm`/`git`/`pip`…）、文件读写、网络一律禁止。一条指令只调一个工具。
+**只能**调用 `operator/tools/` 下的白名单脚本；除此之外的任何命令（`ls`/`cat`/`rm`/`git`/`pip`…）、文件读写、网络一律禁止。一条指令只调一个工具。
+
+**所有能力最终都用 LuaJIT 实现**：桌面/X11 操作通过 `luajit -e` 加载 `operator/tools/xdo.lua`，不新增 `xdotool` 或 shell 脚本；旧 `tools/*.sh` **暂时保留**作兼容，逐项迁移并验证稳定后再删除，不双轨新增功能。
+
+- **需要 SSH 时**：用 `luajit -e` + `xdo.lua` 打开命令行应用（`qterminal`/`xterm`），在终端里执行对应 `ssh` 命令，完成后关闭终端；不要在 sh 脚本里直接 ssh。
 
 **完整工具清单、用法与「各工具使用规则」见 `TOOLS.md`**（由 `operator/plugin.sh index` 自动生成，新增工具无需改本文件）。以 `TOOLS.md` 为准。
 

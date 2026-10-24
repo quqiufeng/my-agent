@@ -1,6 +1,10 @@
 -- operator/tools/music.lua — WebDAV 无损音乐：搜索 / 播放(歌手或歌名) / 随机 / 停止 / 音量
 -- 由 tools/music.sh 调用（luajit）。播放走本机 VLC → 默认输出（USB 音响）。
--- 凭据来自环境变量 WEBDAV_URL / WEBDAV_USER / WEBDAV_PASS / WEBDAV_MUSIC（由 music.sh 从 ~/.env 载入）。
+-- 凭据来自 ~/.env 的 WEBDAV_URL / WEBDAV_USER / WEBDAV_PASS / WEBDAV_MUSIC。
+
+local DIR = (arg[0] or ""):match("^(.*)/") or "."
+package.path = DIR .. "/?.lua;" .. package.path
+require("dotenv").load()
 
 local URL   = (os.getenv("WEBDAV_URL") or ""):gsub("/+$", "")
 local USER  = os.getenv("WEBDAV_USER") or ""

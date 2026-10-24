@@ -6,12 +6,12 @@
 
 | 工具 | 用途 | 用法 |
 |------|------|------|
-| `tools/browser.sh` | 操作本机 Chrome（不新开浏览器） | `browser.sh new_tab` |
+| `tools/browser.sh` | 操作本机 Chrome（不新开浏览器，LuaJIT 实现） | `browser.sh new_tab` |
 | `tools/camera.sh` | 读摄像头(USB/RTSP)一帧给 Agent 读图：优先用常驻界面(Flutter)产出的实时帧，其次自抓；也可录像 | `tools/camera.sh [--usb N | --rtsp URL] [--out 路径] [--live 秒]` |
 | `tools/chrome_auth.sh` | 开启 Chrome「允许远程调试」并点掉授权弹窗（视觉）；`status` 查看是否受控 | `tools/chrome_auth.sh [enable|consent|watch <秒>|daemon|status]` |
 | `tools/chrome_debug.sh` | 每次启动前同步 profile，再用固定调试端口起专用 Chrome，供 chrome-devtools MCP(--browser-url) 连接（免反复授权） | `tools/chrome_debug.sh [端口]        # 默认 9222` |
 | `tools/cookie.sh` | 把某站点 cookie 从已登录 Chrome(CDP) 取出并存入 ~/.env，或直接读写 | `tools/cookie.sh save <域名> <ENVKEY> | set <ENVKEY> <值> | get <ENVKEY> | list` |
-| `tools/dash.sh` | 股票大屏（点阵风·暗色：指数环+自选股+小K线） | `tools/dash.sh [--to 会话] [--show]` |
+| `tools/dash.sh` | 股票大屏（点阵风·暗色：指数环+自选股+小K线） | `tools/dash.sh [--to 会话] [--show] [--no-send]` |
 | `tools/detect.sh` | 对摄像头抓帧做 YOLO 目标识别（**原生 C++/libtorch**，无 Python）：框出人/物并返回带框图路径 | `tools/detect.sh [--src usb|keting|menkou|<图片路径>] [--conf 0.35] [--to 会话]` |
 | `tools/dev.sh` | 本项目结构与规范；新能力=一个**走专用 Chrome(免授权登录)+CDP/DOM 的网页工具**（能力来自网页，安全）；支持新建/索引/提交(可回滚)/重启 | `tools/dev.sh info | caps | list | new <name> | index | commit [msg] | push | restart` |
 | `tools/douyin.sh` | 抖音作品：前 N 条下载到 ~/douyin/<uid> （文案/标签/视频；高赞转 wav 供克隆）；默认抓自己，可指定 uid | `tools/douyin.sh list [N] [<主页URL>|--uid <sec_uid>|--url <主页URL>]                 # 列前 N 条(id/赞/文案/标签)` |
@@ -20,8 +20,8 @@
 | `tools/english.sh` | 英语口语陪练（麦克风识别英文，回复用英文音色朗读） | `tools/english.sh start|stop|status` |
 | `tools/ezviz_url.sh` | 刷新萤石摄像头直播地址（纯 API）：用 ~/.env 的 appKey/appSecret 换 token → 取 HLS 播放地址（protocol=2）→ 写入指定文件；若设备加密已开启，自动用验证码关闭后重试 | `tools/ezviz_url.sh [序列号] [输出文件]   # 默认 802657358 → /tmp/myagent_ezviz.url；门口 815311181 → /tmp/myagent_door.url` |
 | `tools/fetch.sh` | 用 curl 抓取网页/接口，可带 ~/.env 里的 cookie（登录态） | `tools/fetch.sh <url> [--cookie ENVKEY] [--post DATA] [--json] [--save FILE] [--referer URL] [--header 'K: V'] [--ua UA]` |
-| `tools/find_file.sh` | 按文件名关键词搜索本机文件 + WebDAV，返回匹配（本地路径 或 可下载 URL） | `find_file.sh <关键词> [数量=15]` |
-| `tools/gemini_out.sh` | 把（Gemini 等）获取到的结果按目标转发 | `tools/gemini_out.sh` |
+| `tools/find_file.sh` | 按文件名关键词搜索本机文件 + WebDAV，返回匹配（本地路径 或 可下载 URL，LuaJIT 实现） | `find_file.sh <关键词> [数量=15]` |
+| `tools/gemini_out.sh` | 把（Gemini 等）获取到的结果按目标转发（LuaJIT 实现） | `tools/gemini_out.sh` |
 | `tools/gemini.sh` | 用 Chrome(CDP) 问 Google AI(Gemini)；默认排版图+文字发微信，--display 仅打印回答 | `tools/gemini.sh <问题> [--display] [--to 会话] [--no-image] [--no-send]` |
 | `tools/git_trending.sh` | GitHub 今日热门：抓取 Trending → 生成排版图 → 发微信（默认文件传输助手） | `tools/git_trending.sh [--since daily|weekly|monthly] [--lang <lang>] [--limit N] [--to 联系人] [--text] [--show] [--no-send]` |
 | `tools/google_search.sh` | 用 Chrome(CDP/DOM) 谷歌搜索，先生成排版图再发文字到微信（默认文件传输助手） | `tools/google_search.sh <关键词> [--news] [--to 会话] [--no-image] [--no-send]` |
@@ -32,22 +32,22 @@
 | `tools/living_audio.sh` | 客厅小音响播放音频；文本在本机 TTS 合成后 scp 到小机箱，由 VLC 输出到 3.5mm 小音响 | `tools/living_audio.sh say <文本> | play <本地文件|http(s) URL> | stop` |
 | `tools/living_chrome.sh` | 远程控制客厅小机箱 Chrome 打开网页（小机箱 HDMI 输出到 Sony 电视） | `tools/living_chrome.sh open <http/https URL>` |
 | `tools/lora.sh` | 用一批图片训练 Z-Image LoRA；**写真/整体(style)** 与 **人脸(face)** 两种，可 `--both` 一遍出两个（图片处理两遍、先后训练）；图片来源=本地目录/微博搜索/微博相册；后台一条龙，完成发微信（样图+文件名） | `tools/lora.sh train (<图片目录> | --weibo <明星/关键词> | --album <昵称/uid>) <触发词> [--mode style|face|both] [--rank N] [--epochs N] [--res 512|1536] [--pages N|all] [--limit N] [--to 会话] [--force] | status | list | cancel` |
-| `tools/music.sh` | 无损音乐：本地(WebDAV)搜索/播放 + 本地没有则在线(flac.music.hi.cn)取 FLAC 播放并存 NAS（VLC → USB 音响） | `tools/music.sh` |
-| `tools/note.sh` | 备忘 / 待办（存 ~/.myagent_notes，纯文本） | `tools/note.sh` |
-| `tools/now.sh` | 返回当前日期与时间 | `tools/now.sh` |
-| `tools/open_app.sh` | 打开白名单内的本机应用 | `open_app.sh <chrome|terminal|files|editor|wechat>` |
-| `tools/opencode_supervise.sh` | 监督 opencode 工作：向指定 opencode TUI 标签页发送“继续”并回车，避免任务中断 | `tools/opencode_supervise.sh [要发送的文字，默认“继续”]` |
+| `tools/music.sh` | 无损音乐：本地(WebDAV)搜索/播放 + 在线 FLAC（LuaJIT 实现） | `tools/music.sh` |
+| `tools/note.sh` | 备忘 / 待办（存 ~/.myagent_notes，纯文本，LuaJIT 实现） | `tools/note.sh` |
+| `tools/now.sh` | 返回当前日期与时间（LuaJIT 实现） | `tools/now.sh` |
+| `tools/open_app.sh` | 打开白名单内的本机应用（LuaJIT 实现） | `open_app.sh <chrome|terminal|files|editor|wechat>` |
+| `tools/opencode_supervise.sh` | 监督 opencode 工作：向指定 opencode TUI 标签页发送“继续”并回车，避免任务中断（LuaJIT 实现） | `tools/opencode_supervise.sh [要发送的文字，默认“继续”]` |
 | `tools/phone_audio.sh` | 把 USB 连接手机的播放音频经 scrcpy 转发到小机箱 3.5mm 小音响；手机继续自己控制播放/暂停 | `tools/phone_audio.sh start | stop | status` |
 | `tools/phone_music.sh` | 手机汽水音乐播放：确保手机音频转发到小机箱小音响，打开汽水音乐并开始播放 | `tools/phone_music.sh play | stop` |
 | `tools/phone.sh` | 控制连接的安卓手机：截屏、点击、滑动、按键、输入(含中文)、打开应用、列出/安装应用 | `tools/phone.sh status                        # 查看是否已连接` |
-| `tools/photo.sh` | USB 摄像头拍照并发微信（默认文件传输助手） | `tools/photo.sh` |
-| `tools/progress.sh` | 查看开发进度：点击 qterminal，逐个 tab 截图 opencode，合并后发微信 | `progress.sh [--to 会话]` |
+| `tools/photo.sh` | USB 摄像头拍照并发微信（LuaJIT 实现） | `tools/photo.sh` |
+| `tools/progress.sh` | 查看开发进度：逐个 tab 截图 opencode，合并后发微信（LuaJIT 实现） | `progress.sh [--to 会话]` |
 | `tools/quote_web.sh` | 看行情（浏览器打开搜狐行情页并全屏截图发微信） | `tools/quote_web.sh [名称或代码] [--to 会话]` |
 | `tools/remote.sh` | 管理本机/远程的 tmux + opencode 集群 | `tools/remote.sh` |
 | `tools/sale_points.sh` | 读取带货引流视频资料包（规则说明 + 卖点） | `tools/sale_points.sh` |
 | `tools/say_cam.sh` | 让萤石摄像头喇叭播放一段音频（对讲/喊话/播报）：上传音频到萤石 → 设备播放 | `tools/say_cam.sh [keting|menkou] <音频.wav>` |
 | `tools/say.sh` | USB 音响发声（TTS）；可用 --voice 指定克隆音色 | `tools/say.sh [--voice <音色名>] "文本"` |
-| `tools/screenshot.sh` | 截屏（默认全屏），返回图片路径 | `screenshot.sh [可选输出路径]` |
+| `tools/screenshot.sh` | 截屏（默认全屏），返回图片路径（LuaJIT 实现） | `tools/screenshot.sh` |
 | `tools/send_images.sh` | 下载图片（小图自动换大图）：保存目录并报张数，或发微信 | `tools/send_images.sh [--save 目录] [--to 会话] [--each] [--limit N] <图片URL...>   （URL 也可从 stdin 每行一个）` |
 | `tools/stock.sh` | 股票查询：行情快照 / 历史K线 / 估值 / 财务指标（同花顺数据源） | `tools/stock.sh <名称或代码> | kline <名称或代码> [天数] | value <名称或代码> | fin <名称或代码> [报告期如2024-4] | list` |
 | `tools/termctl.sh` | 控制 qterminal 中的命令行应用：列出标签数 / 截图发微信 / 向指定标签注入指令并回车执行 | `tools/termctl.sh tabs | shot [N] [--to 会话] | send <N> "<指令>" [--no-enter]` |
@@ -56,7 +56,7 @@
 | `tools/video_dub.sh` | 给已有视频配音+字幕（可克隆音色）；先用 --probe 生成配音比对时长，确保不超视频，再合成 | `tools/video_dub.sh <视频> "文案1|文案2|…" [--probe] [--speed 0.85] [--fit] [--ref 参考.wav] [--voice 名] [--out out.mp4] [--to 会话] [--send] [--keep-audio] [--fg]` |
 | `tools/vocab.sh` | 记单词（弹卡片→读单词判发音→✓下一个 / ✗弹释义卡帮助记忆） | `tools/vocab.sh start|stop|status | add <英文> <中文> | list` |
 | `tools/voices.sh` | 克隆音色：列出/注册/删除音色，或用指定音色发声 | `tools/voices.sh list | add <名> <参考.wav> ["参考文本"] | del <名> | say <名> "文本" [语速]` |
-| `tools/wechat_send_file.sh` | 发送文件/图片到微信 | `wechat_send_file.sh <本地路径|http(s)://URL> [--to 联系人]` |
+| `tools/wechat_send_file.sh` | 发送文件/图片到微信（LuaJIT 实现） | `wechat_send_file.sh <本地路径|http(s)://URL> [--to 联系人]` |
 | `tools/wechat_send.sh` | 发送微信文本 | `wechat_send.sh "内容"                  # 默认发到当前会话（文件传输助手）` |
 | `tools/wechat_shot.sh` | 截屏发微信：说「截图/截屏 <应用名>」则截该应用；不给应用则截桌面。发送到指定会话/文件传输助手 | `tools/wechat_shot.sh [--to 会话] [--app 应用名]` |
 | `tools/weibo_album.sh` | 微博相册大图下载（搜昵称定 uid → 相册接口翻页取大图 → 存 ~ 报张数） | `tools/weibo_album.sh <昵称|uid> [页数 | all，默认 20] [--save 目录] [--to 会话] [--limit N]` |
