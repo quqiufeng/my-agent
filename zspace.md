@@ -90,6 +90,7 @@ Host zspace nas
        │    ├─ HDMI3 ← 小机箱
        │    └─ ADB 5555 已授权（本机经小机箱隧道）
        ├─ 极空间 Z2Pro 192.168.1.53（网线 eth0；SSH 12200）
+       ├─ TP-Link 摄像头 192.168.1.111/24（RTSP 554 / ONVIF 2020；2880×1620 HEVC/AAC）
        └─ 其他在线设备：.5/.8/.17/.23/.46/.47/.48（未识别）
 ```
 
@@ -101,6 +102,7 @@ Host zspace nas
 | 小机箱（客厅机） | 有线（地址待确认） | 经交换机；原 WiFi `192.168.1.105` 已弃用 | i5-2400/11G/115G，Ubuntu 24.04.5 + Lubuntu；SSH 22、免密；HDMI 画面到 Sony 电视；3.5mm 小音响；Comica USB 麦克风；MAC `8c:3d:16:62:3c:1e` |
 | 极空间 Z2Pro | 192.168.1.53 | 网线 `eth0` | SSH 12200，Docker，WebDAV 5005，zfrp/DDNS 内网穿透 |
 | Sony 电视（BRAVIA） | 192.168.1.101 | 局域网 | IPv6 `240e:390:6e0:2020:aa6b:adff:fe30:71d9`；MAC `a8:6b:ad:30:71:d9`（Hon Hai 代工）；HDMI2 = 投屏器，HDMI3 = 小机箱；主发声为 3.5mm 小音响（全屋），电视 HDMI 发声仅作备用且切换麻烦；ADB 5555 已开并授权 |
+| TP-Link 摄像头 | 192.168.1.111 | 网线/WiFi | MAC `f8:c9:03:2d:55:45`；RTSP 554、ONVIF 2020、Web 80；2880×1620 HEVC/AAC；`camera.sh --tplink`；`~/.env` 有 `TPLINK_USER`/`TPLINK_PASS`/`TPLINK_RTSP`；位置待确认 |
 | 其他在线未识别 | .5/.8/.17/.23/.46/.47/.48 | 局域网 | 暂不归类 |
 
 - **只有一个子网 `192.168.1.0/24`**：主电脑、小机箱、NAS、AP 管理口天然互通。
@@ -109,8 +111,33 @@ Host zspace nas
 - Sony ADB 已可用（本机经小机箱隧道 `127.0.0.1:15555`）；`input keyevent 244` 切 HDMI2（投屏器），`245` 切 HDMI3（小机箱）；HDMI1–4 对应 243–246。
 - 已接入：2×绿联 5 口千兆交换机（35492），光猫旁一个、电视墙一个；链路 `光猫 LAN → 交换机A → 墙线 → 交换机B → 小机箱/电视`。主电脑、小机箱、电视均走有线。
 - 当前主电脑到电视 `.101` 直连 ARP 失败，ADB 经小机箱隧道 `127.0.0.1:15555`；接入交换机后再复测。
-- 客厅摄像头为 EZVIZ 云服务，能看到 Sony 电视画面，但清晰度一般，适合确认开关/画面状态，不适合读小字；未接入局域网取流与控制，不作为固定 IP 设备列出。
+- EZVIZ 摄像头为云服务（客厅/门口），适合确认电视开关/画面；TP-Link 摄像头在 `.111`，支持局域网 RTSP。
 - 排查方法（本机无 `ping`/`nmap`）：读 `/proc/net/arp`、SSDP M-SEARCH、按端口探测；`avahi-browse` 可用。
+
+## 摄像头视频流
+
+统一入口：`tools/camera.sh`。抓帧/录像默认只读；EZVIZ 地址失效时先刷新。
+
+| 摄像头 | 视频流地址 | 账号/凭据保存位置 | 失效后 |
+|---|---|---|---|
+| USB | `/dev/video0`（V4L2） | 无 | 无需刷新；换设备用 `--usb N` |
+| EZVIZ 客厅 | `/tmp/myagent_ezviz.url`（HLS） | `~/.env`：`EZVIZ_APPKEY`、`EZVIZ_APPSECRET`、`EZVIZ_CODE_802657358` | `tools/ezviz_url.sh 802657358 /tmp/myagent_ezviz.url` |
+| EZVIZ 门口 | `/tmp/myagent_door.url`（HLS） | `~/.env`：`EZVIZ_APPKEY`、`EZVIZ_APPSECRET`、`EZVIZ_CODE_815311181` | `tools/ezviz_url.sh 815311181 /tmp/myagent_door.url` |
+| TP-Link | `rtsp://admin:<TPLINK_PASS>@192.168.1.111:554/stream1` | `~/.env`：`TPLINK_USER`、`TPLINK_PASS`、`TPLINK_RTSP` | 一般不过期；IP 变了改 `TPLINK_RTSP` |
+
+命令：
+
+```bash
+tools/camera.sh --help
+tools/camera.sh --usb 0
+tools/camera.sh --ezviz keting
+tools/camera.sh --ezviz menkou
+tools/camera.sh --tplink
+tools/camera.sh --hls <m3u8>
+tools/camera.sh --rtsp <rtsp-url>
+```
+
+录像/后台：加 `--live <秒>`，或 `--bg` 后用 `tools/jobs.sh tail <id>` 看日志。
 
 ## 容器 / 应用生态（极丰富）
 

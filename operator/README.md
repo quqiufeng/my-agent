@@ -22,7 +22,7 @@ operator/
 ├── tools/                        # 白名单工具（唯一可执行入口，每个自带 @desc/@usage/@rule）
 │   ├── say.sh / wechat_send.sh / wechat_send_file.sh / screenshot.sh
 │   ├── music.sh / photo.sh / image.sh / find_file.sh
-│   ├── note.sh / progress.sh / now.sh / open_app.sh / browser.sh / dev.sh / gemini_out.sh
+│   ├── progress.sh / open_app.sh / browser.sh / dev.sh / gemini_out.sh
 │   └── ...
 └── README.md
 ```
