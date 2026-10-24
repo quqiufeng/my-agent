@@ -27,7 +27,7 @@
 | 节点 | 地址 / 接入 | 能力 | 限制 |
 |------|-------------|------|------|
 | 主电脑 `quqiufeng` | `192.168.1.10`，网线 `enp34s0` | 跑 my-agent / opencode；Chrome 156 + CDP `:9222`、微信/语音、ADB 客户端、构建与开发 | 不直接开放任意 shell；对电视 `.101` 直连不稳定 |
-| 小机箱（客厅） | 有线（经交换机；原 `192.168.1.105` WiFi 已弃用，具体有线地址待确认） | SSH 免密 + `sudo` 免密；x11vnc `:5900`；Chrome 156 + CDP `:9222`；微信、DigiLink、音频/麦克风；可跑 GUI | 工具默认 `SMALLPC_HOST=192.168.1.105`，改有线后需同步新地址；VNC 分辨率按桌面设置 |
+| 小机箱（客厅） | 有线（经交换机；原 `192.168.1.105` WiFi 已弃用，具体有线地址待确认） | 本机自行运行 Chrome/CDP、微信、DigiLink、音频/麦克风、GUI | 主电脑不再提供远程操作小机箱的插件；小机箱本地自行操作 |
 | Sony 电视 | `192.168.1.101`（有线），ADB `5555` 已授权 | 装/开 Android 应用；`244/245` 切 HDMI2/HDMI3；`224` 唤醒；关机=假关机/待机；**禁止真实断电/重启** | ADB 经小机箱隧道 `127.0.0.1:15555`；假关机可能断网，需用户遥控器唤醒；电视音频仅备用 |
 | 极空间 NAS | `192.168.1.53`，SSH `12200` | Docker、存储、WebDAV `:5005`；小机箱用 Thunar 原生 `dav://` 访问 | 需要账号密码；不在 agent 白名单内，按需加工具 |
 | 客厅摄像头（EZVIZ） | 云服务 | 能看到 Sony 电视画面，可用于确认电视开关/画面状态 | 清晰度一般，读小字/UI 不可靠；当前未接入局域网取流与控制 |
@@ -45,8 +45,7 @@
 
 - 主电脑与小机箱都装有 Chrome 156，均可访问外网；都支持通过 CDP 执行 JS、导航、DOM/点击/输入等网页操作。
 - 主电脑：`operator/tools/chrome_debug.sh` 启动专用固定端口实例，CDP `127.0.0.1:9222`，MCP 用 `--browser-url=http://127.0.0.1:9222`。
-- 小机箱：调试实例使用 `~/.chrome-debug` profile，CDP `127.0.0.1:9222`；主电脑通过 SSH/`operator/tools/living_chrome.sh` 调用，当前不直接暴露到局域网。
-- `living_chrome.sh open <URL>` 只是打开页面；需要复杂交互时，可在此基础上用 CDP `/json` + WebSocket 执行脚本（点击、填写、抓取、截图）。
+- 小机箱：Chrome/CDP 与音视频由小机箱本地自行使用；主电脑不提供远程控制小机箱的插件。
 
 **有线网络**
 
@@ -74,6 +73,7 @@
 1. **运行时禁止引入 Python**。语音识别用 C++ 的 `SenseVoice.cpp`，合成用 `sherpa-onnx + Kokoro`，微信用 LuaJIT + C++。不要新增 `.py` 运行时依赖。
 2. **白名单是安全边界**。任何“大脑能执行的操作”都必须是一个 `operator/tools/*.sh`：
    - 新增能力时，业务逻辑用 **Lua 或 JS** 实现；`.sh` 只做几行兼容入口，不把逻辑写进 shell。
+   - 分工：**Lua 做本机/系统/音视频/文件/终端；JS 做浏览器/CDP 网页能力**（`agentkit.cdp`/`cdp.js`/`cdpd.js`）。
    - 新增工具时，必须同步：`operator/tools/<name>.sh`、`operator/AGENTS.md` 的工具表、`operator/opencode.json` 的 `bash` 放行项、`guard.js` 正则（当前限定 `tools/<name>.sh`，一般无需改）。
    - 不要给大脑开放任意 shell、文件读写、网络。
 3. **两层 AGENTS.md 别混**：根目录本文件=开发说明；`operator/AGENTS.md`=运行时契约。

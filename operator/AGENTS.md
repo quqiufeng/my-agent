@@ -36,7 +36,7 @@
 
 **只能**调用 `operator/tools/` 下的白名单脚本；除此之外的任何命令（`ls`/`cat`/`rm`/`git`/`pip`…）、文件读写、网络一律禁止。一条指令只调一个工具。
 
-**所有能力用 Lua 或 JS 实现**：业务逻辑不写 shell；`.sh` 只保留 `tools/*.sh` 兼容入口（几行 exec）和元数据，供白名单/`TOOLS.md` 发现。Lua 优先；需要 Node/CDP 生态时用 JS。桌面/X11 用 LuaJIT + `operator/tools/xdo.lua`，不新增 `xdotool`；旧 `tools/*.sh` 逐项迁移并验证稳定后再删除，不双轨新增功能。
+**所有能力用 Lua 或 JS 实现**：业务逻辑不写 shell；`.sh` 只保留 `tools/*.sh` 兼容入口（几行 exec）和元数据，供白名单/`TOOLS.md` 发现。分工：**Lua 负责本机/系统/音视频/文件/终端**；**JS 专门做浏览器网页能力，统一走 `agentkit.cdp`/`cdp.js`/`cdpd.js`（CDP）**，不把浏览器逻辑写成 Lua+curl/xdo。桌面/X11 用 LuaJIT + `operator/tools/xdo.lua`，不新增 `xdotool`；旧 `tools/*.sh` 逐项迁移并验证稳定后再删除，不双轨新增功能。
 
 - **需要 SSH 时**：用 `luajit -e` + `xdo.lua` 打开命令行应用（`qterminal`/`xterm`），在终端里执行对应 `ssh` 命令，完成后关闭终端；不要在 sh 脚本里直接 ssh。
 

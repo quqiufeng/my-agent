@@ -29,16 +29,12 @@
 | `tools/img_video.sh` | 动画短片：出图 → 配音+字幕+运镜/转场+片名卡 → 竖版短片（存 ~/image，默认不发微信） | `tools/img_video.sh [--voice <音色名>] [--title 成语] [--pinyin KEZHOU] [--source 出处] [--end 释义] [--img-preset xhs|pyq] [--outimg 目录] [--imgdir 目录] [--size WxH] [--n 张数] [--scenes "分镜1|…"] [--text "旁白1|…"] [--out out.mp4] [--send [--to 会话]] [--fg]` |
 | `tools/iso_native.sh` | 等距解释图/动画：调用 `~/iso_flutter/bin/iso.sh`（native：Dart+Lua 引擎，Flutter 离屏渲染）生成 PNG/GIF/MP4，再发微信。引擎/图/设计规范都在 `~/iso_flutter`，本工具只做"调用 + 发微信"。 | `tools/iso_native.sh render <图名> [--ss N] [--lift 0..1] [--theme dark|light] [--out 目录] [--to 会话] [--no-send]` |
 | `tools/listen_cam.sh` | 监听萤石摄像头麦克风（从直播流抽 AAC 音频）：播放到本机音响，或录成 wav | `tools/listen_cam.sh [keting|menkou] [秒数=10] [--save <路径>] [--play]` |
-| `tools/living_audio.sh` | 客厅小音响播放音频；文本在本机 TTS 合成后 scp 到小机箱，由 VLC 输出到 3.5mm 小音响 | `tools/living_audio.sh say <文本> | play <本地文件|http(s) URL> | stop` |
-| `tools/living_chrome.sh` | 远程控制客厅小机箱 Chrome 打开网页（小机箱 HDMI 输出到 Sony 电视） | `tools/living_chrome.sh open <http/https URL>` |
 | `tools/lora.sh` | 用一批图片训练 Z-Image LoRA；**写真/整体(style)** 与 **人脸(face)** 两种，可 `--both` 一遍出两个（图片处理两遍、先后训练）；图片来源=本地目录/微博搜索/微博相册；后台一条龙，完成发微信（样图+文件名） | `tools/lora.sh train (<图片目录> | --weibo <明星/关键词> | --album <昵称/uid>) <触发词> [--mode style|face|both] [--rank N] [--epochs N] [--res 512|1536] [--pages N|all] [--limit N] [--to 会话] [--force] | status | list | cancel` |
 | `tools/music.sh` | 无损音乐：本地(WebDAV)搜索/播放 + 在线 FLAC（LuaJIT 实现） | `tools/music.sh` |
 | `tools/note.sh` | 备忘 / 待办（存 ~/.myagent_notes，纯文本，LuaJIT 实现） | `tools/note.sh` |
 | `tools/now.sh` | 返回当前日期与时间（LuaJIT 实现） | `tools/now.sh` |
 | `tools/open_app.sh` | 打开白名单内的本机应用（LuaJIT 实现） | `open_app.sh <chrome|terminal|files|editor|wechat>` |
 | `tools/opencode_supervise.sh` | 监督 opencode 工作：向指定 opencode TUI 标签页发送“继续”并回车，避免任务中断（LuaJIT 实现） | `tools/opencode_supervise.sh [要发送的文字，默认“继续”]` |
-| `tools/phone_audio.sh` | 把 USB 连接手机的播放音频经 scrcpy 转发到小机箱 3.5mm 小音响；手机继续自己控制播放/暂停 | `tools/phone_audio.sh start | stop | status` |
-| `tools/phone_music.sh` | 手机汽水音乐播放：确保手机音频转发到小机箱小音响，打开汽水音乐并开始播放 | `tools/phone_music.sh play | stop` |
 | `tools/phone.sh` | 控制连接的安卓手机：截屏、点击、滑动、按键、输入(含中文)、打开应用、列出/安装应用 | `tools/phone.sh status                        # 查看是否已连接` |
 | `tools/photo.sh` | USB 摄像头拍照并发微信（LuaJIT 实现） | `tools/photo.sh` |
 | `tools/progress.sh` | 查看开发进度：逐个 tab 截图 opencode，合并后发微信（LuaJIT 实现） | `progress.sh [--to 会话]` |
@@ -46,7 +42,7 @@
 | `tools/remote.sh` | 管理本机/远程的 tmux + opencode 集群 | `tools/remote.sh` |
 | `tools/sale_points.sh` | 读取带货引流视频资料包（规则说明 + 卖点） | `tools/sale_points.sh` |
 | `tools/say_cam.sh` | 让萤石摄像头喇叭播放一段音频（对讲/喊话/播报）：上传音频到萤石 → 设备播放 | `tools/say_cam.sh [keting|menkou] <音频.wav>` |
-| `tools/say.sh` | USB 音响发声（TTS）；可用 --voice 指定克隆音色 | `tools/say.sh [--voice <音色名>] "文本"` |
+| `tools/say.sh` | USB 音响发声（TTS）；可用 --voice 指定克隆音色（LuaJIT 编排） | `tools/say.sh [--voice <音色名>] "文本"` |
 | `tools/screenshot.sh` | 截屏（默认全屏），返回图片路径（LuaJIT 实现） | `tools/screenshot.sh` |
 | `tools/send_images.sh` | 下载图片（小图自动换大图）：保存目录并报张数，或发微信 | `tools/send_images.sh [--save 目录] [--to 会话] [--each] [--limit N] <图片URL...>   （URL 也可从 stdin 每行一个）` |
 | `tools/stock.sh` | 股票查询：行情快照 / 历史K线 / 估值 / 财务指标（同花顺数据源） | `tools/stock.sh <名称或代码> | kline <名称或代码> [天数] | value <名称或代码> | fin <名称或代码> [报告期如2024-4] | list` |
@@ -55,7 +51,7 @@
 | `tools/vacuum.sh` | 控制科沃斯扫地机 DEEBOT（**原生 C 内核**，无 Python）：清扫/回充/找机/吸力/水量/音量/次数/续扫/AI/地毯/高级模式；并读电量/故障/网络/统计 | `tools/vacuum.sh <cmd> [arg]` |
 | `tools/video_dub.sh` | 给已有视频配音+字幕（可克隆音色）；先用 --probe 生成配音比对时长，确保不超视频，再合成 | `tools/video_dub.sh <视频> "文案1|文案2|…" [--probe] [--speed 0.85] [--fit] [--ref 参考.wav] [--voice 名] [--out out.mp4] [--to 会话] [--send] [--keep-audio] [--fg]` |
 | `tools/vocab.sh` | 记单词（弹卡片→读单词判发音→✓下一个 / ✗弹释义卡帮助记忆） | `tools/vocab.sh start|stop|status | add <英文> <中文> | list` |
-| `tools/voices.sh` | 克隆音色：列出/注册/删除音色，或用指定音色发声 | `tools/voices.sh list | add <名> <参考.wav> ["参考文本"] | del <名> | say <名> "文本" [语速]` |
+| `tools/voices.sh` | 克隆音色：列出/注册/删除音色，或用指定音色发声（LuaJIT 编排） | `tools/voices.sh list | add <名> <参考.wav> ["参考文本"] | del <名> | say <名> "文本" [语速]` |
 | `tools/wechat_send_file.sh` | 发送文件/图片到微信（LuaJIT 实现） | `wechat_send_file.sh <本地路径|http(s)://URL> [--to 联系人]` |
 | `tools/wechat_send.sh` | 发送微信文本 | `wechat_send.sh "内容"                  # 默认发到当前会话（文件传输助手）` |
 | `tools/wechat_shot.sh` | 截屏发微信：说「截图/截屏 <应用名>」则截该应用；不给应用则截桌面。发送到指定会话/文件传输助手 | `tools/wechat_shot.sh [--to 会话] [--app 应用名]` |
@@ -118,11 +114,7 @@
 43. 说“电视播放/放个电影/看某剧”→ tools/tv.sh play <名字>；4K/高码率自动无损重封装（视频不转码，只把 DTS/TrueHD 音轨转 AC3），边播边缓存；--direct=原始 MKV；--transcode 才是降 1080p（手动兜底）；暂停→pause；关掉→stop；状态→status/diag
 44. 说“听听客厅/门口的声音/有没有动静”→ tools/listen_cam.sh keting 10（默认外放）；只想存文件用 --save
 45. 说“对客厅喊话 / 让门口响一下 / 往客厅播报”→ tools/say_cam.sh keting <wav>（**需已开通萤石「语音提醒」资源包**，否则返回 111000）
-46. 说“客厅电视/小机箱打开网页/放某个网页” → tools/living_chrome.sh open <URL>；只允许 http/https。
-47. 说“客厅/小机箱/小音响 说话/播放音频/放这段声音”→ `say <文本>` 或 `play <文件/URL>`；停止→`stop`。
-48. 说“手机声音转到小音响/开手机音频/关手机音频”→ start/stop；只转发音频，不控制手机播放。
-49. 说“打开汽水音乐/手机放汽水音乐/用手机听歌/汽水音乐播放”→ play；停止转发→stop（手机播放/暂停由手机自己控制）。
-50. 说“监督 opencode/让 opencode 继续/盯着它干活”→ tools/opencode_supervise.sh；默认发送“继续”，可带自定义文字。
-51. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
+46. 说“监督 opencode/让 opencode 继续/盯着它干活”→ tools/opencode_supervise.sh；默认发送“继续”，可带自定义文字。
+47. 说“命令行/终端有几个任务(标签)”→ 只调 `tools/termctl.sh tabs`，把它输出的 **任务数** 直接回复给用户（不用解释）。
 
 _（本文件由 plugin.sh 生成，被 opencode 通过 instructions 自动加载；改工具后重跑 index 即可。）_

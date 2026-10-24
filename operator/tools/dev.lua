@@ -30,12 +30,12 @@ local info = [[
 入口(语音/微信/定时，只产文本) → opencode 大脑 → 白名单工具 operator/tools/*.sh → 本机操作。
 已有能力清单见 operator/CAPABILITIES.md（`tools/dev.sh caps`）。
 
-## 自我扩展：逻辑优先 Lua / JS
+## 自我扩展：Lua 做本机，JS 做浏览器
 现有能力不够时，新增工具：
-- 业务逻辑写 `operator/tools/<name>.lua`（或 `.js`）；
+- **Lua**：本机/系统/音视频/文件/终端/窗口（`xdo.lua`）；
+- **JS**：浏览器网页能力，统一走 `agentkit.cdp` / `cdp.js` / `cdpd.js`（CDP/DOM）；
 - `operator/tools/<name>.sh` 只做几行兼容入口（exec luajit/node）+ 元数据，供 `TOOLS.md` 发现；
-- 网页能力用专用 Chrome 9222 + `agentkit.cdp`（goto/eval/click/fill/text），不碰本机任意文件/进程；
-- 不做浏览器扩展，也不把逻辑写进 shell。
+- 不把浏览器逻辑写成 Lua+curl/xdo，也不把业务逻辑写进 shell。
 
 ## 目录
 operator/tools/          白名单工具（入口 .sh + 逻辑 .lua/.js）
@@ -48,8 +48,8 @@ agentkit/tools/*.js      CDP 桥（cdp.js/cdpd.js/gemini.js）
 operator/report/         Kami 排版 HTML→PNG/PDF（render.sh）
 
 ## 开发一个新能力
-1. `tools/dev.sh new <name>` 生成 `<name>.lua` + `<name>.sh` 入口
-2. 填 Lua/JS 逻辑（网页用 `ak.cdp`）
+1. `tools/dev.sh new <name>` 生成 `<name>.js` + `<name>.sh` 入口
+2. 填 JS 逻辑（浏览器统一走 `agentkit.cdp`/`cdp.js`）
 3. `tools/dev.sh commit "feat(tool): <name> ..."`
 4. `tools/dev.sh index` → `tools/dev.sh restart`
 
@@ -66,40 +66,40 @@ local function new_tool(name)
         os.exit(2)
     end
     local sh = TOOLS .. "/" .. name .. ".sh"
-    local lua = TOOLS .. "/" .. name .. ".lua"
-    if read_file(sh) or read_file(lua) then
-        io.stderr:write("已存在: " .. (read_file(sh) and sh or lua) .. "\n")
+    local js = TOOLS .. "/" .. name .. ".js"
+    if read_file(sh) or read_file(js) then
+        io.stderr:write("已存在: " .. (read_file(sh) and sh or js) .. "\n")
         os.exit(1)
     end
 
-    local lf = assert(io.open(lua, "w"))
-    lf:write([[
-local DIR = (arg[0] or ""):match("^(.*)/") or "."
-local ak = require("agentkit")
-
-if os.execute("ss -ltn 2>/dev/null | grep -q ':9222 '") ~= 0 then
-    os.execute("'" .. DIR .. "/chrome_debug.sh' >/dev/null 2>&1")
-end
-ak.cdp.goto("https://example.com")
-os.execute("sleep 2")
-print(ak.cdp.eval("document.body.innerText.slice(0,500)"))
+    local jf = assert(io.open(js, "w"))
+    jf:write([[#!/usr/bin/env node
+const { execFileSync } = require('child_process');
+const CDP = '/opt/my-agent/agentkit/tools/cdp.js';
+const cdp = (cmd, arg) => execFileSync('node', [CDP, cmd, arg || ''], { encoding: 'utf8' });
+(async () => {
+  cdp('goto', 'https://example.com');
+  await new Promise(r => setTimeout(r, 2000));
+  console.log(cdp('eval', 'document.body.innerText.slice(0,500)'));
+})();
 ]])
-    lf:close()
+    jf:close()
 
     local sf = assert(io.open(sh, "w"))
     sf:write("#!/usr/bin/env bash\n")
-    sf:write("# tools/" .. name .. ".sh — 一句话说明（LuaJIT/JS 实现）\n")
-    sf:write("# @desc <用途>\n")
+    sf:write("# tools/" .. name .. ".sh — 一句话说明（JS + CDP 实现）\n")
+    sf:write("# @desc <用途：通过专用 Chrome + CDP/DOM 从网页获取/操作>\n")
     sf:write("# @usage tools/" .. name .. ".sh <参数>\n")
     sf:write("# @rule 说“<触发词>” → 用 `tools/" .. name .. ".sh`\n")
     sf:write("# @order 50\n")
     sf:write("set -uo pipefail\n")
     sf:write("DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n")
-    sf:write("exec luajit \"$DIR/" .. name .. ".lua\" \"$@\"\n")
+    sf:write("ss -ltn 2>/dev/null | grep -q ':9222 ' || \"$DIR/chrome_debug.sh\" >/dev/null 2>&1\n")
+    sf:write("exec node \"$DIR/" .. name .. ".js\" \"$@\"\n")
     sf:close()
 
-    os.execute("chmod 755 " .. q(sh) .. " " .. q(lua))
-    print("已创建: " .. sh .. " + " .. lua)
+    os.execute("chmod 755 " .. q(sh) .. " " .. q(js))
+    print("已创建: " .. sh .. " + " .. js)
     gcommit("feat(tool): scaffold " .. name)
 end
 
