@@ -83,7 +83,6 @@ operator/tools/<name>.sh <参数>        # 直接看 stdout / 效果，绕过大
 | 19 | weibo_imgs.sh | 下载微博图 | `ai 下载微博图 刘浩存` | 存 `~/微博图/刘浩存/` 并报张数 | ✓ | 2026-10-06 20:00 | 375 张/38s |
 | 20 | send_images.sh | 下载图片URL | `send_images.sh --save /tmp <url>` | 保存并报张数 | | | |
 | 21 | progress.sh | 开发进度 | `ai 看看开发进度` | 合并截图到来源会话 | | | |
-| 22 | remote.sh | 集群管理 | `ai 集群状态` | tmux/opencode 列表 | | | |
 | 23 | browser.sh | 打开网页 | `ai 新开个标签页` | Chrome 新标签 | | | |
 | 24 | open_app.sh | 打开应用 | `ai 打开终端` | 对应应用启动 | | | |
 | 25 | english.sh | 英语陪练 | `english.sh start` / `stop` / `status` | 进入/退出陪练 | | | |
@@ -91,7 +90,7 @@ operator/tools/<name>.sh <参数>        # 直接看 stdout / 效果，绕过大
 | 27 | gemini_out.sh | 结果分发 | `gemini_out.sh wechat "…"` | 按目标转发 | | | |
 | 28 | voice/app | 统一界面（点阵风） | `voice/voice.sh app`（需显示器） | 摄像头 + 点阵状态栏/电平条/点阵时钟 | ✓ | 2026-10-07 10:32 | C++ 编译 `make -C voice/app` |
 | 29 | say.sh / voices.sh | 克隆音色发声 | `voices.sh add <名> <ref.wav> "文本"` → `say.sh --voice <名> "内容"` | 用指定音色出声 | ✓ | 2026-10-08 09:20 | CosyVoice3(C++/GGUF)+LuaJIT FFI；`list/del` 管理 |
-| 30 | img_video.sh | 动画短片（出图→配音→字幕） | `img_video.sh`（默认传统童话）/ `--n 2 --fg` | 生成竖版带配音字幕短片 | ✓ | 2026-10-08 09:27 | 合成链路用假 backup 验证；真跑需 SD 出图(慢) |
+| 30 | img_video.sh | 图片视频（出图→MP4） | `img_video.sh --imgdir /tmp/wb_imgs_test --seconds 1 --fg --out /tmp/imgvideo_test.mp4` | 生成竖版 MP4 | ✓ | 2026-10-24 16:14 | 复用图片验证合成；真出图需 SD（慢） |
 | 31 | video_dub.sh | 给视频配音+字幕 | `video_dub.sh <视频> "<文案>" --probe` → 比对时长 → `--fg` 合成 | 配音≤视频时长、声画同步、字幕≤2行 | ✓ | 2026-10-08 12:10 | **先 probe 再合成**（见下）；每段≤24字 |
 
 ### 3.4 给视频配音+字幕的正确姿势（video_dub.sh）

@@ -303,11 +303,7 @@ robot.monitor({
     interval_ms = 3000,
     on_message = function(text, cycle)
         if text:match("^@agent") then
-            -- 转发给 Master Agent
-            os.execute(string.format(
-                "/opt/my-agent/remote.sh send master '%s'",
-                text:sub(7):gsub("'", "'\\'''")
-            ))
+            -- 转发给 Master Agent：POST http://localhost:4097/tui/append-prompt
         end
     end
 })

@@ -22,7 +22,7 @@ operator/
 ├── tools/                        # 白名单工具（唯一可执行入口，每个自带 @desc/@usage/@rule）
 │   ├── say.sh / wechat_send.sh / wechat_send_file.sh / screenshot.sh
 │   ├── music.sh / tv.sh / photo.sh / image.sh / find_file.sh
-│   ├── note.sh / progress.sh / now.sh / open_app.sh / browser.sh / remote.sh / gemini_out.sh
+│   ├── note.sh / progress.sh / now.sh / open_app.sh / browser.sh / dev.sh / gemini_out.sh
 │   └── ...
 └── README.md
 ```
@@ -55,7 +55,6 @@ operator/start.sh --bg       # 后台
 | `screenshot.sh [路径]` | 截屏 |
 | `open_app.sh <chrome\|terminal\|files\|editor\|wechat>` | 开应用 |
 | `browser.sh new_tab\|open\|search\|ai_search\|screenshot` | 浏览器 |
-| `remote.sh status\|start\|stop ...` | 集群/会话 |
 
 ## 三层防护
 

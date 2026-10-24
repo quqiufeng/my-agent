@@ -15,7 +15,7 @@
 operator/        # 大脑：tools/*.sh、*.lua、opencode.json、guard.js、TOOLS.md
 voice/           # 语音：*.c/*.cpp/*.h/*.sh/*.lua + 配置
 wechat-ocr/      # 微信入口：*.lua + C++ 源码 + bridge.sh
-remote.sh start.sh *.md
+start.sh *.md
 ```
 
 ## 2. 编译产物 / 二进制（被 `.gitignore` 排除，需 scp 或目标机重编）
