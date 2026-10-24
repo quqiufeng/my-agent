@@ -1,4 +1,5 @@
 local DIR = (arg[0] or ""):match("^(.*)/") or "."
+local reg = require("device_registry")
 local src, conf, to = "usb", "0.35", ""
 local grid = false
 
@@ -55,11 +56,15 @@ local function run_grid()
     local tag = os.date("%Y%m%d_%H%M%S")
     local dir = "/tmp/myagent_det_grid_" .. tag
     os.execute("mkdir -p " .. q(dir))
+    local function dn(role, fallback)
+        local d = reg.device(role)
+        return d and d.name or fallback
+    end
     local specs = {
-        { name = "EZVIZ 客厅", args = "--ezviz keting" },
-        { name = "EZVIZ 门口", args = "--ezviz menkou" },
-        { name = "TP-Link", args = "--tplink" },
-        { name = "USB", args = "--usb 0" },
+        { name = dn("keting", "EZVIZ 客厅"), args = "--ezviz keting" },
+        { name = dn("menkou", "EZVIZ 门口"), args = "--ezviz menkou" },
+        { name = dn("tplink", "TP-Link"), args = "--tplink" },
+        { name = dn("usb", "USB"), args = "--usb 0" },
     }
     local counts, ann = {}, {}
     local total = 0

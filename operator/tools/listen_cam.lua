@@ -3,6 +3,7 @@ package.path = DIR .. "/?.lua;" .. package.path
 local bg = require("bgjob")
 require("dotenv").load()
 local ezlib = require("ezviz")
+local reg = require("device_registry")
 
 local function q(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
@@ -48,18 +49,30 @@ end
 
 local input
 if src == "tplink" then
+    local t = reg.audio("tplink") or {}
     local url = os.getenv("TPLINK_RTSP") or ""
+    if url == "" then
+        local user = os.getenv("TPLINK_USER") or "admin"
+        local pass = os.getenv("TPLINK_PASS") or ""
+        local host = t.host or os.getenv("TPLINK_HOST") or "192.168.1.111"
+        local port = t.port or 554
+        local path = t.path or "/stream1"
+        if pass ~= "" then url = "rtsp://" .. user .. ":" .. pass .. "@" .. host .. ":" .. tostring(port) .. path end
+    end
     if url == "" then
         io.stderr:write("TPLINK_RTSP 未配置（~/.env）\n")
         os.exit(1)
     end
     input = "-rtsp_transport tcp -i " .. q(url)
 elseif src == "usb" then
-    local dev = os.getenv("VOICE_MIC_DEV") or os.getenv("USB_MIC_DEV") or "plughw:2,0"
+    local a = reg.audio("usb") or {}
+    local dev = os.getenv("VOICE_MIC_DEV") or os.getenv("USB_MIC_DEV") or a.device or "plughw:2,0"
     input = "-f alsa -i " .. q(dev)
 else
     local door = (src == "menkou" or src == "门口")
-    local serial, urlfile = ezlib.serial(door and "menkou" or "keting")
+    local a = reg.audio(door and "menkou" or "keting") or {}
+    local serial, urlfile = a.serial or ezlib.serial(door and "menkou" or "keting")
+    if a.url_file then urlfile = a.url_file end
     local f = io.open(urlfile, "r")
     local url = f and (f:read("*l") or "") or ""
     if f then f:close() end

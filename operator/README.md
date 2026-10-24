@@ -53,16 +53,17 @@ operator/start.sh --bg       # 后台
 | `wechat_send.sh "文本"` / `--to 联系人 "文本"` | 发微信（默认文件传输助手） |
 | `wechat_send_file.sh <路径> [--to 联系人]` | 发文件/图片 |
 | `screenshot.sh [路径]` | 截屏 |
+| `netmap.sh scan` | 扫描设备并更新拓扑/音视频源 |
 | `camera_grid.sh` | 四路摄像头拼图发微信 |
 | `term_progress.sh` | 开发进度截图 |
 
-> 完整 35 个工具及参数见 [`TOOLS.md`](TOOLS.md)。
+> 完整 36 个工具及参数见 [`TOOLS.md`](TOOLS.md)。
 
 ## 三层防护
 
 1. **权限**：`opencode.json` 里 `bash` 默认 `deny`、只放行 `tools/*`；`read/edit/webfetch` 等一律 `deny`。
 2. **兜底插件**：`guard.js` 在执行前再校验，禁止 `&&`、`;`、`|`、重定向等拼接绕过。
-3. **契约**：`AGENTS.md` + `TOOLS.md` 告诉模型“只能调用当前 35 个白名单工具，不认识的请求就拒绝”。
+3. **契约**：`AGENTS.md` + `TOOLS.md` 告诉模型“只能调用当前 36 个白名单工具，不认识的请求就拒绝”。
 
 ## 注意
 

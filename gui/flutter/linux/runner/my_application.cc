@@ -63,7 +63,8 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "agent");
   }
 
-  gtk_window_set_default_size(window, 1280, 720);
+  gtk_window_set_default_size(window, 1600, 900);
+  gtk_window_maximize(window);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   // 使用 Skia 渲染后端：Impeller 对经典 FlTextureGL 外部纹理支持不完善，

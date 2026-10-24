@@ -3,6 +3,7 @@ package.path = DIR .. "/?.lua;" .. package.path
 local bg = require("bgjob")
 require("dotenv").load()
 local ezlib = require("ezviz")
+local reg = require("device_registry")
 
 local function q(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
@@ -17,6 +18,7 @@ local function size(path)
 end
 
 local usb = os.getenv("CAM_USB_INDEX") or "0"
+local usb_explicit = false
 local bgflag = false
 local tplink_flag = false
 local rtsp = os.getenv("RTSP_URL") or ""
@@ -44,19 +46,22 @@ local i = 1
 while i <= #arg do
     local a = arg[i]
     if a == "--help" or a == "-h" or a == "--list" then print(HELP); os.exit(0)
-    elseif a == "--usb" then usb = arg[i + 1] or "0"; i = i + 2
+    elseif a == "--usb" then usb = arg[i + 1] or "0"; usb_explicit = true; i = i + 2
     elseif a == "--rtsp" then rtsp = arg[i + 1] or ""; i = i + 2
     elseif a == "--ezviz" then ezviz = arg[i + 1] or "keting"; i = i + 2
     elseif a == "--hls" then hls = arg[i + 1] or ""; i = i + 2
     elseif a == "--tplink" then
         tplink_flag = true
+        local t = reg.video("tplink") or {}
         rtsp = os.getenv("TPLINK_RTSP") or ""
         if rtsp == "" then
             local user = os.getenv("TPLINK_USER") or "admin"
             local pass = os.getenv("TPLINK_PASS") or ""
-            local host = os.getenv("TPLINK_HOST") or "192.168.1.111"
+            local host = t.host or os.getenv("TPLINK_HOST") or "192.168.1.111"
+            local port = t.port or 554
+            local path = t.path or "/stream1"
             if pass ~= "" then
-                rtsp = "rtsp://" .. user .. ":" .. pass .. "@" .. host .. ":554/stream1"
+                rtsp = "rtsp://" .. user .. ":" .. pass .. "@" .. host .. ":" .. tostring(port) .. path
             end
         end
         i = i + 1
@@ -83,11 +88,19 @@ if os.execute("command -v ffmpeg >/dev/null 2>&1") ~= 0 then
     os.exit(3)
 end
 
+if not usb_explicit then
+    local uv = reg.video("usb") or {}
+    local n = tostring(uv.device or ""):match("video(%d+)")
+    if n then usb = n end
+end
+
 local live_jpg, src, ez_serial, ez_file
 if ezviz ~= "" then
     local door = (ezviz == "menkou" or ezviz == "门口")
     local kind = door and "menkou" or "keting"
-    ez_serial, ez_file = ezlib.serial(kind)
+    local info = reg.video(kind) or {}
+    ez_serial = info.serial or (ezlib.serial(kind))
+    ez_file = info.url_file or (door and "/tmp/myagent_door.url" or "/tmp/myagent_ezviz.url")
     local f = io.open(ez_file, "r")
     local u = f and (f:read("*l") or "") or ""
     if f then f:close() end

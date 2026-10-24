@@ -64,6 +64,7 @@ typedef struct _CameraTextureClass {
 // 常驻引用，防止纹理对象被 GC 回收
 static CameraTexture* g_keep_usb = nullptr;
 static std::vector<CameraTexture*> g_keep_streams;
+static std::vector<std::string> g_stream_labels;
 
 G_DEFINE_TYPE(CameraTexture, camera_texture, fl_texture_gl_get_type())
 
@@ -115,6 +116,27 @@ static std::string read_first_line(const std::string& path) {
   return line.substr(a, b - a + 1);
 }
 
+static std::string read_env_value(const std::string& key) {
+  if (const char* e = getenv(key.c_str())) return e;
+  const char* home = getenv("HOME");
+  if (!home) return "";
+  std::ifstream f(std::string(home) + "/.env");
+  if (!f.is_open()) return "";
+  std::string line;
+  while (std::getline(f, line)) {
+    if (line.rfind(key + "=", 0) != 0) continue;
+    std::string v = line.substr(key.size() + 1);
+    size_t a = v.find_first_not_of(" \t\r\n");
+    size_t b = v.find_last_not_of(" \t\r\n");
+    if (a == std::string::npos) return "";
+    v = v.substr(a, b - a + 1);
+    if (v.size() >= 2 && (v.front() == '\'' || v.front() == '"') && v.back() == v.front())
+      v = v.substr(1, v.size() - 2);
+    return v;
+  }
+  return "";
+}
+
 static bool write_snapshot(CamState* st) {
   std::lock_guard<std::mutex> lk(st->m);
   if (st->buf.empty() || st->bw <= 0 || st->bh <= 0) return false;
@@ -141,6 +163,13 @@ static void method_call_cb(FlMethodChannel* channel, FlMethodCall* call, gpointe
     FlValue* list = fl_value_new_list();
     for (CameraTexture* t : g_keep_streams)
       fl_value_append_take(list, fl_value_new_int(t && t->st ? t->st->id : 0));
+    respond_ok(call, list);
+  } else if (g_strcmp0(name, "labels") == 0) {
+    FlValue* list = fl_value_new_list();
+    const char* cam1 = getenv("CAM1_LABEL");
+    fl_value_append_take(list, fl_value_new_string(cam1 && *cam1 ? cam1 : "USB"));
+    for (const auto& label : g_stream_labels)
+      fl_value_append_take(list, fl_value_new_string(label.c_str()));
     respond_ok(call, list);
   } else if (g_strcmp0(name, "textureSizes") == 0) {
     FlValue* list = fl_value_new_list();
@@ -295,12 +324,12 @@ void camera_texture_register(FlPluginRegistry* registry) {
 
   // 路 2+：URL 流（萤石/HLS/RTMP/FLV/RTSP）——URL 来自 env 或文件；启用则各建一个纹理
   struct Spec {
-    std::string url, file, snap, rot;
+    std::string url, file, snap, rot, label;
   };
   std::vector<Spec> specs;
   auto add_spec = [&](const char* url_env, const char* file_env,
                       const char* def_file, const char* def_snap,
-                      const char* def_rot) {
+                      const char* def_rot, const char* label_env, const char* label_def) {
     std::string url = getenv(url_env) ? getenv(url_env) : "";
     std::string file = getenv(file_env) ? getenv(file_env) : def_file;
     bool want = false;
@@ -310,17 +339,42 @@ void camera_texture_register(FlPluginRegistry* registry) {
       std::ifstream probe(file);
       if (probe.good()) want = true;  // 文件存在即启用（此刻可能还没写地址，等刷新脚本写）
     }
-    if (want) specs.push_back({url, url.empty() ? file : std::string(""), def_snap, def_rot});
+    const char* le = getenv(label_env);
+    std::string label = (le && *le) ? le : label_def;
+    if (want) specs.push_back({url, url.empty() ? file : std::string(""), def_snap, def_rot, label});
   };
-  // 路2=手机（CAM2_URL）；路3=客厅萤石；路4=门口萤石
-  add_spec("CAM2_URL", "CAM2_URL_FILE", "/tmp/myagent_phone.url",
-           "/tmp/myagent_cam_stream.jpg", "/tmp/myagent_ezviz.rot");
-  add_spec("CAM3_URL", "CAM3_URL_FILE", "/tmp/myagent_ezviz.url",
-           "/tmp/myagent_ezviz2.jpg", "/tmp/myagent_ezviz2.rot");
-  add_spec("CAM4_URL", "CAM4_URL_FILE", "/tmp/myagent_door.url",
-           "/tmp/myagent_cam_door.jpg", "/tmp/myagent_door.rot");
-  for (const Spec& s : specs)
+  // 全屋四路：USB + 萤石客厅 + 萤石门口 + TP-Link
+  // 路2/路3/路4 仍可用 CAM*_URL / CAM*_URL_FILE 覆盖，方便以后换源。
+  add_spec("CAM2_URL", "CAM2_URL_FILE", "/tmp/myagent_ezviz.url",
+           "/tmp/myagent_cam_stream.jpg", "/tmp/myagent_ezviz.rot", "CAM2_LABEL", "EZVIZ 客厅");
+  add_spec("CAM3_URL", "CAM3_URL_FILE", "/tmp/myagent_door.url",
+           "/tmp/myagent_cam_door.jpg", "/tmp/myagent_door.rot", "CAM3_LABEL", "EZVIZ 门口");
+
+  std::string tp = read_env_value("CAM4_URL");
+  if (tp.empty()) tp = read_env_value("TPLINK_RTSP");
+  if (tp.empty()) {
+    std::string user = read_env_value("TPLINK_USER");
+    std::string pass = read_env_value("TPLINK_PASS");
+    std::string host = read_env_value("CAM4_HOST");
+    if (host.empty()) host = read_env_value("TPLINK_HOST");
+    if (host.empty()) host = "192.168.1.111";
+    std::string port = read_env_value("CAM4_PORT");
+    if (port.empty()) port = "554";
+    std::string path = read_env_value("CAM4_PATH");
+    if (path.empty()) path = "/stream1";
+    if (!user.empty() && !pass.empty())
+      tp = "rtsp://" + user + ":" + pass + "@" + host + ":" + port + path;
+  }
+  if (!tp.empty()) {
+    const char* le = getenv("CAM4_LABEL");
+    specs.push_back({tp, "", "/tmp/myagent_cam_rtsp.jpg", "/tmp/myagent_tplink.rot",
+                     (le && *le) ? le : "TP-Link"});
+  }
+
+  for (const Spec& s : specs) {
     g_keep_streams.push_back(make_cam(tr, true, 0, s.url, s.file, s.snap, s.rot));
+    g_stream_labels.push_back(s.label);
+  }
 
   FlBinaryMessenger* messenger = fl_plugin_registrar_get_messenger(pr);
   g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();

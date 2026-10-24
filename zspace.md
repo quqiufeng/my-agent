@@ -75,7 +75,12 @@ Host zspace nas
 - **Web 网关**：openresty（5055/5056 + 多个 127.0.0.1 端口 2999/8020/8111/20123…）
 - 本地微服务端口（`127.0.0.1`）：`zds`5577、`downloader`8001、`storage-pool`8003、`zspoolv3`8004、`transcode`8010、`upgrader`8012、`leds`8022、`file_search`8023、`media-converter`8024、`netdiskv2`8027、`zmusic`8028、`zreader`8029、`baseset`8038… ；`zrps-worker`5050、`xunlei`5051/5052、`zbasic`12200(对外)
 
-## 家庭网络拓扑（2026-10-21 实测）
+## 家庭网络拓扑（动态）
+
+> **动态扫描结果以 [`operator/NETWORK.md`](operator/NETWORK.md) 和 [`operator/devices.json`](operator/devices.json) 为准**；
+> 运行 `operator/tools/netmap.sh scan` 更新设备 IP、MAC、端口和音视频源地址。
+
+### 2026-10-21 基线
 
 ```
 光猫 192.168.1.1（中国电信智能网关；MAC a0:36:79:d5:35:e0）

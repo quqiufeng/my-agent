@@ -1,6 +1,6 @@
 # 项目能力清单（Capabilities）
 
-> 当前白名单共 **35 个工具**；完整参数与逐条规则以 `operator/TOOLS.md` 为准。
+> 当前白名单共 **36 个工具**；完整参数与逐条规则以 `operator/TOOLS.md` 为准。
 > 本文按场景汇总，供大脑快速判断“有没有现成能力”。
 > 更新时间：2026-10-24
 
@@ -64,7 +64,15 @@
 - `dash.sh`：指数 + 自选股 + K 线点阵风大屏图
   - 当前不提供独立股票文本查询工具
 
-## 十、后台 / 维护
+## 十、网络 / 设备注册
+- `netmap.sh scan`：扫描局域网 → 识别 IP/MAC/主机名/端口 → 生成
+  `operator/devices.json`、`operator/NETWORK.md`、`operator/devices.env`
+- `netmap.sh show`：查看当前拓扑
+- `netmap.sh sources`：查看视频/音频源地址
+- `camera.sh` / `listen_cam.sh` / Flutter 首页从注册表动态读取地址与标签
+- 注册表不保存密码，只保存 env 引用
+
+## 十一、后台 / 维护
 - `jobs.sh`：后台任务列表、日志、状态、停止
 - `dev.sh`：项目规范、能力列表、工具模板、索引、commit/push、重启
 

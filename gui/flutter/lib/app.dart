@@ -17,7 +17,7 @@ class MyAgentApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return YaruTheme(
       builder: (context, yaru, child) => MaterialApp(
-        title: 'agent',
+        title: 'agent · 全屋监控',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.apply(yaru.theme),
         darkTheme: AppTheme.apply(yaru.darkTheme),
@@ -26,7 +26,7 @@ class MyAgentApp extends StatelessWidget {
           backgroundColor: ChinaColors.shuangdi,
           appBar: const YaruWindowTitleBar(
             onClose: YaruWindow.minimize,
-            title: Text('agent · 语音助手'),
+            title: Text('agent · 全屋监控'),
           ),
           body: child ?? const SizedBox.shrink(),
         ),
@@ -46,6 +46,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   static const _cam = MethodChannel('agent/camera');
   int _texId = 0;
   List<int> _streamIds = const [];
+  List<String> _labels = const [];
   List<int> _wh = const []; // 每路纹理尺寸 [usbW,usbH, 流1W,流1H, ...]
   int? _full; // 双击某路后全屏显示该路的索引；null=分屏
   String _clock = '';
@@ -94,6 +95,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _prefix = env['VOICE_PREFIX'] ?? '[语音输入]';
     _getTexture();
     _getStreams();
+    _getLabels();
     _micLoop(env['VOICE_MIC_DEV'] ?? 'plughw:2,0',
         env['VOICE_MIC_CARD'] ?? '2', env['VOICE_MIC_GAIN'] ?? '7810', env);
     _tickClock();
@@ -157,6 +159,26 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       await Future.delayed(const Duration(milliseconds: 200));
     }
   }
+  Future<void> _getLabels() async {
+    for (var i = 0; i < 50; i++) {
+      try {
+        final v = await _cam.invokeMethod<List<Object?>>('labels');
+        final l = (v ?? const []).whereType<String>().toList();
+        if (l.isNotEmpty) {
+          if (mounted) setState(() => _labels = l);
+          return;
+        }
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+  }
+
+  String _label(int slot) {
+    if (slot < _labels.length && _labels[slot].trim().isNotEmpty) return _labels[slot];
+    const fallback = ['USB', 'EZVIZ 客厅', 'EZVIZ 门口', 'TP-Link'];
+    return slot < fallback.length ? fallback[slot] : 'CAM ${slot + 1}';
+  }
+
   String _norm(String s) => s
       .toLowerCase()
       .replaceAll(RegExp(r'[\s\u3000]'), '')
@@ -657,12 +679,33 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   int _paneFlex(int slot) => (_aspect(slot) * 1000).round().clamp(100, 10000);
 
   // 单路画面：黑底，按实际分辨率等比缩放居中（不拉伸、不裁切）
-  Widget _camView(int id, int slot) => ColoredBox(
-        color: Colors.black,
-        child: Center(
-          child: AspectRatio(
-              aspectRatio: _aspect(slot), child: Texture(textureId: id)),
-        ),
+  Widget _camView(int id, int slot) => Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: Colors.black),
+          Center(
+            child: AspectRatio(
+                aspectRatio: _aspect(slot), child: Texture(textureId: id)),
+          ),
+          Positioned(
+            left: 10,
+            top: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.62),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                _label(slot),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ],
       );
 
   Widget _statusBar() {

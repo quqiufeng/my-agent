@@ -1,5 +1,6 @@
 -- tools/camera_grid.lua — 四路摄像头抓帧 → 2×2 拼图 → 发微信
 local DIR = (arg[0] or ""):match("^(.*)/") or "."
+local reg = require("device_registry")
 
 local function q(s)
     return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
@@ -17,11 +18,15 @@ end
 local tag = os.date("%Y%m%d_%H%M%S")
 local tmp = "/tmp/myagent_camgrid_" .. tag
 os.execute("mkdir -p " .. q(tmp))
+local function dn(role, fallback)
+    local d = reg.device(role)
+    return d and d.name or fallback
+end
 local specs = {
-    { name = "EZVIZ 客厅", args = "--ezviz keting", file = tmp .. "/1.jpg" },
-    { name = "EZVIZ 门口", args = "--ezviz menkou", file = tmp .. "/2.jpg" },
-    { name = "TP-Link", args = "--tplink", file = tmp .. "/3.jpg" },
-    { name = "USB 摄像头", args = "--usb 0", file = tmp .. "/4.jpg" },
+    { name = dn("keting", "EZVIZ 客厅"), args = "--ezviz keting", file = tmp .. "/1.jpg" },
+    { name = dn("menkou", "EZVIZ 门口"), args = "--ezviz menkou", file = tmp .. "/2.jpg" },
+    { name = dn("tplink", "TP-Link"), args = "--tplink", file = tmp .. "/3.jpg" },
+    { name = dn("usb", "USB 摄像头"), args = "--usb 0", file = tmp .. "/4.jpg" },
 }
 for _, s in ipairs(specs) do
     os.execute(q(DIR .. "/camera.sh") .. " " .. s.args .. " --out " .. q(s.file) .. " >/dev/null 2>&1")

@@ -104,6 +104,9 @@ voice/voice.sh say "文本"                 # 文本→USB 音响
 voice/voice.sh listen                    # 麦克风→识别→转发
 voice/voice.sh app                       # 统一界面
 
+# 设备扫描 / 网络拓扑 / 音视频源
+operator/tools/netmap.sh scan
+
 # 微信
 cd wechat-ocr
 cmake -S . -B build_lib -DCMAKE_BUILD_TYPE=Release \

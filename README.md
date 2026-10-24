@@ -31,7 +31,7 @@
                                             语音→ say.sh 出声   微信→ wechat_send.sh 回发
 ```
 
-> **白名单工具现有 35 个**：说话/微信/截屏、音乐/找文件、文生图/视频、行情大屏、摄像头四路与识别、微博/抖音、桌面终端、扫地机、**电纸书**。
+> **白名单工具现有 36 个**：设备扫描/拓扑、说话/微信/截屏、音乐/找文件、文生图/视频、行情大屏、摄像头四路与识别、微博/抖音、桌面终端、扫地机、**电纸书**。
 > 清单与各工具规则由 `operator/plugin.sh index` **自动生成**到 `operator/TOOLS.md`（大脑经 `instructions` 加载），**新增工具无需手改契约**。
 
 三条设计原则：
@@ -192,7 +192,7 @@ my-agent/
 │   ├── opencode.json         #   权限：默认全拒，仅放行 tools/*；instructions 加载 TOOLS.md
 │   ├── .opencode/plugin/guard.js  # 兜底：拦截拼接命令
 │   ├── start.sh              #   启动 tmux + opencode serve(4097)/attach
-│   ├── tools/                #   35 个白名单工具（每个自带 @desc/@usage/@rule）
+│   ├── tools/                #   36 个白名单工具（每个自带 @desc/@usage/@rule）
 │   └── README.md
 │
 ├── voice/                    # 【语音入口 + 输出】纯 C/C++，无 Python
@@ -247,6 +247,7 @@ operator/tools/ebook.sh shot /tmp/e.png  # 截当前屏（可再 wechat_send_fil
 operator/tools/ebook.sh speak            # 朗读当前页
 
 # 新增一个“能力”（不用改 AGENTS.md）
+operator/tools/netmap.sh scan      # 扫描设备 → devices.json / NETWORK.md / devices.env
 operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → 重启大脑
 ```
 
@@ -258,7 +259,7 @@ operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → �
 
 1. **权限**（`operator/opencode.json`）：`bash` 默认 `deny`、只放行 `tools/*`；`read/edit/webfetch/task` 全部 `deny`。
 2. **兜底插件**（`operator/.opencode/plugin/guard.js`）：执行前正则校验，禁止 `&&`、`;`、`|`、重定向等拼接绕过。
-3. **契约**（`operator/AGENTS.md` + `operator/TOOLS.md`）：告诉大脑“只能调用白名单里的 35 个工具，不认识的请求就拒绝”。
+3. **契约**（`operator/AGENTS.md` + `operator/TOOLS.md`）：告诉大脑“只能调用白名单里的 36 个工具，不认识的请求就拒绝”。
 
 回程规则：`[语音输入]` → `say.sh` / `wechat_send.sh`；`[微信输入:<会话名>]` → `wechat_send.sh --to <会话名>`（默认「文件传输助手」）。
 
@@ -294,9 +295,9 @@ operator/plugin.sh new mytool      # 生成模板 → 写实现 → index → �
 - ✅ **图片视频**（`img_video.sh`）：按提示词出图 → 合成竖版 MP4；已有图片可直接 `--imgdir` 复用；默认不发微信
 - ✅ 摄像头窗口 / 人脸门控 / 统一界面
 - ✅ 微信 OCR 机器人（搜索/发送/截图/监控）
-- ✅ 单脑 + **插件式白名单**（`plugin.sh` 生成 `TOOLS.md`，当前 **35 个工具**）
+- ✅ 单脑 + **插件式白名单**（`plugin.sh` 生成 `TOOLS.md`，当前 **36 个工具**）
 - ✅ 微信入口：白名单会话；后台**不抢焦点**读预览，带 `ai助手` 标签触发 → `[微信输入:<会话>]` 转发 → 回复带 `ai助手` 前缀回来源
-- ✅ 能力：音乐 / 截屏 / 找文件(本机+NAS) / 文生图 / 行情大屏 / 四路摄像头与识别 / 微博 / 抖音 / 语音克隆 / 终端进度 / 扫地机 / 电纸书
+- ✅ 能力：设备扫描/拓扑 / 音乐 / 截屏 / 找文件(本机+NAS) / 文生图 / 行情大屏 / 四路摄像头与识别 / 微博 / 抖音 / 语音克隆 / 终端进度 / 扫地机 / 电纸书
 - ✅ 股票数据源：同花顺 fuyao（REST，API Key 在 `~/.env`）
 - ✅ **点阵风 UI**：行情大屏（`dash.sh`：TSV→HTML(Canvas)→headless Chrome 截图）与统一界面（`voice/app` 状态栏）采用暗色点阵风；组件来自 [karminski-design-skills](https://github.com/karminski/karminski-design-skills)（CC BY-NC-SA 4.0，署名见 `operator/tools/dotkit/NOTICE.md`）
 - ✅ **手机控制**（`phone.sh`，ADB：截屏/点击/滑动/中文输入/开应用）+ **手机微信自主测试闭环**（手机发指令 → 大脑执行 → 回程到手机）
